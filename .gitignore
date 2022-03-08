@@ -3,6 +3,6 @@
 .RData
 .Ruserdata
 data/
-index.Rmd
+#index.Rmd
 KrigR_tuto.R
 *.cache

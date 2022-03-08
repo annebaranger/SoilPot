@@ -17,48 +17,6 @@
 # 
 
 
-##Comparison of Psi_min according to the type of water computation
-psi=psi_min %>%
-  select(x,y,Psi_w_min,Psi_m_min) %>%
-  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
-  ggplot() + # create a plot
-  geom_raster( aes(x = x, y = y, fill = -value)) + # plot the raw data
-  facet_wrap(~name) + # split raster layers up
-  theme_bw() +
-  labs(x = "Longitude", y = "Latitude") + # make plot more readable
-  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80))+#,0.8,0.85,0.87,0.9,0.92
-  coord_quickmap()
-
-##Comparison of Psi_min according to the type of water computation
-ratio=psi_min %>%
-  select(x,y,SWC_w_ratio,SWC_m_ratio) %>%
-  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
-  ggplot() + # create a plot
-  geom_raster( aes(x = x, y = y, fill = value)) + # plot the raw data
-  facet_wrap(~name) + # split raster layers up
-  theme_bw() +
-  labs(x = "Longitude", y = "Latitude") + # make plot more readable
-  scale_fill_gradientn(name = "SWC ratio",trans="log",colours = viridis(80))+#,0.8,0.85,0.87,0.9,0.92
-  coord_quickmap()
-
-cowplot::plot_grid(psi,ratio,nrow = 2,align="v") 
-
-##Comparison Psi_min for constent texture and different WC computation
-psi_min %>%
-  select(x,y,Psi_w_min,Psi_m_min) %>%
-  mutate(Psi_w_min=cut(Psi_w_min, breaks=c(-Inf, -50, -25, -20,-15,-10,-5,-3,-2,-1,Inf), labels=c("<-50","-50<Psi<-25","-25<Psi<-20","-20<Psi<-15","-15<Psi<-10","-10<Psi<-5","-5/-3","-3/-2","-2/-1","-1/0")),
-         Psi_m_min=cut(Psi_m_min,breaks=c(-Inf, -50, -25, -20,-15,-10,-5,-3,-2,-1,Inf), labels=c("<-50","-50<Psi<-25","-25<Psi<-20","-20<Psi<-15","-15<Psi<-10","-10<Psi<-5","-5/-3","-3/-2","-2/-1","-1/0"))) %>%
-  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
-  ggplot() + # create a plot
-  geom_raster( aes(x = x, y = y, fill = value)) + # plot the raw data
-  facet_wrap(~name) + # split raster layers up
-  theme_bw() +
-  scale_fill_gradientn(colours=viridis(10))+
-  labs(x = "Longitude", y = "Latitude") + # make plot more readable
-  #scale_fill_gradientn(name = Legend, colours = inferno(100),values=c(0,0.5,0.5,0.8,0.9,0.95,0.975,0.98,0.99,1))+
-  coord_quickmap()
-
-
 ### Making temporal graphs of SWC 
 chronology_swc <- function(point_to_extract=data.frame(Luberon=c(5.387792,43.814892),
                                                      Landes= c(-0.438943,44.427567), #Landes

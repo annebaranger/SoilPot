@@ -38,7 +38,11 @@ list(
     soil_potential(texture,SWC[[1]])
   ),
   tar_target(
-    chronology,
+    chronology_weighted,
     chronology_swc(SWC=SWC[[2]])
+  ),
+  tar_target(
+    chronology_mean,
+    chronology_swc(SWC=SWC[[3]])
   )
 )
