@@ -2,3 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+data/
+index.Rmd
+KrigR_tuto.R
+*.cache
