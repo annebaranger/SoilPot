@@ -57,5 +57,30 @@ chronology_swc <- function(point_to_extract=data.frame(Luberon=c(5.387792,43.814
 }
 
 
+### Overlay species distribution and hydraulic safety margin
+#layer="Fagus_sylvatica_sylvatica_plg_clip"
+HSM_distribution <- function(species,layer,psi_min){
+  P50_df=read.csv("data/p50species.csv")
+  P50_sp=P50_df[P50_df$Species.binomial==species,2]
+  Species_disb=sf::read_sf(dsn=paste0("data/chorological_maps_dataset/",species,"/shapefiles"),layer=layer)
+  Species_disb=sf::st_crop(Species_disb,sf::st_bbox(ext(rast(psi_min[,c(1,2,3)]))))
+  
+  graph= psi_min %>%
+    select(x,y,Psi_w_min) %>%
+    mutate(HSM=Psi_w_min-P50_sp) %>% #P50(F_syl)=-3.15
+    mutate(HSM_bin=as.factor(case_when(HSM>0~1,
+                                       HSM<=0~0))) %>% 
+    select(x,y,HSM_bin) %>% 
+    filter(is.na(HSM_bin)==FALSE) %>% 
+    ggplot() + # create a plot
+    geom_raster( aes(x = x, y = y, fill = HSM_bin)) + # plot the raw data
+    geom_sf(data=Species_disb,fill=alpha("grey",0.4))+
+    theme_bw() +
+    scale_fill_discrete(na.value="transparent")+
+    labs(x = "Longitude", y = "Latitude",fill="Minimum Potential") 
+  return(graph)
+  
+}
+
 
 

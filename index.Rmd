@@ -1,0 +1,188 @@
+---
+title: "Soil water potential pre-analysis"
+author: "Anne Baranger"
+date: "24/02/2022"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.path = "plots/fig_",echo=FALSE)
+library(targets)
+library(tidyr)
+library(dplyr)
+library(viridis)
+library(terra)
+library(ggplot2)
+```
+
+# Introduction
+
+To assess the hydraulic stress experienced by species in different climatic context we compute the distance between hydraulic resistance and hydraulic constraints of the environment.
+Hydraulic resistance is measured by the hydraulic potential at which 50% of the vessels of a species are embolized. Hydraulic constraints is assessed by the soil hydraulic potential. Indeed, hydraulic potential is supposed to range between that of the soil and of the air. However, plant potential is regulated by stomatal closure that enables potential not to drop beneath critical values. Therefore it is assumed that soil potential sets the upper limit of plant potential. 
+
+
+## Minimum soil potential theoritical computation
+
+Minimum soil potential $\Psi_{min}$ is not a largescale measured parameter, it needs to be computed according physical assumptions.
+Different methods have been proposed to this end:
+
+* Campbell equation $\Psi_{min} = \Psi_{e} \cdot (SWC_{max}/SWC_{min})^b  $ with SWC being soil water content, $ \Psi_{e}$ and $b$ paramaters that depend on local soil texture   
+* van Genuchten model 
+
+Soil water content can be computed from direct climatic database or from water balance based on simple bucket model.
+
+## Available dataset
+
+We choose to compute soil potential from two available datasets:
+
+* Era5-land that provides soil water content at 9x9km resolution for 4 soil layers ;
+* ESDAC that provides soil texture at 1x1km resolution.
+
+In this pre-analysis are conducted over a 15-years-period, from 2000 to 2015, only in France
+
+
+# Soil water content 
+
+Soil water content was computed with two different methods:
+
+* the mean of the different SWC in the 4 layers
+* the weighted mean of the different layers.
+
+Maxima and minima were computed as the mean of the 5 more extrem months respectively.
+
+```{r TemporalVariationSWC}
+tar_read(chronology_mean)
+tar_read(chronology_weighted)
+```
+# Texture maps
+
+```{r Texture}
+tar_load(psi_min)
+psi_min %>% 
+  select(x,y,texture) %>% 
+  mutate(texture=as.factor(texture)) %>% 
+  ggplot(aes(x,y,fill=texture))+
+    geom_raster()+
+    labs(x = "Longitude", y = "Latitude") + # make plot more readable
+    scale_fill_brewer(palette="Spectral",direction=-1)+
+    coord_quickmap()
+```
+
+
+```{r SWCmaxima, fig.width=8}
+psi_min %>% 
+  select(x,y,SWC_w_min,SWC_w_max,SWC_m_min,SWC_m_max) %>%
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = value)) + # plot the raw data
+  facet_wrap(~name) + # split raster layers up
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "SWC maxima/minima",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
+  coord_quickmap()
+```
+
+# SWC ratio
+
+```{r SWC ratio,}
+##Comparison of Psi_min according to the type of water computation
+psi_min %>%
+  select(x,y,SWC_w_ratio,SWC_m_ratio) %>%
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = value)) + # plot the raw data
+  facet_wrap(~name) + # split raster layers up
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "SWC ratio",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
+  coord_quickmap()
+```
+
+
+# From SWC ratio to soil potential
+
+## Color gradients
+ 
+```{r SoilPotential,fig.width=8}
+tar_load(psi_min)
+##Comparison of Psi_min according to the type of water computation
+psi_min %>%
+  select(x,y,Psi_w_min,Psi_m_min,Psi_w_med,Psi_m_med) %>%
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  mutate(name=factor(name,levels=c("Psi_w_med","Psi_m_med","Psi_w_min","Psi_m_min")),
+         value=round(value,digits = 1)) %>% 
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = -value)) + # plot the raw data
+  facet_wrap(~name,nrow=2) + # split raster layers up
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
+  coord_quickmap()
+
+#cowplot::plot_grid(psi,ratio,align="v",nrow = 2) #rel_heigths=c(1,5/7),
+
+```
+
+
+## Categories
+  
+```{r PsiCategories,fig.width=8 }
+##Comparison Psi_min for constent texture and different WC computation
+psi_min %>%
+  select(x,y,Psi_w_min,Psi_m_min) %>%
+  mutate(Psi_w_min=cut(Psi_w_min, breaks=c(-Inf, -50, -25, -20,-15,-10,-5,-3,-2,-1,Inf), labels=c("<-50","-50<Psi<-25","-25<Psi<-20","-20<Psi<-15","-15<Psi<-10","-10<Psi<-5","-5/-3","-3/-2","-2/-1","-1/0")),
+         Psi_m_min=cut(Psi_m_min,breaks=c(-Inf, -50, -25, -20,-15,-10,-5,-3,-2,-1,Inf), labels=c("<-50","-50<Psi<-25","-25<Psi<-20","-20<Psi<-15","-15<Psi<-10","-10<Psi<-5","-5/-3","-3/-2","-2/-1","-1/0"))) %>%
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = value)) + # plot the raw data
+  facet_wrap(~name) + # split raster layers up
+  theme_bw() +
+  scale_fill_brewer(palette="RdYlBu")+
+#  scale_fill_discrete(na.value="transparent",type=)+
+  labs(x = "Longitude", y = "Latitude",fill="Minimum Potential") + # make plot more readable
+  coord_quickmap()
+
+```
+
+# Fagus sylvatica and Quercus pubescens distribution/HSM
+
+```{r HSMDistribution}
+tar_read(HSM_quercus)
+tar_read(HSM_fagus)
+```
+
+```{r eval=FALSE, include=FALSE}
+psi_min %>%
+  select(x,y,Psi_w_min) %>%
+  mutate(HSM1=Psi_w_min-(-1),
+         HSM2=Psi_w_min-(-2),
+         HSM3=Psi_w_min-(-3),
+         HSM4=Psi_w_min-(-4),
+         HSM5=Psi_w_min-(-5),
+         HSM6=Psi_w_min-(-6),
+         HSM7=Psi_w_min-(-7)) %>% #P50(F_syl)=-3.15
+  mutate(HSM1_bin=as.factor(case_when(HSM1>0~1,
+                           HSM1<=0~0)),
+         HSM2_bin=as.factor(case_when(HSM2>0~1,
+                           HSM2<=0~0)),
+         HSM3_bin=as.factor(case_when(HSM3>0~1,
+                           HSM3<=0~0)),
+         HSM4_bin=as.factor(case_when(HSM4>0~1,
+                           HSM4<=0~0)),
+         HSM5_bin=as.factor(case_when(HSM5>0~1,
+                           HSM5<=0~0)),
+         HSM6_bin=as.factor(case_when(HSM6>0~1,
+                           HSM6<=0~0)),
+         HSM7_bin=as.factor(case_when(HSM7>0~1,
+                           HSM7<=0~0))) %>% 
+  select(x,y,HSM1_bin,HSM2_bin,HSM3_bin,HSM4_bin,HSM5_bin,HSM6_bin,HSM7_bin) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = value)) + # plot the raw data
+  facet_wrap(~name)+
+  theme_bw() +
+#  scale_fill_discrete(na.value="transparent",type=)+
+  labs(x = "Longitude", y = "Latitude",fill="Minimum Potential")
+```
+ 
+ 

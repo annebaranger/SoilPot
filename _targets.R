@@ -44,5 +44,17 @@ list(
   tar_target(
     chronology_mean,
     chronology_swc(SWC=SWC[[3]])
+  ),
+  tar_target(
+    HSM_fagus,
+    HSM_distribution(species="Fagus sylvatica",
+                     layer="Fagus_sylvatica_sylvatica_plg_clip",
+                     psi_min)
+  ),
+  tar_target(
+    HSM_quercus,
+    HSM_distribution(species="Quercus pubescens",
+                     layer="Quercus_pubescens_plg_clip",
+                     psi_min)
   )
 )

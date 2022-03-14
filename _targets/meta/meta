@@ -10,10 +10,14 @@ texture|stem|183209870b9ae4ea|ac4ff211e6b646f6|ba0a28e74c630601|-1924991449||t19
 SWC|stem|cadd31d5bb241135|de1e87d4becc9d9f|dd453e9b15a89d6b|-1946852437||t19058.6013462755s|340d17e364a2a90a|16955201|rds|vector|||13.06||
 chronology|stem|3c1d53f9698064b9|4eabdb5ff81f9212|c15a5c4ec38ba6a6|234971759||t19058.6013755233s|8daedefa7f4b535c|6215900|rds|vector|||0.3||
 psi_min|stem|41b789e85076a687|4b47d0bc1f413ea3|ba8f5b732bbf37f9|-334155324||t19058.6613978844s|96d7cb15ce3502b7|28404068|rds|vector|||5.89||
+chronology_weighted|stem|3c1d53f9698064b9|4eabdb5ff81f9212|c15a5c4ec38ba6a6|1002239282||t19059.4341416489s|8daedefa7f4b535c|6215900|rds|vector|||5.79||
+chronology_mean|stem|8262b34f7d62e965|ce44decdcb004f6e|c15a5c4ec38ba6a6|2103773189||t19059.4341535123s|162a8d6eec2276da|5129984|rds|vector|||0.28||
+safety_margin|stem|4639980df850172b|ff2990bc14a2ce3f|9a6439f3439b6be1|-1676297153||t19065.5994144493s|7a8898ef5aa0e6c6|28818686|rds|vector|||4.06|attribute variables are assumed to be spatially constant throughout all geometries|
 chronology_swc|function|81fbeafdde4f278b||||||||||||||
 volumetric_content|function|83217bf6319426b3||||||||||||||
+HSM_distribution|function|5a533a416fa2b49d||||||||||||||
 era_data|function|da3d6c264806e1b4||||||||||||||
 texture_data|function|6a90db06dfdab5b6||||||||||||||
 soil_potential|function|91f484563a13a718||||||||||||||
-chronology_weighted|stem|3c1d53f9698064b9|4eabdb5ff81f9212|c15a5c4ec38ba6a6|1002239282||t19059.4341416489s|8daedefa7f4b535c|6215900|rds|vector|||5.79||
-chronology_mean|stem|8262b34f7d62e965|ce44decdcb004f6e|c15a5c4ec38ba6a6|2103773189||t19059.4341535123s|162a8d6eec2276da|5129984|rds|vector|||0.28||
+HSM_quercus|stem|5fec76c37894a4d0|e00190c78a849a37|9a6439f3439b6be1|-80060025||t19065.6018002877s|091cc2976320e3f3|28816521|rds|vector|||4.06|attribute variables are assumed to be spatially constant throughout all geometries|
+HSM_fagus|stem|4639980df850172b|ff2990bc14a2ce3f|9a6439f3439b6be1|-1467103284||t19065.601839466s|7a8898ef5aa0e6c6|28818686|rds|vector|||0.62|attribute variables are assumed to be spatially constant throughout all geometries|
