@@ -1,7 +1,23 @@
+#### Europe extent ####
+######################
+europe_extent=function(){
+  library(rworldmap)
+  countries=c("Albania","Austria","Belgium","Bulgaria","Bosnia and Herzegovina","Switzerland","Czech Republic","Germany","Denmark","Spain","Estonia","Finland","France","United Kingdom","Greece","Croatia","Hungary","Ireland","Iceland","Italy","Kosovo","Lithuania","Luxembourg","Latvia","Macedonia","Montenegro","Netherlands","Norway","Poland","Portugal","Romania","Republic of Serbia","Slovakia","Slovenia","Sweden","Andorra","Liechtenstein","Monaco","Malta","San Marino","Vatican")
+  europe <- getMap(resolution="high")
+  europe <- europe[europe@data$ADMIN.1%in%countries,]
+  europe= raster::crop(europe, extent(-10, 46, 32, 72))
+  return(europe)
+  # for (i in 1:4){
+  #   y=16/4
+  #   print(seq.int((i-1)*y+1:(y*i)))
+  #         }
+  #   assign(paste0("SWC",i),
+  #          subset(SWCtot,(i-1)*y+1:y*i))
+  # }
+}
+
 #### Data downloading from ERA5-land ####
 #########################################
-
-
 era_data <- function(API_User="124078",
                      API_Key="ab883de0-39cd-4452-a1f0-7cd45ab252b0",
                      Dir.Data,
@@ -35,6 +51,13 @@ era_data <- function(API_User="124078",
 }
 
 
+#### Data downloading from TerraClimate ####
+############################################
+# download data directly on website
+terraclimate_data <- function() {
+  terraclimate=rast("data/agg_terraclimate_soil_1958_CurrentYear_GLOBE.nc")
+}
+
 #### DL soilgrid ####
 #####################
 # function not working with updated version of gdal
@@ -52,6 +75,8 @@ era_data <- function(API_User="124078",
 #                projwin=bb,
 #                projwin_srs =igh,
 #                verbose=TRUE)
+# link<-"/vsicurl/https://files.isric.org/soilgrids/latest/data/ocs/ocs_0-30cm_mean.vrt"
+# test <- rast(link)
 
 
 
@@ -59,9 +84,9 @@ era_data <- function(API_User="124078",
 #################################################
 # Dir.Data="data"
 # Dir.Soil="STU_EU_Layers"
-texture_data <- function(Dir.Data,Dir.Soil){
+texture_data <- function(Dir.Data,Dir.Soil,europe){
   # To get spatial extent
-  rast_model=rast("data/Volumetric_soil_water_layer_1/Volumetric_soil_water_layer_1_2000-01-01_2015-01-01_month.nc")
+  rast_model=vect(europe)
   # Clay process
   clay=c(rast(file.path(Dir.Data,Dir.Soil,"STU_EU_T_CLAY.rst")),rast(file.path(Dir.Data,Dir.Soil,"STU_EU_S_CLAY.rst")))
   crs(clay)="+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
@@ -88,13 +113,21 @@ texture_data <- function(Dir.Data,Dir.Soil){
 # Variables=c("Volumetric_soil_water_layer_1","Volumetric_soil_water_layer_2","Volumetric_soil_water_layer_3","Volumetric_soil_water_layer_4")
 # Abv=c("SWC1","SWC2","SWC3","SWC4")
 
-volumetric_content <- function(Dir.Data,Variables,Abv,texture){
+volumetric_content <- function(Dir.Data,texture,europe){ #,Variables,Abv,
   # get texture raster
   texture=rast(texture,crs="epsg:4326")
   #load rasters of variables of interest
-  for (x in (1:length(Abv))){
-    assign(Abv[x],rast(list.files(file.path(Dir.Data,Variables[x]),full.names = TRUE)[1]))
-  }
+  # for (x in (1:length(Abv))){
+  #   assign(Abv[x],rast(list.files(file.path(Dir.Data,Variables[x]),full.names = TRUE)[1]))
+  # }
+  SWCtot=rast("data/swc-1950-2021.nc")
+  SWC1=crop(subset(SWCtot,1:864),europe)
+  SWC2=crop(subset(SWCtot,865:1728),europe)
+  SWC3=crop(subset(SWCtot,1729:2592),europe)
+  SWC4=crop(subset(SWCtot,2593:3456),europe)
+  
+  
+  
   #weighted mean or absolute mean over 15 years
   if (sum(sapply(c("SWC1","SWC2","SWC3","SWC4"),function(x)exists(x)))==4){
       SWC_w<<-(7*SWC1+21*SWC2+72*SWC3+189*SWC4)/289

@@ -6,3 +6,5 @@ data/
 #index.Rmd
 KrigR_tuto.R
 *.cache
+*.docx
+*.html

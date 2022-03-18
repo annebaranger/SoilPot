@@ -2,7 +2,13 @@
 title: "Soil water potential pre-analysis"
 author: "Anne Baranger"
 date: "24/02/2022"
-output: html_document
+output:
+  bookdown::html_document2:
+    number_sections: false
+    toc: true
+    toc_float: yes
+    theme: flatly
+  bookdown::word_document2: default
 ---
 
 ```{r setup, include = FALSE}
@@ -26,7 +32,7 @@ Hydraulic resistance is measured by the hydraulic potential at which 50% of the 
 Minimum soil potential $\Psi_{min}$ is not a largescale measured parameter, it needs to be computed according physical assumptions.
 Different methods have been proposed to this end:
 
-* Campbell equation $\Psi_{min} = \Psi_{e} \cdot (SWC_{max}/SWC_{min})^b  $ with SWC being soil water content, $ \Psi_{e}$ and $b$ paramaters that depend on local soil texture   
+* Campbell equation $\Psi_{min} = \Psi_{e} \cdot (SWC_{max}/SWC_{min})^b$ with SWC being soil water content, $\Psi_{e}$ and $b$ paramaters that depend on local soil texture   
 * van Genuchten model 
 
 Soil water content can be computed from direct climatic database or from water balance based on simple bucket model.
@@ -50,13 +56,19 @@ Soil water content was computed with two different methods:
 
 Maxima and minima were computed as the mean of the 5 more extrem months respectively.
 
-```{r TemporalVariationSWC}
+```{r TemporalVariationSWCMean,fig.cap="Temporal evolution of SWC averaged over 4 layers, red points and blues points represent the five maxima and minima selected to compute mean max and min SWC, respectively"}
 tar_read(chronology_mean)
+```
+
+
+```{r TemporalVariationSWCWeight,fig.cap="Temporal evolution of SWC weighted between 4 layers, red points and blues points represent the five maxima and minima selected to compute mean max and min SWC, respectively"}
 tar_read(chronology_weighted)
 ```
 # Texture maps
+Texture class almost never fall in the fine texture classes. Is that weird?
 
-```{r Texture}
+
+```{r Texture,fig.cap="Map of soil texture according to the 5 classes defined by campbell"}
 tar_load(psi_min)
 psi_min %>% 
   select(x,y,texture) %>% 
@@ -69,7 +81,7 @@ psi_min %>%
 ```
 
 
-```{r SWCmaxima, fig.width=8}
+```{r SWCmaxima, fig.width=8,fig.cap="Soil water content minima and maxima, computed when weighting (w) or averaging (m) the 4 layers"}
 psi_min %>% 
   select(x,y,SWC_w_min,SWC_w_max,SWC_m_min,SWC_m_max) %>%
   pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
@@ -84,7 +96,7 @@ psi_min %>%
 
 # SWC ratio
 
-```{r SWC ratio,}
+```{r SWC ratio,fig.cap="SWC ratio with two different methods"}
 ##Comparison of Psi_min according to the type of water computation
 psi_min %>%
   select(x,y,SWC_w_ratio,SWC_m_ratio) %>%
@@ -103,11 +115,12 @@ psi_min %>%
 
 ## Color gradients
  
-```{r SoilPotential,fig.width=8}
+```{r SoilPotential,fig.width=8,fig.cap="Minimum soil potential when computed with constant texture (_med) or not (_min), with SWC averaged or weighted over 4 soil layers"}
 tar_load(psi_min)
 ##Comparison of Psi_min according to the type of water computation
 psi_min %>%
   select(x,y,Psi_w_min,Psi_m_min,Psi_w_med,Psi_m_med) %>%
+  filter(Psi_w_min>-400) %>% 
   pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
   mutate(name=factor(name,levels=c("Psi_w_med","Psi_m_med","Psi_w_min","Psi_m_min")),
          value=round(value,digits = 1)) %>% 
@@ -126,7 +139,7 @@ psi_min %>%
 
 ## Categories
   
-```{r PsiCategories,fig.width=8 }
+```{r PsiCategories,fig.width=8,fig.cap="Minimum soil potential mapped with categories" }
 ##Comparison Psi_min for constent texture and different WC computation
 psi_min %>%
   select(x,y,Psi_w_min,Psi_m_min) %>%
@@ -144,12 +157,47 @@ psi_min %>%
 
 ```
 
-# Fagus sylvatica and Quercus pubescens distribution/HSM
+# Distribution of soil potential
 
-```{r HSMDistribution}
-tar_read(HSM_quercus)
-tar_read(HSM_fagus)
+```{r PotentialDistrib,fig.cap="Min soil potential distribution according to corresponding soil texture"}
+tar_load(psi_min)
+psi_min %>% 
+  select(texture,Psi_w_min) %>% 
+  ggplot(aes(-Psi_w_min,color=as.factor(texture)))+
+  geom_density()+
+  scale_x_log10()
 ```
+It seems that computing soil potential for the finest texture (ie class 1 & 2) leads inconsistent soil potential measures.
+Maybe values used should be reconsidered.
+
+# Species distribution/HSM
+
+13 european tree species were selected, with P50 spanning a representative gradient of values encontered in european species.
+
+Hydraulic safety margins are computed : $HSM = \Psi_{min} - P_{50}$
+To simplify HSM visualization, HSM is binarised on the map, being 1 if HSM > 0, and 0 conversely.
+Species distributions extracted from EuforGen database are overlaid on HSM maps, to compare actual distribution with safety margins.
+
+```{r P50species,fig.cap="Species selected to compute HSM, and their P50"}
+P50_df=read.csv2("data/p50select.csv")
+P50_df %>% 
+  select(Species.binomial,P50) %>% 
+  arrange(-as.numeric(P50))
+```
+
+```{r HSMs}
+tar_load(HSMs)
+HSMs[[1]]
+HSMs[[2]]
+HSMs[[3]]
+HSMs[[4]]
+HSMs[[6]]
+HSMs[[9]]
+HSMs[[10]]
+
+```
+
+
 
 ```{r eval=FALSE, include=FALSE}
 psi_min %>%

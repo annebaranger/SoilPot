@@ -6,18 +6,22 @@ Dir.Data|object|b7119b48552d1da3||||||||||||||
 Variables|object|df1328dcc54aa960||||||||||||||
 Abv|object|449f2e89a78df522||||||||||||||
 compute_potential|stem||ac4ff211e6b646f6|8c7833b0b9d6834a|406344894||t19055.5777145646s||0|rds|vector|||29.44|rast cant  get proj4 from srs|objet SWC_w_min introuvable
-texture|stem|183209870b9ae4ea|ac4ff211e6b646f6|ba0a28e74c630601|-1924991449||t19058.4701781969s|2ca44ac1640a35d5|4982572|rds|vector|||51.69|rast cant  get proj4 from srs|
-SWC|stem|cadd31d5bb241135|de1e87d4becc9d9f|dd453e9b15a89d6b|-1946852437||t19058.6013462755s|340d17e364a2a90a|16955201|rds|vector|||13.06||
 chronology|stem|3c1d53f9698064b9|4eabdb5ff81f9212|c15a5c4ec38ba6a6|234971759||t19058.6013755233s|8daedefa7f4b535c|6215900|rds|vector|||0.3||
-psi_min|stem|41b789e85076a687|4b47d0bc1f413ea3|ba8f5b732bbf37f9|-334155324||t19058.6613978844s|96d7cb15ce3502b7|28404068|rds|vector|||5.89||
-chronology_weighted|stem|3c1d53f9698064b9|4eabdb5ff81f9212|c15a5c4ec38ba6a6|1002239282||t19059.4341416489s|8daedefa7f4b535c|6215900|rds|vector|||5.79||
-chronology_mean|stem|8262b34f7d62e965|ce44decdcb004f6e|c15a5c4ec38ba6a6|2103773189||t19059.4341535123s|162a8d6eec2276da|5129984|rds|vector|||0.28||
 safety_margin|stem|4639980df850172b|ff2990bc14a2ce3f|9a6439f3439b6be1|-1676297153||t19065.5994144493s|7a8898ef5aa0e6c6|28818686|rds|vector|||4.06|attribute variables are assumed to be spatially constant throughout all geometries|
-chronology_swc|function|81fbeafdde4f278b||||||||||||||
-volumetric_content|function|83217bf6319426b3||||||||||||||
-HSM_distribution|function|5a533a416fa2b49d||||||||||||||
-era_data|function|da3d6c264806e1b4||||||||||||||
-texture_data|function|6a90db06dfdab5b6||||||||||||||
-soil_potential|function|91f484563a13a718||||||||||||||
 HSM_quercus|stem|5fec76c37894a4d0|e00190c78a849a37|9a6439f3439b6be1|-80060025||t19065.6018002877s|091cc2976320e3f3|28816521|rds|vector|||4.06|attribute variables are assumed to be spatially constant throughout all geometries|
 HSM_fagus|stem|4639980df850172b|ff2990bc14a2ce3f|9a6439f3439b6be1|-1467103284||t19065.601839466s|7a8898ef5aa0e6c6|28818686|rds|vector|||0.62|attribute variables are assumed to be spatially constant throughout all geometries|
+europe|stem|572e29a8fb09e761|d2a50dba8ef3d5cc|2ca67fde2433ffef|2092248444||t19069.5262205737s|90ad2bb527bd3e02|954474|rds|vector|||4.28|Ring Selfintersection at or near point 19.62694625 49.401895240000002|
+texture|stem|06a91ccffe7248fb|71af9c78b611d218|ad36bd0ff2903594|-1924991449||t19069.5268752519s|8bee01ef843105d9|35330573|rds|vector|||51.17|rast cant  get proj4 from srs|
+SWC|stem|5f8e65f0ba009279|5284e597e1310e16|0fed3f1bd28a3c9b|-1946852437||t19069.5290892452s|25f641d239cc2921|1104577788|rds|vector|||135.1||
+chronology_weighted|stem|ede914371c954243|4eabdb5ff81f9212|2d495cb98d6bec32|1002239282||t19069.5293745999s|158af435ab316d50|518137856|rds|vector|||3.08||
+psi_min|stem|e1827f1e90470263|4b47d0bc1f413ea3|930920aca441a106|-334155324||t19069.5298685416s|40f14a0b2c83b3d8|321953039|rds|vector|||16.22||
+chronology_mean|stem|7e31438e5ab8568b|ce44decdcb004f6e|2d495cb98d6bec32|2103773189||t19069.5301334664s|28c4fe43538ece4c|514257384|rds|vector|||2.23||
+chronology_swc|function|2c50387846e08e01||||||||||||||
+volumetric_content|function|2be124db0a007a40||||||||||||||
+europe_extent|function|44939794fc3b3435||||||||||||||
+HSM_distribution|function|78a3fb4f09e43451||||||||||||||
+terraclimate_data|function|22332638d1d8c455||||||||||||||
+era_data|function|da3d6c264806e1b4||||||||||||||
+texture_data|function|3f6fab1fbcab2012||||||||||||||
+soil_potential|function|91f484563a13a718||||||||||||||
+HSMs|stem|44872581f324b38d|93c801be67327a2e|ea51281044afcb36|-63142084||t19069.5625765558s|955c2acdb8199f0f|386872166|rds|vector|||48.22|attribute variables are assumed to be spatially constant throughout all geometries|
