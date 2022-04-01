@@ -16,12 +16,13 @@ SWC|stem|5f8e65f0ba009279|5284e597e1310e16|0fed3f1bd28a3c9b|-1946852437||t19069.
 chronology_weighted|stem|ede914371c954243|4eabdb5ff81f9212|2d495cb98d6bec32|1002239282||t19069.5293745999s|158af435ab316d50|518137856|rds|vector|||3.08||
 psi_min|stem|e1827f1e90470263|4b47d0bc1f413ea3|930920aca441a106|-334155324||t19069.5298685416s|40f14a0b2c83b3d8|321953039|rds|vector|||16.22||
 chronology_mean|stem|7e31438e5ab8568b|ce44decdcb004f6e|2d495cb98d6bec32|2103773189||t19069.5301334664s|28c4fe43538ece4c|514257384|rds|vector|||2.23||
+HSMs|stem|44872581f324b38d|93c801be67327a2e|ea51281044afcb36|-63142084||t19069.5625765558s|955c2acdb8199f0f|386872166|rds|vector|||48.22|attribute variables are assumed to be spatially constant throughout all geometries|
 chronology_swc|function|2c50387846e08e01||||||||||||||
 volumetric_content|function|2be124db0a007a40||||||||||||||
 europe_extent|function|44939794fc3b3435||||||||||||||
 HSM_distribution|function|78a3fb4f09e43451||||||||||||||
-terraclimate_data|function|22332638d1d8c455||||||||||||||
+terraclimate_data|function|a235e6ad44c1c06f||||||||||||||
 era_data|function|da3d6c264806e1b4||||||||||||||
 texture_data|function|3f6fab1fbcab2012||||||||||||||
 soil_potential|function|91f484563a13a718||||||||||||||
-HSMs|stem|44872581f324b38d|93c801be67327a2e|ea51281044afcb36|-63142084||t19069.5625765558s|955c2acdb8199f0f|386872166|rds|vector|||48.22|attribute variables are assumed to be spatially constant throughout all geometries|
+terraclimate|stem|c4b2affe0ffa7785|3fb4dcb582832fd3|580a4113aa58f850|-1950667099||t19074.6420510473s|5758f8518cd3a135|959151020|rds|vector|||49.16||

@@ -26,6 +26,10 @@ list(
   #            time_step="month")
   # ),
   tar_target(
+    terraclimate,
+    terraclimate_data()
+  ),
+  tar_target(
     texture,
     texture_data(Dir.Data="data",
                  Dir.Soil="STU_EU_Layers",
