@@ -10,19 +10,25 @@ chronology|stem|3c1d53f9698064b9|4eabdb5ff81f9212|c15a5c4ec38ba6a6|234971759||t1
 safety_margin|stem|4639980df850172b|ff2990bc14a2ce3f|9a6439f3439b6be1|-1676297153||t19065.5994144493s|7a8898ef5aa0e6c6|28818686|rds|vector|||4.06|attribute variables are assumed to be spatially constant throughout all geometries|
 HSM_quercus|stem|5fec76c37894a4d0|e00190c78a849a37|9a6439f3439b6be1|-80060025||t19065.6018002877s|091cc2976320e3f3|28816521|rds|vector|||4.06|attribute variables are assumed to be spatially constant throughout all geometries|
 HSM_fagus|stem|4639980df850172b|ff2990bc14a2ce3f|9a6439f3439b6be1|-1467103284||t19065.601839466s|7a8898ef5aa0e6c6|28818686|rds|vector|||0.62|attribute variables are assumed to be spatially constant throughout all geometries|
-europe|stem|572e29a8fb09e761|d2a50dba8ef3d5cc|2ca67fde2433ffef|2092248444||t19069.5262205737s|90ad2bb527bd3e02|954474|rds|vector|||4.28|Ring Selfintersection at or near point 19.62694625 49.401895240000002|
-texture|stem|06a91ccffe7248fb|71af9c78b611d218|ad36bd0ff2903594|-1924991449||t19069.5268752519s|8bee01ef843105d9|35330573|rds|vector|||51.17|rast cant  get proj4 from srs|
-SWC|stem|5f8e65f0ba009279|5284e597e1310e16|0fed3f1bd28a3c9b|-1946852437||t19069.5290892452s|25f641d239cc2921|1104577788|rds|vector|||135.1||
-chronology_weighted|stem|ede914371c954243|4eabdb5ff81f9212|2d495cb98d6bec32|1002239282||t19069.5293745999s|158af435ab316d50|518137856|rds|vector|||3.08||
-psi_min|stem|e1827f1e90470263|4b47d0bc1f413ea3|930920aca441a106|-334155324||t19069.5298685416s|40f14a0b2c83b3d8|321953039|rds|vector|||16.22||
-chronology_mean|stem|7e31438e5ab8568b|ce44decdcb004f6e|2d495cb98d6bec32|2103773189||t19069.5301334664s|28c4fe43538ece4c|514257384|rds|vector|||2.23||
-HSMs|stem|44872581f324b38d|93c801be67327a2e|ea51281044afcb36|-63142084||t19069.5625765558s|955c2acdb8199f0f|386872166|rds|vector|||48.22|attribute variables are assumed to be spatially constant throughout all geometries|
+europe|stem|572e29a8fb09e761|d2a50dba8ef3d5cc|7fcc228795e14f9d|2092248444||t19096.4163353175s|90ad2bb527bd3e02|954474|rds|vector|||6.15|Ring Selfintersection at or near point 19.62694625 49.401895240000002|
+terraclimate|stem|c4b2affe0ffa7785|3fb4dcb582832fd3|0b154caa2879ff72|-1950667099||t19096.4195469583s|5758f8518cd3a135|959151020|rds|vector|||91.54||
+chronology_mean|stem|2c5986891cd03eb9|ce44decdcb004f6e|d65aeb6ff9f5c67d|2103773189||t19096.4251286218s|be16da0d25127c35|278378270|rds|vector|||3.88||
+chronology_weighted|stem|2606b0b42001e19f|4eabdb5ff81f9212|7a0b6591b4f5229d|1002239282||t19101.6366456743s|9b864a301340e06d|455154332|rds|vector|||4.91||
+SWC|stem|5ab90f2720c5826d|9d2ebce613b1f0f0|a929f21c4d22f5bf|-1946852437||t19108.4324655271s|5f39ab033a6b7eac|456496312|rds|vector|||225.17|le package data.table a été compilé avec la version R 4.1.3|
+texture|stem|e8135e650e76cf08|71af9c78b611d218|a602a69af303ae8f|-1924991449||t19108.4332634248s|54a0e5bce784e5cf|67418712|rds|vector|||57.34|rast cant  get proj4 from srs|
+forestcover|stem|3c1f99bf97bf30e7|27c528f382ccb223|a97124680b7f4f8c|1691810313||t19108.4335123639s|5fac636552a1c902|5952682|rds|vector|||19.61|NAs introduits lors de la conversion automatique|
+Psi_min_distrib|function|e5acfbc38ea6294b||||||||||||||
 chronology_swc|function|2c50387846e08e01||||||||||||||
-volumetric_content|function|2be124db0a007a40||||||||||||||
-europe_extent|function|44939794fc3b3435||||||||||||||
-HSM_distribution|function|78a3fb4f09e43451||||||||||||||
-terraclimate_data|function|a235e6ad44c1c06f||||||||||||||
-era_data|function|da3d6c264806e1b4||||||||||||||
-texture_data|function|3f6fab1fbcab2012||||||||||||||
-soil_potential|function|91f484563a13a718||||||||||||||
-terraclimate|stem|c4b2affe0ffa7785|3fb4dcb582832fd3|580a4113aa58f850|-1950667099||t19074.6420510473s|5758f8518cd3a135|959151020|rds|vector|||49.16||
+psi_forest|function|7022db320c6057d5||||||||||||||
+campbell_par|function|bfcbc000aa357923||||||||||||||
+volumetric_content|function|812d943649c82610||||||||||||||
+europe_extent|function|54b1b2dc443145fe||||||||||||||
+forest_cover|function|4c17adc072b0b9ff||||||||||||||
+HSM_distribution|function|a60321e1def81f30||||||||||||||
+terraclimate_data|function|8e5282d3caa2c00f||||||||||||||
+era_data|function|7ff344dc23b65386||||||||||||||
+texture_data|function|84a6538db7c76b1b||||||||||||||
+soil_potential|function|a721bac4af4524a7||||||||||||||
+psi_min|stem|aa4983a6109b8cc9|4b47d0bc1f413ea3|6349f70de88d2e51|-334155324||t19109.4068778133s|d9aabea812a1d1a6|363823218|rds|vector|||85.83|le package data.table a été compilé avec la version R 4.1.3|
+psiforest|stem|7ccd99c50adff8ca|a43aede4a941f110|ee8b054396a548cb|1405963139||t19109.4073867559s|dacb8d20b557d066|90164552|rds|vector|||26.75||
+HSMs|stem|b50f3256c95439b3|93c801be67327a2e|cf35630023385d94|-63142084||t19109.4088382208s|42dba346f5bb8508|1692129250|rds|vector|||3.58|attribute variables are assumed to be spatially constant throughout all geometries|

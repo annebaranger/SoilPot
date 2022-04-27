@@ -102,23 +102,24 @@ HSM_distribution <- function(Dir.Data="data",
     if(is.na(x[4])==FALSE){
       spdistrib_sup=read_sf(dsn=file.path(Dir.Data,"chorological_maps_dataset",x[1],"shapefiles"),
                             layer=as.character(x[4]))
-      spdistrib=rbind(spdistrib,spdistrib_sup)
+      spdistrib=st_union(rbind(spdistrib,spdistrib_sup))
     }
     spdistrib=st_crop(spdistrib,sf::st_bbox(europe))
     
     graph=psi_min %>%
-      select(x,y,Psi_w_min) %>%
-      mutate(HSM=Psi_w_min-P50_sp) %>% #P50(F_syl)=-3.15
-      mutate(HSM_bin=as.factor(case_when(HSM>0~1,
-                                         HSM<=0~0))) %>% 
-      select(x,y,HSM_bin) %>% 
-      filter(is.na(HSM_bin)==FALSE) %>% 
+      select(x,y,psi_min_VG) %>%
+      filter(psi_min_VG>(-10^5)) %>% 
+      mutate(HSM=psi_min_VG-(P50_sp*10^3)) %>% 
+      # mutate(HSM_bin=as.factor(case_when(HSM>0~1,
+      #                                    HSM<=0~0))) %>%
+      select(x,y,HSM) %>% 
+      filter(is.na(HSM)==FALSE) %>% 
       ggplot() + # create a plot
-      geom_raster( aes(x = x, y = y, fill = HSM_bin)) + # plot the raw data
+      geom_raster( aes(x = x, y = y, fill = HSM)) + # plot the raw data
       geom_sf(data=spdistrib,fill=alpha("grey",0.6))+
       theme_bw() +
-      scale_fill_discrete(na.value="transparent")+
-      labs(x = "Longitude", y = "Latitude",fill=paste0(as.character(x[1])," presence")) 
+      scale_fill_continuous(na.value="transparent")+
+      labs(x = "Longitude", y = "Latitude",fill=paste0(as.character(x[1])," HSM (kPa)")) 
     return(graph)
   })
   return(Species_distb)
@@ -145,46 +146,50 @@ Psi_min_distrib <- function(Dir.Data="data",
                                                 layer=as.character(x[4]))
                           spdistrib=rbind(spdistrib,spdistrib_sup)
                         }
-                        return(vect(spdistrib))
+                        return(terra::vect(spdistrib))
                         }
                       )
-  Distrib=sapply(1:length(Species_distb),function(x)
-    terra::extract(rast(psi_min[,c(1,2,12)]),Species_distb[[x]],xy=TRUE)
-    )
+  Distrib=sapply(1:length(Species_distb),function(x){
+    dist=terra::extract(rast(psi_min[,c(1,2,12)]),Species_distb[[x]],xy=TRUE) %>% 
+      select(-ID) %>% 
+      relocate(c("x","y"))
+    return(dist)
+    }
+  )
     
     
   
 }
-abies=vect(st_read(dsn="data/chorological_maps_dataset/Abies alba/shapefiles",layer = "Abies_alba_plg"))
-distrib %>% 
-  filter(Psi_w_min>-30) %>% 
-  ggplot(aes(Psi_w_min))+
-  geom_density()+geom_vline(xintercept=-3.79,colour="red") + 
-  stat_summary(geom = "vline",
-               orientation = "y",
-               # y is a required aesthetic, so use a dummy value
-               aes(y = 1, xintercept = after_stat(x)),
-               fun = function(x) { 
-                 quantile(x, probs = c(0.3, 0.9))
-               }
-  )
-
-
-
-
-
-
-
-#### Comparison of Terraclimate dataset and ERA5-land ####
-##########################################################
-
-# terraclimate from 1958 to 2021
-terraclimate_sub=rast(terraclimate[,c(1,2,3,3+120,3+240,3+360,3+480)],crs="epsg:4326")
-SWC_sub=rast(SWC[,c(1,2,99,99+120,99+240,99+360,99+480)],crs="epsg:4326")
-terraclimate_sub=crop(terraclimate_sub,SWC_sub)
-SWC_sub=project(SWC_sub,terraclimate_sub)
-comp=as.data.frame(c(SWC_sub,terraclimate_sub),xy=TRUE)
-comp %>% 
-  ggplot(aes(swvl1_577*289,soil_481))+geom_bin2d()+scale_fill_continuous(type = "viridis") +
-  theme_bw()+xlab("ERA5")+ylab("TerraClimate")
-
+# abies=terra::vect(st_read(dsn="data/chorological_maps_dataset/Abies alba/shapefiles",layer = "Abies_alba_plg"))
+# distrib %>% 
+#   filter(Psi_w_min>-30) %>% 
+#   ggplot(aes(Psi_w_min))+
+#   geom_density()+geom_vline(xintercept=-3.79,colour="red") + 
+#   stat_summary(geom = "vline",
+#                orientation = "y",
+#                # y is a required aesthetic, so use a dummy value
+#                aes(y = 1, xintercept = after_stat(x)),
+#                fun = function(x) { 
+#                  quantile(x, probs = c(0.3, 0.9))
+#                }
+#   )
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# #### Comparison of Terraclimate dataset and ERA5-land ####
+# ##########################################################
+# 
+# # terraclimate from 1958 to 2021
+# terraclimate_sub=rast(terraclimate[,c(1,2,3,3+120,3+240,3+360,3+480)],crs="epsg:4326")
+# SWC_sub=rast(SWC[,c(1,2,99,99+120,99+240,99+360,99+480)],crs="epsg:4326")
+# terraclimate_sub=crop(terraclimate_sub,SWC_sub)
+# SWC_sub=project(SWC_sub,terraclimate_sub)
+# comp=as.data.frame(c(SWC_sub,terraclimate_sub),xy=TRUE)
+# comp %>% 
+#   ggplot(aes(swvl1_577*289,soil_481))+geom_bin2d()+scale_fill_continuous(type = "viridis") +
+#   theme_bw()+xlab("ERA5")+ylab("TerraClimate")
+# 

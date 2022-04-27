@@ -2,15 +2,18 @@
 
 #library
 library(targets)
+#lapply(c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf"),require,character.only=TRUE)
+
 
 #Options
 source("R/functions_data.R")
 source("R/functions_plot.R")
 options(tidyverse.quiet = TRUE)
-tar_option_set(packages = c("KrigR", "ggplot2","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf"))
+tar_option_set(packages = c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf"))
 
 #Targets
 list(
+  # Create europe mask according to countries of interest
   tar_target(
     europe,
     europe_extent()
@@ -36,24 +39,28 @@ list(
                  europe)
   ),
   tar_target(
+    forestcover,
+    forest_cover(Dir.Data="data",
+                 Dir.file="TCD_2018_100m_eu_03035_v020/DATA/TCD_2018_100m_eu_03035_V2_0.tif",
+                 texture)
+  ),
+  tar_target(
     SWC,
-    volumetric_content(Dir.Data="data",
-                       # Variables=c("Volumetric_soil_water_layer_1","Volumetric_soil_water_layer_2","Volumetric_soil_water_layer_3","Volumetric_soil_water_layer_4"),
-                       # Abv=c("SWC1","SWC2","SWC3","SWC4"),
-                       texture,
-                       europe)
+    volumetric_content(Dir.Data="data")
   ),
   tar_target(
     psi_min,
     soil_potential(texture,SWC[[1]])
   ),
   tar_target(
-    chronology_weighted,
-    chronology_swc(SWC=SWC[[2]])
+    psiforest,
+    psi_forest(psi_min,
+               forestcover,
+               40)
   ),
   tar_target(
-    chronology_mean,
-    chronology_swc(SWC=SWC[[3]])
+    chronology_weighted,
+    chronology_swc(SWC=SWC[[2]])
   ),
   tar_target(
     HSMs,

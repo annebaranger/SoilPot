@@ -48,6 +48,26 @@ europe_extent <- function(countries=c("Albania","Austria","Belgium","Bulgaria",
   return(europe)
 }
 
+#' Forest cover
+#' 
+#' @description This is a function to extract forest cover map over europe
+#' @note forest cover map .tif file was downloaded at 1x1km resolution from 
+#' https://www.eea.europa.eu/data-and-maps/figures/forest-map-of-europe-1
+#' @param Dir.data directory of project data
+#' @param Dir.file file path of forest cover
+#' @return sf object, polygons of forest cover in europe
+#'Dir.file="TCD_2018_100m_eu_03035_v020/DATA/TCD_2018_100m_eu_03035_V2_0.tif"
+forest_cover <- function(Dir.Data="data",
+                         Dir.file,
+                         texture){
+  forestcover=rast(file.path(Dir.Data,Dir.file))
+  forestcover=project(forestcover,subset(rast(texture,crs="epsg:4326"),1),mask=TRUE)
+  forestcover=as.data.frame(forestcover,xy=TRUE) %>% 
+    mutate(Cover=as.numeric(sub("%.*", "", Class_Name))) %>% 
+    select(-Class_Name)
+  return(forestcover)
+}
+
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 2 - Downloading climatic and pedologic data ####
@@ -146,20 +166,22 @@ terraclimate_data <- function() {
 #' sand content average among topsoil and subsoil, cropped to spatial extent
 texture_data <- function(Dir.Data,Dir.Soil,europe){
   # get spatial extent
-  rast_model <- vect(europe)
+  rast_model <- terra::vect(europe)
   # Clay 
   clay <- c(rast(file.path(Dir.Data,Dir.Soil,"STU_EU_T_CLAY.rst")),rast(file.path(Dir.Data,Dir.Soil,"STU_EU_S_CLAY.rst")))
   crs(clay) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
-  clay <- crop(project(clay,"epsg:4326"),rast_model)
-  clay <- app(clay,mean)
+  names(clay) <- c("topsoil","subsoil")
+  clay <- terra::mask(project(clay,"epsg:4326"),rast_model)
+#  clay <- app(clay,mean)
   # Sand 
   sand <- c(rast(file.path(Dir.Data,Dir.Soil,"STU_EU_T_SAND.rst")),rast(file.path(Dir.Data,Dir.Soil,"STU_EU_S_SAND.rst")))
   crs(sand) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
-  sand <- crop(project(sand,"epsg:4326"),rast_model)
-  sand <- app(sand,mean) 
+  names(sand) <- c("topsoil","subsoil")
+  sand <- terra::mask(project(sand,"epsg:4326"),rast_model)
+#  sand <- app(sand,mean) 
   # Texture
   texture <- c(clay,sand)
-  names(texture) <- c("clay","sand")
+  names(texture) <- paste0(names(texture),".",c("clay","clay","sand","sand"))
   texture <- as.data.frame(texture,xy=TRUE)
   return(texture)
 }
@@ -180,37 +202,37 @@ texture_data <- function(Dir.Data,Dir.Soil,europe){
 #'  
 # Dir.Data="data"
 # Variables=c("Volumetric_soil_water_layer_1","Volumetric_soil_water_layer_2","Volumetric_soil_water_layer_3","Volumetric_soil_water_layer_4")
-volumetric_content <- function(Dir.Data,texture,europe){ 
+volumetric_content <- function(Dir.Data){ #,texture,europe
   # get texture raster
-  texture <- rast(texture,crs="epsg:4326")
+  #texture <- rast(texture,crs="epsg:4326")
+  #europe <- vect(europe)
 
   # load SWC 
   SWCtot <- rast("data/swc-1950-2021.nc")
-  SWC1 <- crop(subset(SWCtot,1:864),europe)
-  SWC2 <- crop(subset(SWCtot,865:1728),europe)
-  SWC3 <- crop(subset(SWCtot,1729:2592),europe)
-  SWC4 <- crop(subset(SWCtot,2593:3456),europe)
+  SWC1 <- subset(SWCtot,1:864)
+  SWC2 <- subset(SWCtot,865:1728)
+  SWC3 <- subset(SWCtot,1729:2592)
+  SWC4 <- subset(SWCtot,2593:3456) #imrpove code by masking directly SWC* to europe
   
   #weighted mean or absolute mean over the period downloaded
   if (sum(sapply(c("SWC1","SWC2","SWC3","SWC4"),function(x)exists(x)))==4){
       SWC_w<-(7*SWC1+21*SWC2+72*SWC3+189*SWC4)/289
-      SWC_w_min<-app(SWC_w,function(x)mean(head(sort(x),5)))
-      SWC_w_max<-app(SWC_w,function(x)mean(tail(sort(x),5)))
-      SWC_m<-(SWC1+SWC2+SWC3+SWC4)/4
-      SWC_m_min<-app(SWC_m,function(x)mean(head(sort(x),5)))
-      SWC_m_max<-app(SWC_m,function(x)mean(tail(sort(x),5)))
-      #Build SWC dataframe
-      SWC <- plyr::join_all(lapply(c("SWC_w_min","SWC_w_max","SWC_m_min","SWC_m_max"),
-                                function(x){
-                                  assign(paste0(x,"_df"),
-                                         as.data.frame(project(get(x),texture),
-                                                       xy=TRUE))
-                                }
-      ),by=c("x","y"))
-      colnames(SWC) <- c("x","y","SWC_w_min","SWC_w_max","SWC_m_min","SWC_m_max")
-      
+      ##For SWC weighted
+      SWC=setDT(as.data.frame(SWC_w,xy=TRUE)) #use data.table to deal with big db
+      # selection of max/min per year
+      SWC=SWC[,loc_ID:=.I]
+      SWC=melt.data.table(SWC,id.vars=c("loc_ID","x","y"))
+      SWC[,time:=as.numeric(sub(".*_","",variable))]
+      SWC[,year:=as.factor(1950+(as.numeric(time)-1)%/%12)]
+      SWC[,month:=as.factor(as.numeric(time)%%12)]
+      SWC=SWC[month%in%c(6,7,8,9),][,.(Min=min(value),Max=max(value)),by="loc_ID,x,y,year"]
+      SWC=SWC %>% 
+        group_by(loc_ID,x,y) %>% 
+        summarise(SWC_w_min=mean(head(sort(Min),5)),
+                  SWC_w_max=mean(tail(sort(Max),5)))
+      SWC=rast(SWC[2:5],crs="epsg:4326")
   }
-  return(list(SWC,as.data.frame(SWC_w,xy=TRUE),as.data.frame(SWC_m,xy=TRUE)))
+  return(list(as.data.frame(SWC,xy=TRUE),as.data.frame(SWC_w,xy=TRUE)))
   
 }
 
@@ -225,35 +247,139 @@ volumetric_content <- function(Dir.Data,texture,europe){
 #' and max SWC, computed with 2 different methods, at 9x9km
 #' @return Psi_min dataframe, that contains values of Psi_min computed with the
 #' 2 different methods used for SWC (average/weighted)
+#' 
+#' Topsoils Coarse 0.025 0.403 0.0383 1.3774 0.2740 1.2500 60.000
 soil_potential <- function(texture,SWC){
-   # Format rasters
-  texture <- rast(texture,crs="epsg:4326")
-  SWC <- project(rast(SWC,crs="epsg:4326"),texture)
+  SWC=project(rast(SWC,crs="epsg:4326"),rast(texture,crs="epsg:4326"))#projection enables to "downscale" SWC to 
+                                                                      #texture resolution
+  #Parameters table
+  topsoil <- data.frame(texture=c(5,4,3,2,1),
+                        psi_e=c(-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
+                        b=c(2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
+                        teta_r=c(0.0250,0.0100,0.0100,0.0100,0.0100),
+                        teta_s=c(0.4030,0.4390,0.4300,0.5200,0.6140),
+                        alpha=c( 0.0383,0.0314,0.0083,0.0367,0.0265),
+                        n=c(1.3774,1.1804,1.2539,1.1012,1.1033),
+                        m=c(0.2740,0.1528,0.2025,0.0919,0.0936))
+  subsoil <- data.frame(texture=c(5,4,3,2,1),
+                        psi_e=c(-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
+                        b=c(2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
+                        teta_r=c(0.0250,0.0100,0.0100,0.0100,0.0100),
+                        teta_s=c(0.3660,0.3920,0.4120,0.4810,0.5380),
+                        alpha=c(0.0430,0.0249,0.0082,0.0198,0.0168),
+                        n=c(1.5206,1.1689,1.2179,1.0861,1.0730),
+                        m=c(0.3424,0.1445,0.1789,0.0793,0.0680)) 
+  
+  
   #Conversion to potential
-   texture_pot <- data.frame(texture=c(5,4,3,2,1),
-                          Psi_e=c(-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
-                          b=c(2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933))
-   
-   psi_min <- as.data.frame(texture,xy=TRUE) %>% 
-     #categorize texture
-     mutate(texture=case_when(clay>60~1,
-                              clay<18&sand>65~5,
-                              clay>18&clay<35&sand>15~4,
-                              clay>18&sand>15&sand<65~4,
-                              clay<35&sand>15~3,
-                              clay>35&clay<60~2)) %>% 
-     left_join(texture_pot,by=c("texture")) %>% 
-     left_join(as.data.frame(SWC,xy=TRUE),by=c("x","y")) %>% 
-     mutate(Psi_w_min=Psi_e*(SWC_w_max/SWC_w_min)^(b),
-            SWC_w_ratio=SWC_w_max/SWC_w_min,
-            Psi_m_min=Psi_e*(SWC_m_max/SWC_m_min)^(b),
-            SWC_m_ratio=SWC_m_max/SWC_m_min,
-            Psi_w_med=texture_pot$Psi_e[3]*(SWC_w_max/SWC_w_min)^(texture_pot$b[3]),
-            Psi_m_med=texture_pot$Psi_e[3]*(SWC_m_max/SWC_m_min)^(texture_pot$b[3]))
+  
+  ## topsoil
+  psi_top=as.data.frame(c(subset(rast(texture,crs="epsg:4326"),c(grep("topsoil",names(texture))-2)),
+                          SWC),
+                        xy=TRUE) %>% 
+    rename_with(~str_replace(., 'topsoil.','')) %>% 
+    filter(clay!=0&sand!=0) %>% 
+    mutate(texture=case_when(clay>60~1,
+                             clay>35&clay<=60~2,
+                             clay<=35&sand<15~3,
+                             clay>18&clay<=35&sand>15~4,
+                             clay<=18&sand>15&sand<65~4,
+                             clay<=18&sand>=65~5)) %>% 
+    left_join(topsoil,by=c("texture")) %>% 
+    mutate(SWC_ratio=SWC_w_max/SWC_w_min,
+           psi_t_BG=psi_e*(SWC_w_max/SWC_w_min)^(b),
+           psi_t_CB=psi_e*(teta_s/SWC_w_min)^(b),
+           psi_t_VG=-((((teta_s-teta_r)/(SWC_w_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+    mutate(psi_t_VG=case_when(SWC_w_min>teta_s~-0.1,TRUE~psi_t_VG))
+  
+  ## subsoil
+  psi_sub=as.data.frame(c(subset(rast(texture,crs="epsg:4326"),c(grep("subsoil",names(texture))-2)),
+                          SWC),
+                        xy=TRUE) %>% 
+    rename_with(~str_replace(., 'subsoil.','')) %>% 
+    filter(clay!=0&sand!=0) %>% 
+    mutate(texture=case_when(clay>60~1,
+                             clay>35&clay<=60~2,
+                             clay<=35&sand<15~3,
+                             clay>18&clay<=35&sand>15~4,
+                             clay<=18&sand>15&sand<65~4,
+                             clay<=18&sand>=65~5)) %>% 
+    left_join(topsoil,by=c("texture")) %>% 
+    mutate(SWC_ratio=SWC_w_max/SWC_w_min,
+           psi_s_BG=psi_e*(SWC_w_max/SWC_w_min)^(b),
+           psi_s_CB=psi_e*(teta_s/SWC_w_min)^(b),
+           psi_s_VG=-((((teta_s-teta_r)/(SWC_w_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+    mutate(psi_s_VG=case_when(SWC_w_min>teta_s~-0.1,TRUE~psi_s_VG))
    #psi_min=rast(psi_min)
+  
+  ## gathering
+  psi_min=c(rast(psi_top,crs="epsg:4326"),subset(rast(psi_sub,crs="epsg:4326"),c(1,2,5,14:16)))
+  psi_min=as.data.frame(psi_min,xy=TRUE) %>% 
+    rename(clay_t="clay",
+           sand_t="sand",
+           texture_t="texture",
+           clay_s="clay.1",
+           sand_s="sand.1",
+           texture_s="texture.1") %>% 
+    relocate("texture_t",.after="sand_t") %>% 
+    relocate(c("clay_s","sand_s","texture_s"),.after="texture_t") %>% 
+    relocate("SWC_ratio",.after="SWC_w_max") %>% 
+    rowwise() %>% 
+    mutate(psi_min_BG=max(psi_t_BG,psi_s_BG),
+           psi_min_CB=max(psi_t_CB,psi_s_CB),
+           psi_min_VG=max(psi_t_VG,psi_s_VG)) %>% 
+    ungroup()
    return(psi_min)
 }
 
+
+
+#' Mask psi_min with only forest areas
+#' 
+#' @description function that enables to mask psi_min data with only forest 
+#' areas according to a forest cover threshold
+#' @param psi_min psi values dataset
+#' @param forestcover forestcover data.frame, cleaned 
+#' @param ts threshold of forest cover to be applied
+#' @return Psi_min_masked dataframe, that contains values of Psi_min over areas
+#' with more then "ts" forestcover
+#' 
+psi_forest <- function(psi_min,
+                       forestcover,
+                       ts){
+  forestcover=forestcover %>% 
+    filter(Cover>ts)
+  psi_min=rast(psi_min,crs="epsg:4326")
+  forestcover=project(rast(forestcover,crs="epsg:4326"),subset(psi_min,1))
+  psi_forest=as.data.frame(mask(psi_min,forestcover),xy=TRUE)
+  return(psi_forest)
+}
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 4 - Pedo-transfer functions ####
+#' @description Functions used to explore parametric pedotransfer functions
+#' @authors Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+#' Compute Campbell PDF parameters
+#' 
+#' @description Computing the paramter psi_e and b of campbell pedotransfer 
+#' function based on soil composition in clay, silt, sand
+#' @param clay_ct [0-1] mass fraction of clay 
+#' @param silt_ct [0-1] mass fraction of silt
+#' @param sand_ct [0-1] mass fraction of sand
+#' @return psi_e and b parameters
+#' 
+campbell_par <- function(clay_ct,silt_ct,sand_ct){
+  a=clay_ct*log(0.001)+silt_ct*log(0.026)+sand_ct*log(1.025)
+  b=((clay_ct*log(0.001)^2+silt_ct*log(0.026)^2+sand_ct*log(1.025)^2)-a^2)^(1/2)
+  GMD=exp(a)
+  GSD=exp(b)
+  psi_e=-0.5*GMD^(-0.5)
+  b=-2*psi_e+0.2*GSD
+  return(data.frame(psi_e,b))
+}
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -261,7 +387,44 @@ soil_potential <- function(texture,SWC){
 #' @description few chunks that could be re-used
 #' @authors Anne Baranger (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# project raster
+# SWC <- plyr::join_all(lapply(c("SWC_w_min","SWC_w_max","SWC_m_min","SWC_m_max"),
+#                              function(x){
+#                                assign(paste0(x,"_df"),
+#                                       as.data.frame(project(get(x),texture),
+#                                                     xy=TRUE))
+#                              }
+# ),by=c("x","y"))
+# colnames(SWC) <- c("x","y","SWC_w_min","SWC_w_max","SWC_m_min","SWC_m_max")
+# 
+# 
+
+
 #load rasters of variables of interest
 # for (x in (1:length(Abv))){
 #   assign(Abv[x],rast(list.files(file.path(Dir.Data,Variables[x]),full.names = TRUE)[1]))
 # }
+
+
+# psi_min <- as.data.frame(c(rast(texture,crs="epsg:4326"),SWC),xy=TRUE) %>% 
+#   filter(clay!=0&sand!=0) %>% 
+#   #categorize texture
+#   mutate(texture=case_when(clay>60~1,
+#                            clay>35&clay<=60~2,
+#                            clay<=35&sand<15~3,
+#                            clay>18&clay<=35&sand>15~4,
+#                            clay<=18&sand>15&sand<65~4,
+#                            clay<=18&sand>=65~5)) %>% 
+#   left_join(texture_pot,by=c("texture")) %>% 
+#   #left_join(SWC,by=c("x","y")) %>% 
+#   mutate(Psi_w_min=Psi_e*(SWC_w_max/SWC_w_min)^(b),
+#          SWC_w_ratio=SWC_w_max/SWC_w_min,
+#          # Psi_m_min=Psi_e*(SWC_m_max/SWC_m_min)^(b),
+#          # SWC_m_ratio=SWC_m_max/SWC_m_min,
+#          Psi_w_med=texture_pot$Psi_e[3]*(SWC_w_max/SWC_w_min)^(texture_pot$b[3]))
+# # Psi_m_med=texture_pot$Psi_e[3]*(SWC_m_max/SWC_m_min)^(texture_pot$b[3]))
+
+# texture_pot <- data.frame(texture=c(5,4,3,2,1),
+#                           Psi_e=c(-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
+#                           b=c(2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
+#                           teta_s=c(0.3845,0.4155,0.421,0.5005,0.576))

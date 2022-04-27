@@ -23,110 +23,115 @@ library(ggplot2)
 
 # Introduction
 
-To assess the hydraulic stress experienced by species in different climatic context we compute the distance between hydraulic resistance and hydraulic constraints of the environment.
-Hydraulic resistance is measured by the hydraulic potential at which 50% of the vessels of a species are embolized. Hydraulic constraints is assessed by the soil hydraulic potential. Indeed, hydraulic potential is supposed to range between that of the soil and of the air. However, plant potential is regulated by stomatal closure that enables potential not to drop beneath critical values. Therefore it is assumed that soil potential sets the upper limit of plant potential. 
+To assess the hydraulic stress experienced by species in different climatic context we compute the distance between hydraulic resistance and hydric constraints of the environment.
+Hydraulic resistance is measured by the hydraulic potential at which 50% of the vessels of a species are embolized. Hydric constraints is assessed by the minimum soil hydraulic potential. Indeed, hydraulic potential is supposed to range between that of the soil and of the air. However, plant potential is regulated by stomatal closure that enables potential not to drop beneath critical values. Therefore it is assumed that soil potential sets the upper limit of plant potential. 
 
 
 ## Minimum soil potential theoritical computation
 
-Minimum soil potential $\Psi_{min}$ is not a largescale measured parameter, it needs to be computed according physical assumptions.
+Minimum soil potential $\Psi_{min}$ is not a largescale measured parameter, it needs to be computed according physical assumptions. It requires soil water content (SWC) and parameter associated to soil texture.
 Different methods have been proposed to this end:
 
 * Campbell equation $\Psi_{min} = \Psi_{e} \cdot (SWC_{max}/SWC_{min})^b$ with SWC being soil water content, $\Psi_{e}$ and $b$ paramaters that depend on local soil texture   
-* van Genuchten model 
+* van Genuchten equation $\Psi_{min}= [ (\frac{\theta_s - \theta_r}{SWC_{min}-\theta_r})^{1/m}-1]^{1/n} \cdot \frac{1}{\alpha}$
+
+$\Psi_e$, $b$, $\theta_s$, $\theta_r$, $n$, $m$, $\alpha$ are parameters computed based on soil texture or fitted over empirical data.
+
+For Campbell equation, we computed parameters according to the formula given in the related book (Campbell 1985). For Van Genuchten, we proceed a litterature review to extract parameters fitted over datasets that corresponds to the range of our study, ie Europe (Wösten et al. 1999).
 
 Soil water content can be computed from direct climatic database or from water balance based on simple bucket model.
 
 ## Available dataset
 
+The analysis is conducted over geographical Europe, excluding Russia. 
 We choose to compute soil potential from two available datasets:
 
-* Era5-land that provides soil water content at 9x9km resolution for 4 soil layers ;
+* Era5-land that provides monthly measures of soil water content at 9x9km resolution for 4 soil layers, over the 1950-2021 period ;
 * ESDAC that provides soil texture at 1x1km resolution.
 
-In this pre-analysis are conducted over a 15-years-period, from 2000 to 2015, only in France
+Temporal series of SWC enabled to compute minimum and maximum water content over Europe. Minimum SWC was taken as the mean of the 5 driest summer months, taken in different years (respectively for maximum SWC).
+
+Soil texture were classified according to the FAO scheme, that draws 5 broad classes of texture.
+
+## Forest filtering
+Extreme values of water potential were calculated in very marginal zones of Europe. These extreme values were mostly due to odd soil texture and water status, because these zones weren't in forested areas. 
+
+To ease data analysis, we masked all potential values that were not in areas with more than 40% of forest cover. Forest cover data were extracted from Copernicus (https://land.copernicus.eu/pan-european/high-resolution-layers/forests/tree-cover-density/status-maps/tree-cover-density-2018?tab=metadata)
 
 
 # Soil water content 
 
-Soil water content was computed with two different methods:
-
-* the mean of the different SWC in the 4 layers
-* the weighted mean of the different layers.
 
 Maxima and minima were computed as the mean of the 5 more extrem months respectively.
 
-```{r TemporalVariationSWCMean,fig.cap="Temporal evolution of SWC averaged over 4 layers, red points and blues points represent the five maxima and minima selected to compute mean max and min SWC, respectively"}
-tar_read(chronology_mean)
-```
 
-
-```{r TemporalVariationSWCWeight,fig.cap="Temporal evolution of SWC weighted between 4 layers, red points and blues points represent the five maxima and minima selected to compute mean max and min SWC, respectively"}
+```{r SWCtime,fig.cap="Temporal evolution of SWC weighted between 4 layers, red points and blues points represent the five maxima and minima selected to compute mean max and min SWC, respectively"}
 tar_read(chronology_weighted)
 ```
 # Texture maps
-Texture class almost never fall in the fine texture classes. Is that weird?
-
+Texture was computed over two layers - topsoil and subsoil - according to the data format.
+Texture class almost never fall in the finest texture class. In some regions, namely Spain and Norway, texture differs between top soil and subsoil, while in most areas, no difference was observed.
 
 ```{r Texture,fig.cap="Map of soil texture according to the 5 classes defined by campbell"}
 tar_load(psi_min)
+tar_load(psiforest)
 psi_min %>% 
-  select(x,y,texture) %>% 
-  mutate(texture=as.factor(texture)) %>% 
-  ggplot(aes(x,y,fill=texture))+
+  select(x,y,texture_t,texture_s) %>% 
+  mutate(texture_t=as.factor(texture_t),
+         texture_s=as.factor(texture_s)) %>%
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  ggplot(aes(x,y,fill=value))+
     geom_raster()+
     labs(x = "Longitude", y = "Latitude") + # make plot more readable
     scale_fill_brewer(palette="Spectral",direction=-1)+
-    coord_quickmap()
+    coord_quickmap()+
+    theme_bw()+
+    facet_wrap(~name)
 ```
 
+# Soil water content
+Minima and maxima computed over Europe and the period 1950-2021.
 
-```{r SWCmaxima, fig.width=8,fig.cap="Soil water content minima and maxima, computed when weighting (w) or averaging (m) the 4 layers"}
-psi_min %>% 
-  select(x,y,SWC_w_min,SWC_w_max,SWC_m_min,SWC_m_max) %>%
+```{r SWCmaxima, fig.width=8,fig.cap="Soil water content minima and maxima, and ratio"}
+a=psi_min %>% 
+  select(x,y,SWC_w_min,SWC_w_max) %>%
   pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
   ggplot() + # create a plot
   geom_raster( aes(x = x, y = y, fill = value)) + # plot the raw data
   facet_wrap(~name) + # split raster layers up
   theme_bw() +
   labs(x = "Longitude", y = "Latitude") + # make plot more readable
-  scale_fill_gradientn(name = "SWC maxima/minima",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
+  scale_fill_gradientn(name = "SWC maxima/minima",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
   coord_quickmap()
-```
 
-# SWC ratio
 
-```{r SWC ratio,fig.cap="SWC ratio with two different methods"}
-##Comparison of Psi_min according to the type of water computation
-psi_min %>%
-  select(x,y,SWC_w_ratio,SWC_m_ratio) %>%
-  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+b=psi_min %>% 
+  select(x,y,SWC_ratio) %>%
   ggplot() + # create a plot
-  geom_raster( aes(x = x, y = y, fill = value)) + # plot the raw data
-  facet_wrap(~name) + # split raster layers up
+  geom_raster( aes(x = x, y = y, fill = SWC_ratio)) + # plot the raw data
   theme_bw() +
   labs(x = "Longitude", y = "Latitude") + # make plot more readable
-  scale_fill_gradientn(name = "SWC ratio",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
+  scale_fill_gradientn(name = "SWC ratio",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
   coord_quickmap()
+
+cowplot::plot_grid(a,b,nrow=2)
 ```
 
+# Comparison of minimum soil potential computation method
 
-# From SWC ratio to soil potential
-
-## Color gradients
+## Spatial comparison of the three computation methods
  
-```{r SoilPotential,fig.width=8,fig.cap="Minimum soil potential when computed with constant texture (_med) or not (_min), with SWC averaged or weighted over 4 soil layers"}
-tar_load(psi_min)
+```{r SoilPotentialAll,fig.width=8,fig.cap="Minimum soil potential in topsoil for three computation methods: Benito-Garzon, Campbell, Van Genuchten "}
 ##Comparison of Psi_min according to the type of water computation
 psi_min %>%
-  select(x,y,Psi_w_min,Psi_m_min,Psi_w_med,Psi_m_med) %>%
-  filter(Psi_w_min>-400) %>% 
+  select(x,y,psi_t_BG,psi_t_CB,psi_t_VG) %>%
+  #filter(Psi_w_min>-400) %>% 
   pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
-  mutate(name=factor(name,levels=c("Psi_w_med","Psi_m_med","Psi_w_min","Psi_m_min")),
+  mutate(#name=factor(name,levels=c("Psi_w_med","Psi_m_med","Psi_w_min","Psi_m_min")),
          value=round(value,digits = 1)) %>% 
   ggplot() + # create a plot
   geom_raster( aes(x = x, y = y, fill = -value)) + # plot the raw data
-  facet_wrap(~name,nrow=2) + # split raster layers up
+  facet_wrap(~name,nrow=1) + # split raster layers up
   theme_bw() +
   labs(x = "Longitude", y = "Latitude") + # make plot more readable
   scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
@@ -137,17 +142,47 @@ psi_min %>%
 ```
 
 
+## Values distribution
+
+The distribution of the minimum soil potentials is in an increasingly wide range of values depending on whether the BG, CB or VG method is used. 
+For all methods, there is a systematically increasing ranking of potential values, from the coarsest to the finest textures.
+
+In the VG distribution, a peak is observed at $10^{-4}$, which represents all values where the minimum soil moisture exceeded the $\theta_s$ parameter.
+
+For the BG method, the parameter values are all very low, always below 0.1.
+
+
+```{r PotentialDistribAll,fig.cap="Minimum soil potential distribution according to corresponding soil texture"}
+psi_min %>% 
+  select(texture_t,psi_min_BG,psi_min_CB,psi_min_VG) %>% 
+  filter(psi_min_VG>(-10^6)) %>% 
+  mutate(texture_t=as.factor(texture_t)) %>% 
+  pivot_longer(cols=colnames(.)[c(-1)]) %>% 
+  ggplot(aes(-value/1000,color=texture_t))+
+  geom_density()+
+  scale_color_brewer(palette="Spectral",direction=-1) +
+  theme_bw()+
+  scale_x_log10(name="Minimum potential (-MPa)",breaks=c(0,0.0001,0.01,0.1,1,10))+
+  facet_wrap(~name)
+```
+
+
+
+
+# Digging into Van Genuchen method
+
 ## Categories
   
-```{r PsiCategories,fig.width=8,fig.cap="Minimum soil potential mapped with categories" }
+```{r SoilPotentialVG,fig.width=8,fig.cap="Minimum soil potential mapped with categories, for subsoil, topsoil and synthesis of both" }
 ##Comparison Psi_min for constent texture and different WC computation
 psi_min %>%
-  select(x,y,Psi_w_min,Psi_m_min) %>%
-  mutate(Psi_w_min=cut(Psi_w_min, breaks=c(-Inf, -50, -25, -20,-15,-10,-5,-3,-2,-1,Inf), labels=c("<-50","-50<Psi<-25","-25<Psi<-20","-20<Psi<-15","-15<Psi<-10","-10<Psi<-5","-5/-3","-3/-2","-2/-1","-1/0")),
-         Psi_m_min=cut(Psi_m_min,breaks=c(-Inf, -50, -25, -20,-15,-10,-5,-3,-2,-1,Inf), labels=c("<-50","-50<Psi<-25","-25<Psi<-20","-20<Psi<-15","-15<Psi<-10","-10<Psi<-5","-5/-3","-3/-2","-2/-1","-1/0"))) %>%
+  select(x,y,psi_t_VG,psi_s_VG,psi_min_VG) %>% #,Psi_m_min
+  mutate(psi_t_VG=cut(psi_t_VG, breaks=c(-Inf, -50000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), labels=c("<-50MPa","-50<Psi<-10MPa","-10<Psi<-5MPa","-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")),
+         psi_s_VG=cut(psi_s_VG, breaks=c(-Inf, -50000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), labels=c("<-50MPa","-50<Psi<-10MPa","-10<Psi<-5MPa","-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")),
+         psi_min_VG=cut(psi_min_VG, breaks=c(-Inf, -50000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), labels=c("<-50MPa","-50<Psi<-10MPa","-10<Psi<-5MPa","-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))) %>% 
   pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
   ggplot() + # create a plot
-  geom_raster( aes(x = x, y = y, fill = value)) + # plot the raw data
+  geom_tile( aes(x = x, y = y, fill = value)) + # plot the raw data
   facet_wrap(~name) + # split raster layers up
   theme_bw() +
   scale_fill_brewer(palette="RdYlBu")+
@@ -156,19 +191,97 @@ psi_min %>%
   coord_quickmap()
 
 ```
+## Potential distribution by texture class
 
-# Distribution of soil potential
+Most of the minimum potential values range between 0 and 1MPa, which is very high. 
 
-```{r PotentialDistrib,fig.cap="Min soil potential distribution according to corresponding soil texture"}
-tar_load(psi_min)
+```{r SoilDistribVG,fig.cap="Minimum potential according to texture class. 99,9% of data are selected, above the 100MPa threshold."}
 psi_min %>% 
-  select(texture,Psi_w_min) %>% 
-  ggplot(aes(-Psi_w_min,color=as.factor(texture)))+
-  geom_density()+
-  scale_x_log10()
+  mutate(texture_t=as.factor(texture_t)) %>% 
+  filter(is.na(texture_t)==FALSE) %>% 
+  filter(psi_min_VG>(-10^6)) %>% 
+  ggplot(aes(texture_t,-psi_min_VG/1000,fill=texture_t)) +
+  geom_violin()+
+  scale_fill_brewer(palette="Spectral",direction=-1) +
+  theme_bw()+
+  scale_y_log10(name="Minimum potential (-MPa)",breaks=c(0,0.001,0.1,1,10))
 ```
-It seems that computing soil potential for the finest texture (ie class 1 & 2) leads inconsistent soil potential measures.
-Maybe values used should be reconsidered.
+
+
+## Curves comparison
+
+Comparison between 1A campbell curves 1B campbell computed pot, 2A vg curves 2B vg computed
+
+```{r PotentialSWC, fig.cap="Water retention curves with theoritical function and observed data. Campbell function and Van Genuchten function"}
+## Computing campbell parameters
+# campbell_par <- function(clay_ct,silt_ct,sand_ct){
+#   a=clay_ct*log(0.001)+silt_ct*log(0.026)+sand_ct*log(1.025)
+#   b=((clay_ct*log(0.001)^2+silt_ct*log(0.026)^2+sand_ct*log(1.025)^2)-a^2)^(1/2)
+#   GMD=exp(a)
+#   GSD=exp(b)
+#   psi_e=-0.5*GMD^(-0.5)
+#   b=-2*psi_e+0.2*GSD
+#   return(data.frame(psi_e,b))
+# }
+
+
+
+pars_t_VG <- data.frame(texture=c(5,4,3,2,1),
+                        psi_e=c(-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
+                        b=c(2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
+                        teta_r=c(0.0250,0.0100,0.0100,0.0100,0.0100),
+                        teta_s=c(0.4030,0.4390,0.4300,0.5200,0.6140),
+                        alpha=c( 0.0383,0.0314,0.0083,0.0367,0.0265),
+                        n=c(1.3774,1.1804,1.2539,1.1012,1.1033),
+                        m=c(0.2740,0.1528,0.2025,0.0919,0.0936)) %>% 
+    mutate(texture=as.factor(texture))
+
+# pars_CB <- rbind("1"=campbell_par(0.733,0.133,0.133),
+#                  "2"=campbell_par(0.475,0.2625,0.2625),
+#                  "3"=campbell_par(0.175,0.75,0.075),
+#                  "4"=campbell_par(0.175,0.425,0.4),
+#                  "5"=campbell_par(0.1,0.1,0.8)) %>% 
+#   tibble::rownames_to_column("texture") %>% 
+#   mutate(texture=as.factor(as.numeric(texture))) %>% 
+#   left_join(pars_t_VG,by=c("texture")) %>% 
+#   select(texture,psi_e,b,teta_s)
+
+## Plots
+
+a=pars_t_VG %>%
+  select(texture,psi_e,b,teta_s) %>% 
+  crossing(teta=seq(0,1,0.001)) %>% 
+  mutate(psi_min=psi_e*((teta_s/teta)^b)) %>% 
+  ggplot(aes(teta,psi_min,color=texture))+
+  geom_line(size=0.81)+
+  geom_point(data=psi_min,aes(SWC_w_min,psi_t_CB,color=as.factor(texture_t)))+
+  ylab("Psi_min (kPa)")+
+  xlab("teta")+
+  ylim(0,-1500)+
+  theme_bw()+
+  scale_color_brewer(palette="Spectral",direction=-1)+
+  ggtitle("Parameters extracted from Sperry 1998")
+
+b=pars_t_VG %>%
+  select(texture,teta_r,teta_s,alpha,n,m) %>% 
+  crossing(teta=seq(0,1,0.001)) %>% 
+  mutate(psi_min=-((((teta_s-teta_r)/(teta-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+  ggplot(aes(teta,psi_min,color=texture))+
+  geom_line(size=0.81)+
+  geom_point(data=psi_min,aes(SWC_w_min,psi_t_VG,color=as.factor(texture_t)))+
+  ylab("Psi_min (kPa)")+
+  xlab("teta")+
+  ylim(0,-1500)+
+  theme_bw()+
+  scale_color_brewer(palette="Spectral",direction=-1)+
+  ggtitle("Parameters extracted from Wösten 1999")
+
+cowplot::plot_grid(a,b,ncol=2)
+```
+
+
+
+
 
 # Species distribution/HSM
 
