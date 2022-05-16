@@ -8,3 +8,5 @@ KrigR_tuto.R
 *.cache
 *.docx
 *.html
+_targets
+plots
