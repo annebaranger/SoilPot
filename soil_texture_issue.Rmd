@@ -1,0 +1,338 @@
+---
+title: "Soil texture and pedo-transfer function"
+author: "Anne Baranger"
+date: "11/04/2022"
+output:
+  bookdown::html_document2:
+    number_sections: false
+    toc: true
+    toc_float: yes
+    theme: flatly
+  bookdown::word_document2: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.path = "plots/fig_",echo=FALSE)
+library(targets)
+library(tidyr)
+library(dplyr)
+library(viridis)
+library(terra)
+library(ggplot2)
+tar_load(psi_min)
+```
+
+# Introduction
+Computation of soil minimum water potential enabled to map this index at the European scale. It took into account soil texture and range variation of soil water content (SWC). 3 different methods were used to compute soil potential.
+
+However, a significant proportion of values were less than -15MPa which is the low limit of measurable soil potential. Some potential reached less than $-10^6$MPa. Data exploration showed that unlikely values were found mostly for textures of class 1 and 2, ie the finest texture.
+
+In the following document, the issue of very low soil potential values is analysed. Maps of texture and minimum potential are in the following figures (fig \@ref(fig:Texture) and \@ref(fig:SoilPotential)).
+
+```{r Texture,fig.cap="Map of soil texture according to the 5 classes defined by FAO, for topsoil and subsoils"}
+psi_min %>% 
+  select(x,y,texture_t) %>% 
+  mutate(texture_t=as.factor(texture_t)) %>% 
+  drop_na(texture_t) %>% 
+  ggplot(aes(x,y,fill=texture_t))+
+    geom_tile()+
+    labs(x = "Longitude", y = "Latitude") + # make plot more readable
+    scale_fill_brewer(palette="Spectral",direction=1)+
+    ggtitle("Topsoil texture")+
+    coord_quickmap()
+
+psi_min %>% 
+  select(x,y,texture_s) %>% 
+  mutate(texture_s=as.factor(texture_s)) %>% 
+  drop_na(texture_s) %>% 
+  ggplot(aes(x,y,fill=texture_s))+
+    geom_tile()+
+    labs(x = "Longitude", y = "Latitude") + # make plot more readable
+    scale_fill_brewer(palette="Spectral",direction=1)+
+    ggtitle("Subsoil texture")+
+    coord_quickmap()
+```
+
+
+```{r SoilPotential,fig.width=8,fig.cap="Minimum soil potential when computed with SWC weighted over 4 soil layers"}
+psi_min %>%
+  select(x,y,psi_t_BG,psi_t_CB,psi_t_VG) %>%
+  #filter(Psi_w_min>-400) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  mutate(#name=factor(name,levels=c("Psi_w_med","Psi_m_med","Psi_w_min","Psi_m_min")),
+         value=round(value,digits = 1)) %>% 
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = -value)) + # plot the raw data
+  facet_wrap(~name,nrow=1) + # split raster layers up
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
+  ggtitle("Soil potential for subsoil")+
+  coord_quickmap()
+
+psi_min %>%
+  select(x,y,psi_s_BG,psi_s_CB,psi_s_VG) %>%
+  #filter(Psi_w_min>-400) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  mutate(#name=factor(name,levels=c("Psi_w_med","Psi_m_med","Psi_w_min","Psi_m_min")),
+         value=round(value,digits = 1)) %>% 
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = -value)) + # plot the raw data
+  facet_wrap(~name,nrow=1) + # split raster layers up
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
+  ggtitle("Soil potential for topsoil")+
+  coord_quickmap()
+
+```
+
+# Texture classification and parameters
+We used a classification of 5 textures, defined in Benito 2018, which simplified Sperry 1998 7-texture-classification. This classification is key to associate parameters $\Psi_e$ and $b$ to each classes, as an input into Campbell pedo-transfer equation : $\Psi_{min} = \Psi_e \cdot (SWC_{max}/SWC_{min})^b$
+
+*A first issue* is that Sperry 1998 gives parameters in kPa whereas Benito 2018 gives the same values but the unit is MPa. This affects the unit of the calculated minimum potential, which is therefore in kPa or MPa respectively.
+Given the range of the computation output, the calculated values seem to be more consistent with parameters in MPa. But when referring back to Campbell 1985, it appears that $\Psi_e$ is in kPa.
+The latest assumption leads to 99.5% of minimum potential values that range between -0.1 and 0MPa, which is very low.
+
+*A second issue* is the texture classification itself. Very few area fell into finest texture class, ie 1 & 2, which questions the reliability of the different classes. Going back to Sperry 1998 classes could fix that issue.
+
+```{r TextureSimplified,fig.cap="Map of soil texture highlighting finest texture and undefined locations"}
+psi_min %>% 
+  dplyr::select(x,y,clay,sand,texture) %>% 
+  mutate(texture=as.factor(case_when(texture%in%c(1)~"fine",
+                                     texture%in%c(2,3,4,5)~"other"))) %>%
+  ggplot(aes(x,y,fill=texture))+
+    geom_raster()+
+    labs(x = "Longitude", y = "Latitude") + # make plot more readable
+    scale_fill_manual(values=c("#3333FF","#FF3333"))+#,"#FFFFCC"))+
+    coord_quickmap()
+```
+
+
+```{r SoilPotentialkPa,fig.cap="Soil minimum potential assuming parameters are in kPa"}
+psi_min %>%
+  dplyr::select(x,y,Psi_w_min) %>%
+  filter(y>37.5) %>% 
+  mutate(Psi_w_min=Psi_w_min/1000) %>% 
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = -Psi_w_min)) + # plot the raw data
+   theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80),na.value="transparent")+
+  coord_quickmap()
+```
+
+
+```{r SoilPotentialDistrib,fig.cap="Distribution of soil minimum potential assuming parameters are in kPa. The 99.5% of values over -0.1MPa are represented."}
+psi_min %>%
+  dplyr::select(x,y,Psi_w_min,texture) %>%
+  mutate(Psi_w_min=Psi_w_min/1000) %>% #summary()
+  filter(Psi_w_min>-1) %>%
+  ggplot(aes(Psi_w_min),color=as.factor(texture)) + 
+  geom_histogram(bins=100) + 
+  theme_bw()
+```
+
+# Water content ratio
+Soil minimum potential depends on the ratio between soil water content extremes: $SWC_{max}/SWC_{min}$ Minima and maxima are computed used SWC time series, the five lowest or highest summer monthly values are selected over the period of 1950-2021 and averaged.
+These ratios range between 1 and 2.5. However for the finest texture class (1&2), we observe that SWC ratio are higher than for other texture class.
+
+```{r SWCratio,fig.cap="SWC ratio according to texture class"}
+psi_min %>% 
+  mutate(texture=as.factor(texture)) %>% 
+  filter(is.na(texture)==FALSE) %>% 
+  ggplot(aes(texture,SWC_w_ratio,fill=texture)) +
+  geom_violin()+
+  scale_fill_brewer(palette="Spectral",direction=-1) +
+  theme_bw()
+```
+
+
+# Parameters values
+Leaving aside the problems of unit and texture classification, the parameters used for the fine texture classes give potential values that are far too high for the SWC ratio range, ie: $[1,2.5]$
+
+This questions the way $\Psi_e$ and $b$ are computed in previous studies, and whether another PDF should be used, ie Van Genuchten function.
+
+```{r CampbellFunctions,fig.cap="Minimum potential functions according to texture class, in SWC ratio range"}
+texture_pot <- data.frame(texture=c(5,4,3,2,1),
+                          Psi_e=c(-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
+                          b=c(2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933))
+a= texture_pot %>% 
+  crossing(SWCratio=seq(1,10,0.01)) %>% 
+  mutate(Psi_min=Psi_e*SWCratio^b,
+         texture=as.factor(texture)) %>% 
+  ggplot(aes(1/SWCratio,Psi_min,color=texture))+
+  geom_line(size=0.91)+
+  ylab("Psi_min (kPa)")+
+  xlab("SWCmin/SWCmax")+
+  ylim(0,-1500)+
+  theme_bw()+
+  scale_color_brewer(palette="Spectral",direction=-1)+
+  ggtitle("Parameters from Sperry 1998")
+
+pars=rbind("1"=campbell_par(0.733,0.133,0.133),
+           "2"=campbell_par(0.475,0.2625,0.2625),
+           "3"=campbell_par(0.175,0.75,0.075),
+           "4"=campbell_par(0.175,0.425,0.4),
+           "5"=campbell_par(0.1,0.1,0.8))
+
+pars=rbind(a=campbell_par(0.6,0.2,0.2),
+           b=campbell_par(0.45,0.47,0.08),
+           c=campbell_par(0.35,0.55,0.1),
+           d=campbell_par(0.35,0.3,0.35),
+           e=campbell_par(0.15,0.65,0.2),
+           f=campbell_par(0.18,0.42,0.4),
+           g=campbell_par(0.28,0.12,0.6),
+           h=campbell_par(0.1,0.25,0.65),
+           i=campbell_par(0.06,0.12,0.82),
+           j=campbell_par(0.05,0.03,0.92))
+b=pars %>%
+  tibble::rownames_to_column("texture") %>% 
+  crossing(SWCratio=seq(1,10,0.01)) %>% 
+  mutate(texture=as.factor(texture)) %>% 
+  mutate(Psi_min=psi_e*(SWCratio^b)) %>% 
+  ggplot(aes(1/SWCratio,Psi_min,color=texture))+
+  geom_line(size=0.91)+
+  ylab("Psi_min (kPa)")+
+  xlab("SWCmin/SWCmax")+
+  ylim(0,-1500)+
+  theme_bw()+
+  scale_color_brewer(palette="Spectral",direction=-1)+
+  ggtitle("Parameters computed from Campbell 1985")
+
+cowplot::plot_grid(a,b)
+
+```
+
+
+# Various tests
+
+## Package test
+```{r PackageTest}
+my.text <- data.frame(
+"CLAY" = c(05,60,15,05,25,05,25,45,65,75,13,47),
+"SILT" = c(05,08,15,25,55,85,65,45,15,15,17,43),
+"SAND" = c(90,32,70,70,20,10,10,10,20,10,70,10),
+"OC" = c(20,14,15,05,12,15,07,21,25,30,05,28)
+) #
+# Display the table:
+my.text
+# Classify according to the HYPRES / European Soil Map classification
+TT.points.in.classes(
+tri.data = my.text[1:5,],
+class.sys = "HYPRES.TT"
+)
+```
+
+## Van Genuchten equation
+```{r CampbellvsVG}
+topsoil %>%
+  crossing(teta=seq(0,1,0.001)) %>% 
+  mutate(texture=as.factor(texture)) %>% 
+  mutate(psi_min=((((teta_s-teta_r)/(teta-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-5)) %>% 
+  ggplot(aes(teta,psi_min,color=texture))+
+  geom_line(size=0.91)+
+  ylab("psi_min (MPa)")+
+  xlab("teta")+
+  ylim(0,12)+
+  theme_bw()+
+  scale_color_brewer(palette="Spectral",direction=-1)+
+  geom_vline(xintercept=0.15)+
+  ggtitle("Parameters computed from Campbell 1985")
+
+pars %>%
+  tibble::rownames_to_column("texture") %>%
+  mutate(texture=as.numeric(texture)) %>% 
+  left_join(topsoil[,c("texture","teta_s")],by=c("texture")) %>% 
+  crossing(teta=seq(0,1,0.001)) %>% 
+  mutate(texture=as.factor(texture)) %>% 
+  mutate(psi_min=-psi_e*((teta_s/teta)^b)*10^(-3)) %>% 
+  ggplot(aes(teta,psi_min,color=texture))+
+  geom_line(size=0.91)+
+  ylab("psi_min (MPa)")+
+  xlab("teta")+
+  ylim(0,12)+
+  theme_bw()+
+  geom_vline(xintercept=0.15)+
+  scale_color_brewer(palette="Spectral",direction=-1)+
+  ggtitle("Parameters computed from Campbell 1985")
+```
+
+
+
+```{r PsiMaps}
+psi_top %>% 
+  dplyr::select(x,y,texture,psi_t_VG) %>% 
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = -psi_t_VG/1000)) + # plot the raw data
+  #geom_sf(data=europe,fill=NA)+
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80))+
+  coord_quickmap()
+
+
+
+texture %>% 
+  dplyr::select(x,y,topsoil.clay) %>% 
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = topsoil.clay)) + # plot the raw data
+  #geom_sf(data=europe,fill=NA)+
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80))+
+  coord_quickmap()
+texture %>% 
+  dplyr::select(x,y,topsoil.sand) %>% 
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = topsoil.sand)) + # plot the raw data
+  #geom_sf(data=europe,fill=NA)+
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80))+
+  coord_quickmap()
+
+## look for VG curves and where our data locates
+psi_top %>% 
+  dplyr::select(x,y,texture,psi_t_VG,SWC_w_min) %>% 
+  filter(psi_t_VG>(-10^6)) %>% 
+  ggplot(aes(SWC_w_min,-psi_t_VG,color=as.factor(texture))) + # create a plot
+  geom_point()+
+  theme_bw() +
+  #ylim(0,10000)+
+  labs(x = "Teta_min", y = "psi_min") 
+
+psi_sub_masked %>% 
+  #filter(psi_s_VG<(-10^5)) %>% mutate(texture=as.factor(texture)) %>% summary() 
+  filter(clay!=0&sand!=0) %>% 
+  filter(texture==2) %>% 
+  filter(psi_s_VG<(-10^4))%>% mutate(texture=as.factor(texture)) %>%
+  
+  
+  dplyr::select(x,y,psi_s_VG) %>%
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = -psi_s_VG)) + # plot the raw data
+  geom_sf(data=europe,fill=NA)+
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80))+
+  coord_quickmap()
+
+psi_min %>% 
+  dplyr::select(x,y,psi_s_VG) %>%
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = -psi_s_VG)) + # plot the raw data
+  geom_sf(data=europe,fill=NA)+
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80))
+```
+
+
+## Issues
+775248/3747841 where psi_s_VG and psi_t_VG are different
+
+When resetting Rstudio and computing again step by step up to Psi_top : resulting map gives very low values with some extreme points almost unvisible. we can't see NA values, or huge white regions, although there are some. When plotting texture out from the same dataset (ie psi_sub/psi_top) the same regions are whitefilled.
+
+When plotting raw texture data, those white regions corresponds to areas with zeros for clay and sand. Back to ggogle earth, those regions corresponds to lakes or mountains summits.
+

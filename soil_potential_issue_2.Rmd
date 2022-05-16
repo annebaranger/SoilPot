@@ -1,0 +1,652 @@
+---
+title: "Soil potential and pedo-transfer function issues"
+author: "Anne Baranger"
+date: "29/04/2022"
+output:
+  bookdown::html_document2:
+    number_sections: false
+    toc: true
+    toc_float: yes
+    theme: flatly
+  bookdown::word_document2: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.path = "plots/fig_",echo=FALSE)
+library(targets)
+library(tidyr)
+library(dplyr)
+library(viridis)
+library(terra)
+library(ggplot2)
+library(sf)
+library(data.table)
+library(stringr)
+tar_load(psi_min)
+tar_load(europe)
+tar_load(textureESDAC)
+tar_load(textureERA5)
+tar_load(SWC)
+europe=st_as_sf(europe)
+```
+
+# Introduction
+Computation of soil minimum water potential enabled to map this index at the European scale. It took into account soil texture and range variation of soil water content (SWC). 3 different methods were used to compute soil potential.
+
+
+However, a significant proportion of values were less than -15MPa which is the low limit of measurable soil potential. Some potential reached less than $-10^6$MPa. Data exploration showed that unlikely values were found mostly for textures of class 1 and 2, ie the finest texture.
+
+In the following document, the issue of very low soil potential values is analysed. Maps of texture and minimum potential are in the following figures (fig \@ref(fig:Texture) and \@ref(fig:SoilPotential)).
+
+```{r Texture,fig.cap="Map of soil texture according to the 5 classes defined by FAO, for topsoil and subsoils"}
+textureESDAC$topsoil %>% 
+  select(x,y,texture) %>% 
+  mutate(texture=factor(texture, levels = c(6,5,4,3,2,1))) %>% 
+  drop_na(texture) %>% 
+  ggplot(aes(x,y,fill=texture))+
+    geom_tile()+
+    labs(x = "Longitude", y = "Latitude") + # make plot more readable
+    scale_fill_brewer(palette="Spectral",direction=1)+
+    ggtitle("Topsoil texture")+
+    coord_quickmap()
+
+textureESDAC$subsoil %>% 
+  select(x,y,texture) %>% 
+  mutate(texture=factor(texture, levels = c(6,5,4,3,2,1))) %>% 
+  drop_na(texture) %>% 
+  ggplot(aes(x,y,fill=texture))+
+    geom_tile()+
+    labs(x = "Longitude", y = "Latitude") + # make plot more readable
+    scale_fill_brewer(palette="Spectral",direction=1)+
+    ggtitle("Subsoil texture")+
+    coord_quickmap()
+```
+
+
+```{r SoilPotential,fig.width=8,fig.cap="Minimum soil potential when computed with SWC weighted over 4 soil layers"}
+tar_load(psi_ESDACs_100)
+tar_load(psi_ERA_100)
+psi_ESDACs_100 %>% 
+   select(x,y,psi_BG,psi_CB,psi_VG) %>%
+  #filter(Psi_w_min>-400) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  mutate(#name=factor(name,levels=c("Psi_w_med","Psi_m_med","Psi_w_min","Psi_m_min")),
+         value=round(value,digits = 1)) %>% 
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = -value)) + # plot the raw data
+  facet_wrap(~name,nrow=1) + # split raster layers up
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
+  ggtitle("Soil potential for subsoil, ESDAC texture, 100cm")+
+  coord_quickmap()
+psi_ERA_100 %>% 
+   select(x,y,psi_BG,psi_CB,psi_VG) %>%
+  #filter(Psi_w_min>-400) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  mutate(#name=factor(name,levels=c("Psi_w_med","Psi_m_med","Psi_w_min","Psi_m_min")),
+         value=round(value,digits = 1)) %>% 
+  ggplot() + # create a plot
+  geom_raster( aes(x = x, y = y, fill = -value)) + # plot the raw data
+  facet_wrap(~name,nrow=1) + # split raster layers up
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") + # make plot more readable
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80),na.value="transparent")+#,0.8,0.85,0.87,0.9,0.92
+  ggtitle("Soil potential for subsoil, ERA5 texture, 100cm")+
+  coord_quickmap()
+
+```
+
+
+# Function computation
+
+```{r Funs}
+## General ##
+#############
+europe=st_as_sf(europe)
+subsoil <- data.frame(texture=c(6,5,4,3,2,1),
+                      teta_r=c(0.0100,0.0250,0.0100,0.0100,0.0100,0.0100),
+                      teta_s=c(0.766,0.3660,0.3920,0.4120,0.4810,0.5380),
+                      alpha=c(0.0130,0.0430,0.0249,0.0082,0.0198,0.0168),
+                      n=c(1.2039,1.5206,1.1689,1.2179,1.0861,1.0730),
+                      m=c(0.1694,0.3424,0.1445,0.1789,0.0793,0.0680)) 
+SWC_t=SWC[[2]]
+SWC=SWC[[1]]
+france_ext=ext(-5,10,41,52)
+#############
+
+
+## Texture from ESDAC, resolution of ERA5 ##
+############################################
+#' @return raster of subsoil texture class, with ERA5 resolution
+texture_s=texture[,c(1,2,4,6,8)]
+colnames(texture_s)=c("x","y","clay","sand","oc")
+texture_s=resample(rast(texture_s,crs="epsg:4326"),texture_ERA,method="near") #set resolution as
+# ERA5 resolution
+texture_s <- as.data.frame(texture_s,xy=TRUE) %>% 
+  mutate(texture_s=case_when(oc>15~6,
+                           clay>60~1,
+                           clay>35&clay<=60~2,
+                           clay<=35&sand<15~3,
+                           clay>18&clay<=35&sand>15~4,
+                           clay<=18&sand>15&sand<65~4,
+                           clay<=18&sand>=65~5)) %>% 
+  mutate(texture_s=as.factor(texture_s))
+texture_s=rast(texture_s,crs="epsg:4326")
+############################################
+
+
+## SWC monthly, resolution of ERA5 ##
+#####################################
+#' @return raster of SWC resampled at ERA5 resolution
+SWC_text=resample(rast(SWC,crs="epsg:4326"),texture_ERA,method="near")
+
+#####################################
+
+## Psi_min with ERA5 texture ##
+###############################
+#' @return raster of psi_min computed for ERA5 texture classes
+psi_ERA=as.data.frame(c(texture_ERA,SWC_text),
+                      xy=TRUE) %>% 
+    left_join(subsoil,by=c("texture")) %>% 
+    mutate(psi_ERA_VG=-((((teta_s-teta_r)/(SWC_w_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+    mutate(psi_ERA_VG=case_when(SWC_w_min>teta_s~-0.1,TRUE~psi_ERA_VG))
+psi_ERA=rast(psi_ERA[,c(1,2,3,11)],crs="epsg:4326")
+
+###############################
+
+## Psi_min with ESDAC texture ##
+###############################
+#' @return raster of psi_min computed for ERA5 texture classes
+psi_text=as.data.frame(c(texture_s,SWC_text),
+                      xy=TRUE) %>% 
+    left_join(subsoil,by=c("texture_s"="texture")) %>% 
+    mutate(psi_s_VG=-((((teta_s-teta_r)/(SWC_w_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+    mutate(psi_s_VG=case_when(SWC_w_min>teta_s~-0.1,TRUE~psi_s_VG))
+psi_text=rast(psi_text[,c(1,2,6,14)],crs="epsg:4326")
+
+###############################
+
+## Compute SWC min/max with monthly timestep ##
+###############################################
+#' @return raster with maxima/minima of SWC for selected years
+#' @return raster with temporal series for selected years
+SWC_fr= crop(rast(SWC_t,crs="epsg:4326"),france_ext)
+SWC_m=setDT(as.data.frame(SWC_fr,xy=TRUE))
+SWC_m=SWC_m[,loc_ID:=.I]
+SWC_m=melt.data.table(SWC_m,id.vars=c("loc_ID","x","y"))
+SWC_m[,time:=as.numeric(sub(".*_","",variable))]
+SWC_m[,year:=as.factor(1950+(as.numeric(time)-1)%/%12)]
+SWC_m[,month:=as.factor(as.numeric(time)%%12)]
+SWC_m=SWC_m[year%in%c(2003,2009,2015,2021),]
+SWC_m=SWC_m[month%in%c(6,7,8,9),]
+
+SWC_mt=dcast(data=SWC_m,loc_ID+x+y~variable,value.var = c("value"))
+SWC_mt=rast(SWC_mt[,2:19],crs="epsg:4326")
+
+SWC_m=SWC_m[,.(Min=min(value),Max=max(value)),by="loc_ID,x,y,year"]
+SWC_m=dcast(data=SWC_m,loc_ID+x+y~year,value.var = c("Min","Max"))
+SWC_m=rast(SWC_m[,2:11],crs="epsg:4326")
+###############################################
+
+
+## Compute SWC min/max with daily timestep ##
+###############################################
+#' @return raster with maxima/minima of SWC for selected years
+SWC_dt=rast("data/swc-daily.nc")
+SWC_dt= crop(SWC_dt,france_ext,snap="out")
+SWC_dt <- (7*SWC_dt[[grepl("swvl1", names(SWC_dt))]]+
+  21*SWC_dt[[grepl("swvl2", names(SWC_dt))]]+
+  72*SWC_dt[[grepl("swvl3", names(SWC_dt))]]+
+  189*SWC_dt[[grepl("swvl4", names(SWC_dt))]])/289
+time=SWC_dt@ptr$time
+
+SWC_d=setDT(as.data.frame(SWC_dt,xy=TRUE)) 
+colnames(SWC_d)=c("x","y",time)
+# selection of max/min per year
+SWC_d=SWC_d[,loc_ID:=.I]
+SWC_d=melt.data.table(SWC_d,id.vars=c("loc_ID","x","y"))
+SWC_d[,time:=(as.numeric(as.character(variable))/86400)%/%365+1970]
+#=SWC_d[,.(Min=quantile(value,probs=0.05),Max=quantile(value,probs=0.95)),by="loc_ID,x,y,time"]
+SWC_d=SWC_d[,.(Min=min(value),Max=max(value)),by="loc_ID,x,y,time"]
+SWC_d=dcast(data=SWC_d,loc_ID+x+y~time,value.var = c("Min","Max"))
+SWC_d=rast(SWC_d[,2:11],crs="epsg:4326")
+SWC_d=crop(SWC_d,ext(SWC_m))
+###############################################
+
+
+
+## Texture from ESDAC, resolution ERA5 LAND ## 
+##############################################
+#' @return raster of same extent then SWC_d, resolution of ERA5-land
+texture_sE5L=texture[,c(1,2,4,6,8)]
+colnames(texture_sE5L)=c("x","y","clay","sand","oc")
+texture_sE5L=resample(rast(texture_sE5L,crs="epsg:4326"),SWC_d,method="near")
+texture_sE5L <- as.data.frame(texture_sE5L,xy=TRUE) %>% 
+  mutate(texture_sE5L=case_when(oc>15~6,
+                           clay>60~1,
+                           clay>35&clay<=60~2,
+                           clay<=35&sand<15~3,
+                           clay>18&clay<=35&sand>15~4,
+                           clay<=18&sand>15&sand<65~4,
+                           clay<=18&sand>=65~5)) %>% 
+  mutate(texture_sE5L=as.factor(texture_sE5L))
+texture_sE5L=rast(texture_sE5L,crs="epsg:4326")
+
+
+## Soil potential, France, daily/monthly timestep ##
+####################################################
+psi_day=as.data.frame(c(texture_sE5L,SWC_d),
+                      xy=TRUE) %>% 
+    left_join(subsoil,by=c("texture_sE5L"="texture")) %>% 
+    mutate(psi_d_2003=-((((teta_s-teta_r)/(Min_2003-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_d_2009=-((((teta_s-teta_r)/(Min_2009-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_d_2015=-((((teta_s-teta_r)/(Min_2015-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_d_2021=-((((teta_s-teta_r)/(Min_2021-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+    mutate(psi_d_2003=case_when(Min_2003>teta_s~-0.1,TRUE~psi_d_2003),
+           psi_d_2009=case_when(Min_2009>teta_s~-0.1,TRUE~psi_d_2009),
+           psi_d_2015=case_when(Min_2015>teta_s~-0.1,TRUE~psi_d_2015),
+           psi_d_2021=case_when(Min_2021>teta_s~-0.1,TRUE~psi_d_2021))
+
+
+psi_month=as.data.frame(c(texture_sE5L,SWC_m),
+                      xy=TRUE) %>% 
+    left_join(subsoil,by=c("texture_sE5L"="texture")) %>% 
+    mutate(psi_m_2003=-((((teta_s-teta_r)/(Min_2003-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_m_2009=-((((teta_s-teta_r)/(Min_2009-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_m_2015=-((((teta_s-teta_r)/(Min_2015-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_m_2021=-((((teta_s-teta_r)/(Min_2021-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+    mutate(psi_m_2003=case_when(Min_2003>teta_s~-0.1,TRUE~psi_m_2003),
+           psi_m_2009=case_when(Min_2009>teta_s~-0.1,TRUE~psi_m_2009),
+           psi_m_2015=case_when(Min_2015>teta_s~-0.1,TRUE~psi_m_2015),
+           psi_m_2021=case_when(Min_2021>teta_s~-0.1,TRUE~psi_m_2021))
+
+
+```
+
+# Texture comparison
+Soil water content were extracted from a climate model reanalysis, ERA5-land, which is based on a map of textures at 10x10km resolution, downscaled to that of the model, 9x9km.
+
+Is the soil potential computation we used texture data at a finer resolution. But if those two texture do not match, it can be a major issue when using pedotransfer equation and soil water contents.
+
+We compare the two texture maps, knowing that ERA5 texture maps used only subsoil texture.
+
+## Texture
+```{r TextureComp}
+## Comparison ##
+################
+textureERA5 %>% 
+  mutate(texture=as.factor(texture)) %>% 
+  ggplot()+
+  geom_tile(aes(x=x,y=y,fill=texture))+
+  geom_sf(data=europe,fill=NA)+
+  scale_fill_brewer(palette="Spectral",direction=-1)
+
+textureESDAC$subsoil %>% 
+  mutate(texture=as.factor(texture)) %>% 
+  filter(texture!=0) %>% 
+  ggplot()+
+  geom_tile(aes(x=x,y=y,fill=texture))+
+  geom_sf(data=europe,fill=NA)+
+  scale_fill_brewer(palette="Spectral",direction=-1)
+```
+ 
+## Potential
+
+```{r PotComp}
+## Compute psi_min ##
+#####################
+psi_ESDACS_100_low=resample(rast(psi_ESDACs_100,crs="epsg:4326"),rast(psi_ERA_100,crs="epsg:4326"))
+as.data.frame(c(rast(psi_ERA_100,crs="epsg:4326"),psi_ESDACS_100_y=TRUE)) %>% 
+  #filter(psi_ERA_VG<(-15000)) %>% 
+  select(x,y,psi_VG,psi_VG.1) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  ggplot(aes(x=x,y=y,fill=-value))+
+  geom_tile()+
+  facet_wrap(~name)+
+  scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80),na.value="transparent")+
+  coord_quickmap()
+
+as.data.frame(c(rast(psi_ERA_100,crs="epsg:4326"),psi_ESDACS_100_low),xy=TRUE) %>% 
+  select(x,y,psi_VG,psi_VG.1) %>% 
+  filter(psi_VG>(-10^6)) %>%
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  ggplot(aes(-value/1000,color=name))+geom_density()+scale_x_log10()
+summary(psi_ERA)
+```
+
+
+## Comparison IFN France
+```{r IfnText}
+ifn_text=read.csv("data/db.IFN.texture.csv")
+ifn_text=st_as_sf(ifn_text,coords=c("XL","YL"),crs=2154)
+ifn_text=st_transform(ifn_text,crs=4326)
+ifn_text %>% 
+  select(PROF2) %>% 
+  ggplot(aes(PROF2))+geom_histogram()
+ifn_ERA=extract(rast(textureERA5,crs="epsg:4326"),vect(ifn_text))
+ifn_text=cbind(ifn_text,ifn_ERA$texture)
+ifn_text %>% 
+  ggplot(aes(TEXT2,fill=as.factor(ifn_ERA.texture))) + 
+  geom_histogram(stat="count")
+
+```
+
+
+# Time step comparison
+In Benito-Garzon 2018, soil water content maxima and minima were computed for each year with daily data, and then the 5 yearly min/max were averaged.
+
+As ERA5-land is now available to download directly with monthly time step, we use these data to compute maxima/minima. 
+
+However using monthly timestep reduces the amplitude of observed soil water content. Using daily time step may accentuate these amplitude, because it takes in account only extreme records, and thus, might not reflect the real condition experienced by plants.
+
+Hereafter, we compare both approaches. First we just compare over few years the difference between SWC min and max computed in France with daily or monthly timestep
+
+## Temporal evolution
+```{r ChronoD}
+## Points to extract
+toextract <- data.frame(Luberon=c(5.387792,43.814892),
+                         Landes= c(-0.438943,44.427567), #Landes
+                         Orléans= c(1.9,47.4), #la maison
+                         Chamrousse= c(5.860739,45.092439), #Chamrousse
+                         GrandEst=c(5.569744,48.475034),
+                        Grignols=c(0.0,44.4)) #Grand-Est
+
+loc= colnames(toextract)
+row.names(toextract)=c("Lon","Lat")
+toextract=t(toextract)
+row.names(toextract) <- NULL
+
+SWC_mtime=as.data.frame(extract(SWC_mt,toextract),
+                           row.names = loc) %>% 
+    tibble::rownames_to_column(var="Loc") %>% 
+    pivot_longer(cols=colnames(.)[c(-1)]) %>% 
+    separate(name,sep="_",c("drop","time")) %>% 
+    select(-drop) %>% 
+    mutate(time=as.numeric(time)) 
+
+SWC_dtime=as.data.frame(extract(SWC_dt,toextract),
+                           row.names = loc) %>% 
+    tibble::rownames_to_column(var="Loc") %>% 
+    pivot_longer(cols=colnames(.)[c(-1)]) %>% 
+    separate(name,sep="_",c("drop","time")) %>% 
+    select(-drop) %>% 
+    mutate(time=as.numeric(time)) 
+
+SWC_mtime=cbind(SWC_mtime,timy=c(15,45,76,0),year=c(rep(1,4),rep(2,4),rep(3,4),rep(4,4)))
+cbind(SWC_dtime,year=c(rep(1,92),rep(2,92),rep(3,92),rep(4,92))) %>% 
+  mutate(timy=time%%92) %>% 
+  left_join(SWC_mtime %>% select(-time),by=c("Loc","year","timy")) %>% 
+  select(Loc,time,value.x,value.y) %>% 
+  rename("Daily SWC"=value.x,
+         "Monthly SWC"=value.y) %>% 
+  pivot_longer(cols=c("Daily SWC","Monthly SWC")) %>% 
+  ggplot(aes(time,value,color=name))+
+  geom_point(size=0.7)+
+  facet_wrap(~Loc)+
+  theme(legend.position = "bottom")
+```
+
+
+## Soil potential difference
+
+```{r DailyTimestepPlots,fig.height=10}
+## Comparison plots for psi_min
+as.data.frame(c(subset(rast(psi_month,crs="epsg:4326"),18:21),subset(rast(psi_day,crs="epsg:4326"),18:21)),xy=TRUE) %>% 
+  rename("Daily data, 2003"=psi_d_2003,
+         "Monthly data, 2003"=psi_m_2003,
+         "Daily data, 2009"=psi_d_2009,
+         "Monthly data, 2009"=psi_m_2009,
+         "Daily data, 2015"=psi_d_2015,
+         "Monthly data, 2015"=psi_m_2015,
+         "Daily data, 2021"=psi_d_2021,
+         "Monthly data, 2021"=psi_m_2021) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  filter(value>-10^9) %>% 
+  ggplot(aes(x=x,y=y,fill=-value/1000))+
+  geom_tile()+
+  facet_wrap(~forcats::fct_relevel(name,"Daily data, 2003","Monthly data, 2003","Daily data, 2009","Monthly data, 2009","Daily data, 2015","Monthly data, 2015","Daily data, 2021","Monthly data, 2021"),ncol=2)+
+  scale_fill_gradientn(name = "Potential min (MPa)",trans="log",colours = viridis(80),na.value="transparent")+
+  theme_bw()+
+  theme(axis.title=element_blank())+
+  coord_quickmap()
+
+```
+
+
+```{r DailyTimestepPlots2}
+as.data.frame(c(subset(rast(psi_month,crs="epsg:4326"),19),subset(rast(psi_day,crs="epsg:4326"),19)),xy=TRUE) %>% 
+  mutate(ratio=psi_d_2009/psi_m_2009) %>%
+  filter(ratio<100000) %>% 
+  ggplot(aes(ratio))+geom_density()+scale_x_log10()+geom_vline(xintercept = 4.15,show.legend = TRUE)
+
+as.data.frame(c(subset(rast(psi_month,crs="epsg:4326"),21),subset(rast(psi_day,crs="epsg:4326"),21)),xy=TRUE) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  ggplot(aes(-value/1000,color=name))+geom_density()+scale_x_log10()+
+  theme_bw()+
+  xlab("Potential min for 2003 (MPa), taking minimum of daily water content series")+
+  geom_vline(xintercept = 10)+
+  geom_vline(xintercept=1)
+```
+# Difference between horizons SWC
+
+```{r SWChorizons}
+## Compute soil minimum potential with texture and deepth ##
+############################################################
+#'@description this function computes map of smp using texture data from 
+#'specified source and a specific depth of soils
+smp_depth <- function(texture,depth,
+                       subsoil = data.frame(texture=c(6,5,4,3,2,1),
+                                             teta_r=c(0.0100,0.0250,0.0100,0.0100,0.0100,0.0100),
+                                             teta_s=c(0.766,0.3660,0.3920,0.4120,0.4810,0.5380),
+                                             alpha=c(0.0130,0.0430,0.0249,0.0082,0.0198,0.0168),
+                                             n=c(1.2039,1.5206,1.1689,1.2179,1.0861,1.0730),
+                                             m=c(0.1694,0.3424,0.1445,0.1789,0.0793,0.0680)),
+                      SWCtot=rast("data/swc-1950-2021.nc")){
+  if(depth>100){
+    x1=7
+    x2=21
+    x3=72
+    x4=depth-100
+    }
+  if(depth<=100&depth>28){
+    x1=7
+    x2=21
+    x3=depth-28
+    x4=0
+    }
+  if(depth<=28&depth>7){
+    x1=7
+    x2=depth-7
+    x3=0
+    x4=0
+    }
+  if(depth<=7){
+    x1=depth
+    x2=0
+    x3=0
+    x4=0
+    }
+  SWC <- (x1*SWCtot[[grepl("swvl1", names(SWCtot))]]+
+            x2*SWCtot[[grepl("swvl2", names(SWCtot))]]+
+            x3*SWCtot[[grepl("swvl3", names(SWCtot))]]+
+            x4*SWCtot[[grepl("swvl4", names(SWCtot))]])/(x1+x2+x3+x4)
+  SWC_surf=setDT(as.data.frame(SWC,xy=TRUE)) 
+  SWC_surf=SWC_surf[,loc_ID:=.I]
+  SWC_surf=melt.data.table(SWC_surf,id.vars=c("loc_ID","x","y"))
+  SWC_surf[,time:=as.numeric(sub(".*_","",variable))]
+  SWC_surf[,year:=as.factor(1950+(as.numeric(time)-1)%/%12)]
+  SWC_surf[,month:=as.factor(as.numeric(time)%%12)]
+  SWC_surf=SWC_surf[month%in%c(6,7,8,9),][,.(Min=min(value),Max=max(value)),by="loc_ID,x,y,year"]
+  SWC_surf=SWC_surf %>% 
+    group_by(loc_ID,x,y) %>% 
+    summarise(SWC_w_min=mean(head(sort(Min),5)),
+              SWC_w_max=mean(tail(sort(Max),5)))
+  SWC_surf=project(rast(SWC_surf[2:5],crs="epsg:4326"),texture_ERA)
+  psi_surf=as.data.frame(c(texture_ERA,SWC_surf),xy=TRUE) %>% 
+    left_join(subsoil,by=c("texture")) %>% 
+    mutate(SWC_ratio=SWC_w_max/SWC_w_min,
+           !!paste0("psi_",as.character(depth)):=-((((teta_s-teta_r)/(SWC_w_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2))
+  return(psi_surf)
+}
+
+
+psi_100=smp_depth(texture_ERA)
+
+# Computing SWC over 3 first horizons
+SWC_surf=setDT(as.data.frame(SWC_surft,xy=TRUE)) 
+SWC_surf=SWC_surf[,loc_ID:=.I]
+SWC_surf=melt.data.table(SWC_surf,id.vars=c("loc_ID","x","y"))
+SWC_surf[,time:=as.numeric(sub(".*_","",variable))]
+SWC_surf[,year:=as.factor(1950+(as.numeric(time)-1)%/%12)]
+SWC_surf[,month:=as.factor(as.numeric(time)%%12)]
+SWC_surf=SWC_surf[month%in%c(6,7,8,9),][,.(Min=min(value),Max=max(value)),by="loc_ID,x,y,year"]
+SWC_surf=SWC_surf %>% 
+  group_by(loc_ID,x,y) %>% 
+  summarise(SWC_w_min=mean(head(sort(Min),5)),
+            SWC_w_max=mean(tail(sort(Max),5)))
+SWC_surf=rast(SWC_surf[2:5],crs="epsg:4326")
+
+# Computing minimum soil potential
+SWC_surf=project(SWC_surf,texture_ERA)
+psi_surf=as.data.frame(c(texture_ERA,
+                        SWC_surf),
+                      xy=TRUE) %>% 
+  left_join(subsoil,by=c("texture")) %>% 
+  mutate(SWC_ratio=SWC_w_max/SWC_w_min,
+         psi_surfs_VG=-((((teta_s-teta_r)/(SWC_w_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2))
+
+
+
+# psi_min from ESDAC texture #
+psi_text=as.data.frame(c(texture_s,SWC_text),
+                      xy=TRUE) %>% 
+    left_join(subsoil,by=c("texture_s"="texture")) %>% 
+    mutate(psi_s_VG=-((((teta_s-teta_r)/(SWC_w_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+    mutate(psi_s_VG=case_when(SWC_w_min>teta_s~-0.1,TRUE~psi_s_VG))
+
+psi_text=rast(psi_text[,c("x","y","texture_s","psi_s_VG")],crs="epsg:4326")
+psi_surf=rast(psi_surf[,c("x","y","texture","psi_surfs_VG")],crs="epsg:4326")
+
+
+
+as.data.frame(c(psi_surf,psi_text),xy=TRUE) %>% 
+  select(x,y,psi_surfs_VG,psi_s_VG) %>% 
+  mutate(psi_surfs_VG=cut(psi_surfs_VG, breaks=c(-Inf, -50000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), labels=c("<-50MPa","-50<Psi<-10MPa","-10<Psi<-5MPa","-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")),
+         psi_s_VG=cut(psi_s_VG, breaks=c(-Inf, -50000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), labels=c("<-50MPa","-50<Psi<-10MPa","-10<Psi<-5MPa","-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")))  %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  ggplot() + # create a plot
+  geom_tile( aes(x = x, y = y, fill = value)) + # plot the raw data
+  facet_wrap(~name) + # split raster layers up
+  theme_bw() +
+  scale_fill_brewer(palette="RdYlBu")+
+#  scale_fill_discrete(na.value="transparent",type=)+
+  labs(x = "Longitude", y = "Latitude",fill="Minimum Potential") + # make plot more readable
+  coord_quickmap()
+```
+
+
+```{r SWChorizonsPlot}
+as.data.frame(c(psi_surf,psi_text),xy=TRUE) %>% 
+  select(x,y,psi_surfs_VG,psi_s_VG)  %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>%
+  ggplot(aes(-value/1000,colour=name))+geom_density()+scale_x_log10()
+```
+```{r PsiTempo}
+SWC1_extr=cbind(loc,toextract,texture_extr,extract(SWC1,toextract)) %>% 
+  left_join(subsoil,by="texture") %>% 
+  relocate(c("teta_s","teta_r","n","m","alpha"),.after="texture") %>% 
+  pivot_longer(cols=colnames(.)[10:length(.)]) %>% 
+  mutate(psi_s1_VG=-((((teta_s-teta_r)/(value-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+         time=as.numeric(sub(".*_","",name))) 
+SWC2_extr=cbind(loc,toextract,texture_extr,extract(SWC2,toextract)) %>% 
+  left_join(subsoil,by="texture") %>% 
+  relocate(c("teta_s","teta_r","n","m","alpha"),.after="texture") %>% 
+  pivot_longer(cols=colnames(.)[10:length(.)]) %>% 
+  mutate(psi_s2_VG=-((((teta_s-teta_r)/(value-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+         time=as.numeric(sub(".*_","",name)))
+SWC3_extr=cbind(loc,toextract,texture_extr,extract(SWC3,toextract)) %>% 
+  left_join(subsoil,by="texture") %>% 
+  relocate(c("teta_s","teta_r","n","m","alpha"),.after="texture") %>% 
+  pivot_longer(cols=colnames(.)[10:length(.)]) %>% 
+  mutate(psi_s3_VG=-((((teta_s-teta_r)/(value-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+         time=as.numeric(sub(".*_","",name)))
+SWCsurf_extr=cbind(loc,toextract,texture_extr,extract(SWC_surft,toextract)) %>% 
+  left_join(subsoil,by="texture") %>% 
+  relocate(c("teta_s","teta_r","n","m","alpha"),.after="texture") %>% 
+  pivot_longer(cols=colnames(.)[10:length(.)]) %>% 
+  mutate(psi_s_VG=-((((teta_s-teta_r)/(value-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+         time=as.numeric(sub(".*_","",name)))
+
+
+Loc_df=sapply(loc,FUN=function(x){
+         cbind(SWC1_extr[SWC1_extr$loc==x,c("Lon","Lat","time","value","psi_s1_VG")],
+              SWC2_extr[SWC2_extr$loc==x,c("psi_s2_VG")],
+              SWC3_extr[SWC3_extr$loc==x,c("psi_s3_VG")],
+              SWCsurf_extr[SWCsurf_extr$loc==x,c("psi_s_VG")])
+  },simplify=FALSE,USE.NAMES=TRUE)
+
+for (x in 1:length(Loc_df)){
+  print(Loc_df[[x]] %>% 
+    select(-value) %>% 
+    pivot_longer(cols=colnames(.)[c(-1,-2,-3)]) %>% 
+    ggplot(aes(time,value,color=name))+
+    geom_point()+geom_line()+
+    ggtitle(eval(names(Loc_df)[x])))
+}
+```
+
+# Potential at different depth
+
+```{r potentialdepth}
+tar_load(psi_ESDACs_289)
+tar_load(psi_ERA_100)
+tar_load(psi_ERA_50)
+tar_load(psi_ESDACs_100)
+tar_load(psi_ESDACs_50)
+tar_load(psi_ESDACt_100)
+tar_load(psi_ESDACt_50)
+plot_psi <- function(psi_min){
+  plot=psi_min %>% 
+    mutate(psi_VG=cut(psi_VG, 
+                      breaks=c(-Inf, -50000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                      labels=c("<-50MPa", "-50<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa", "-3<Psi<-1MPa", "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))) %>% 
+    ggplot()+
+    geom_tile(aes(x=x,y=y,fill=psi_VG))+
+    scale_fill_brewer(palette="RdYlBu")+
+    theme_bw()+
+    theme(axis.title=element_blank())+
+    coord_quickmap()
+  return(plot)
+}
+plot_psi(psi_ERA_50)
+lapply(list(psi_ERA_50,psi_ERA_100,psi_ESDACs_50,psi_ESDACt_50,psi_ESDACs_100,psi_ESDACt_100,psi_ESDACs_289),plot_psi)
+
+
+```
+
+
+# Psi computation with tempral series of psi
+```{r}
+tar_load(SWC50)
+SWC50=SWC50[[2]]
+SWC50_text=extract(rast(textureERA5,crs="epsg:4326"),SWC50[,c("x","y")])
+SWC50=cbind(SWC50,SWC50_text[,c(-1)])
+
+SWC50=setDT(SWC50)
+SWC50[,loc_ID:=.I]
+SWC50=melt.data.table(SWC50,id.vars=c("loc_ID","x","y","texture","psi_e","b","teta_r","teta_s","alpha","n","m"))
+SWC50[,time:=as.numeric(sub(".*_","",variable))]
+SWC50[,year:=as.factor(1950+(as.numeric(time)-1)%/%12)]
+SWC50[,month:=as.factor(as.numeric(time)%%12)]
+SWC50[,psi:=-((((teta_s-teta_r)/(value-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)]
+SWC50=SWC50[month%in%c(6,7,8,9),][,.(Min=min(psi),Max=max(psi)),by="loc_ID,x,y,year"]
+SWC50_min=SWC50 %>% 
+  group_by(loc_ID,x,y) %>% 
+  summarise(psi_VG=min(Min,na.rm=TRUE)) %>% #quantile(Min,probs=0.01,na.rm=TRUE)) %>% 
+    ungroup()
+SWC50_min=as.data.frame(SWC50_min,xy=TRUE)
+plot_psi(SWC50_min)
+plot_psi(psi_ERA_50)
+```
+

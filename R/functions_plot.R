@@ -83,42 +83,42 @@ chronology_swc <- function(point_to_extract=data.frame(Luberon=c(5.387792,43.814
 #' Overlaying species distribution and hydraulic safety margin
 #' @description functions that plots a polygon of approximate species distribution
 #' extracted from EuForGen, and overlays HSM represented in a binary way
-#' @param Dir.Data directory of data of the project
-#' @param Dir.p50 files that contains mean P50 per species of interest, with files
+#' @param dir.data directory of data of the project
+#' @param dir.p50 files that contains mean P50 per species of interest, with files
 #' extention
 #' @param europe SpatialPolygonsDataFrame of the spatial extent, default is Europe
 #' see before
 #' @param psi_min spatial dataframe of psi_min
 #' @return plots per species of interest
-HSM_distribution <- function(Dir.Data="data",
-                             Dir.p50="p50select.csv",
+HSM_distribution <- function(dir.data="data",
+                             dir.p50="p50select.csv",
                              europe,
                              psi_min){
-  P50_df=read.csv2(file.path(Dir.Data,Dir.p50))
+  P50_df=read.csv2(file.path(dir.data,dir.p50))
   Species_distb=apply(P50_df,1,function(x){
     P50_sp=as.numeric(x[2])
-    spdistrib=read_sf(dsn=file.path(Dir.Data,"chorological_maps_dataset",as.character(x[1]),"shapefiles"),
+    spdistrib=read_sf(dsn=file.path(dir.data,"chorological_maps_dataset",as.character(x[1]),"shapefiles"),
                       layer=as.character(x[3]))
     if(is.na(x[4])==FALSE){
-      spdistrib_sup=read_sf(dsn=file.path(Dir.Data,"chorological_maps_dataset",x[1],"shapefiles"),
+      spdistrib_sup=read_sf(dsn=file.path(dir.data,"chorological_maps_dataset",x[1],"shapefiles"),
                             layer=as.character(x[4]))
       spdistrib=st_union(rbind(spdistrib,spdistrib_sup))
     }
     spdistrib=st_crop(spdistrib,sf::st_bbox(europe))
     
     graph=psi_min %>%
-      select(x,y,psi_min_VG) %>%
-      filter(psi_min_VG>(-10^5)) %>% 
-      mutate(HSM=psi_min_VG-(P50_sp*10^3)) %>% 
-      # mutate(HSM_bin=as.factor(case_when(HSM>0~1,
-      #                                    HSM<=0~0))) %>%
-      select(x,y,HSM) %>% 
+      select(x,y,psi_VG) %>%
+      filter(psi_VG>(-10^5)) %>% 
+      mutate(HSM=psi_VG-(P50_sp*10^3)) %>% 
+      mutate(HSM_bin=as.factor(case_when(HSM>0~1,
+                                         HSM<=0~0))) %>%
+      select(x,y,HSM,HSM_bin) %>% 
       filter(is.na(HSM)==FALSE) %>% 
       ggplot() + # create a plot
-      geom_raster( aes(x = x, y = y, fill = HSM)) + # plot the raw data
+      geom_raster( aes(x = x, y = y, fill = HSM_bin)) + # plot the raw data
       geom_sf(data=spdistrib,fill=alpha("grey",0.6))+
       theme_bw() +
-      scale_fill_continuous(na.value="transparent")+
+      #scale_fill_continuous(na.value="transparent")+
       labs(x = "Longitude", y = "Latitude",fill=paste0(as.character(x[1])," HSM (kPa)")) 
     return(graph)
   })
@@ -131,18 +131,18 @@ HSM_distribution <- function(Dir.Data="data",
 #' species and plot the distribution of the Psi_min, its quantiles and the P50
 #' @return a distribution of HSM/Psi_min per species of interest 
 #' 
-Psi_min_distrib <- function(Dir.Data="data",
-                            Dir.p50="p50select.csv",
+Psi_min_distrib <- function(dir.data="data",
+                            dir.p50="p50select.csv",
                             europe,
                             psi_min){
-  P50_df=read.csv2(file.path(Dir.Data,Dir.p50))
+  P50_df=read.csv2(file.path(dir.data,dir.p50))
   Species_distb=apply(P50_df,1,
                       function(x){
                         P50_sp=as.numeric(x[2])
-                        spdistrib=read_sf(dsn=file.path(Dir.Data,"chorological_maps_dataset",as.character(x[1]),"shapefiles"),
+                        spdistrib=read_sf(dsn=file.path(dir.data,"chorological_maps_dataset",as.character(x[1]),"shapefiles"),
                                           layer=as.character(x[3]))
                         if(is.na(x[4])==FALSE){
-                          spdistrib_sup=read_sf(dsn=file.path(Dir.Data,"chorological_maps_dataset",x[1],"shapefiles"),
+                          spdistrib_sup=read_sf(dsn=file.path(dir.data,"chorological_maps_dataset",x[1],"shapefiles"),
                                                 layer=as.character(x[4]))
                           spdistrib=rbind(spdistrib,spdistrib_sup)
                         }

@@ -161,9 +161,18 @@ psi_min %>%
   ggplot(aes(-value/1000,color=texture_t))+
   geom_density()+
   scale_color_brewer(palette="Spectral",direction=-1) +
+  scale_x_log10(name="Minimum potential (-MPa)",breaks=c(0,0.0001,0.01,0.1,1,10),labels=c("0","1e-4","0.01","0.1","1","10"))+
   theme_bw()+
-  scale_x_log10(name="Minimum potential (-MPa)",breaks=c(0,0.0001,0.01,0.1,1,10))+
+  theme(legend.position = "bottom")+
   facet_wrap(~name)
+
+
+psi_min %>% 
+  select(texture_t,psi_min_BG,psi_min_CB,psi_min_VG) %>% 
+  filter(psi_min_VG>(-10^6)) %>% 
+  mutate(dpsi=psi_min_VG-psi_min_CB) %>% 
+  ggplot(aes(-dpsi))+
+  geom_density()+scale_x_log10()
 ```
 
 
@@ -254,13 +263,14 @@ a=pars_t_VG %>%
   mutate(psi_min=psi_e*((teta_s/teta)^b)) %>% 
   ggplot(aes(teta,psi_min,color=texture))+
   geom_line(size=0.81)+
-  geom_point(data=psi_min,aes(SWC_w_min,psi_t_CB,color=as.factor(texture_t)))+
+  #eom_point(data=psi_min,aes(SWC_w_min,psi_t_CB,color=as.factor(texture_t)))+
   ylab("Psi_min (kPa)")+
   xlab("teta")+
-  ylim(0,-1500)+
+  ylim(0,-15000)+
   theme_bw()+
   scale_color_brewer(palette="Spectral",direction=-1)+
   ggtitle("Parameters extracted from Sperry 1998")
+
 
 b=pars_t_VG %>%
   select(texture,teta_r,teta_s,alpha,n,m) %>% 
@@ -268,18 +278,49 @@ b=pars_t_VG %>%
   mutate(psi_min=-((((teta_s-teta_r)/(teta-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
   ggplot(aes(teta,psi_min,color=texture))+
   geom_line(size=0.81)+
-  geom_point(data=psi_min,aes(SWC_w_min,psi_t_VG,color=as.factor(texture_t)))+
+  #geom_point(data=psi_min,aes(SWC_w_min,psi_t_VG,color=as.factor(texture_t)))+
   ylab("Psi_min (kPa)")+
   xlab("teta")+
-  ylim(0,-1500)+
+  ylim(0,-15000)+
   theme_bw()+
+  geom_vline(xintercept=c(0.01,0.1))+ 
+  geom_hline(yintercept = -1000)+
   scale_color_brewer(palette="Spectral",direction=-1)+
   ggtitle("Parameters extracted from Wösten 1999")
 
 cowplot::plot_grid(a,b,ncol=2)
 ```
 
+# Forest distribution
 
+```{r PsiForest,fig.cap="Soil potential spatial distribution and density for locations with more than 40% forest cover"}
+tar_load(psiforest)
+tar_load(europe)
+europe=st_as_sf(europe)
+psiforest %>%
+  select(x,y,psi_min_VG) %>% #,Psi_m_min
+  mutate(psi_min_VG=cut(psi_min_VG, breaks=c(-Inf, -50000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), labels=c("<-50MPa","-50<Psi<-10MPa","-10<Psi<-5MPa","-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))) %>% 
+  ggplot() + # create a plot
+  geom_tile( aes(x = x, y = y, fill = psi_min_VG)) + # plot the raw data
+  geom_sf(data=europe,fill=NA)+
+  theme_bw() +
+  scale_fill_brewer(palette="RdYlBu")+
+#  scale_fill_discrete(na.value="transparent",type=)+
+  labs(x = "Longitude", y = "Latitude",fill="Minimum Potential") #+ # make plot more readable
+  # coord_quickmap()
+
+
+
+psi_min %>% 
+  mutate(texture_t=as.factor(texture_t)) %>% 
+  filter(is.na(texture_t)==FALSE) %>% 
+  filter(psi_min_VG>(-10^6)) %>% 
+  ggplot(aes(texture_t,-psi_min_VG/1000,fill=texture_t)) +
+  geom_violin()+
+  scale_fill_brewer(palette="Spectral",direction=-1) +
+  theme_bw()+
+  scale_y_log10(name="Minimum potential (-MPa)",breaks=c(0,0.001,0.1,1,10))
+```
 
 
 
