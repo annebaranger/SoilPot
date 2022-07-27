@@ -1,0 +1,375 @@
+
+(base) C:\Users\anne.baranger> conda create -n pyclim python=3.9 numpy netCDF4
+Collecting package metadata (current_repodata.json): done
+Solving environment: done
+
+## Package Plan ##
+
+  environment location: C:\Users\anne.baranger\Anaconda3\envs\pyclim
+
+  added / updated specs:
+    - netcdf4
+    - numpy
+    - python=3.9
+
+
+The following packages will be downloaded:
+
+    package                    |            build
+    ---------------------------|-----------------
+    ca-certificates-2022.07.19 |       haa95532_0         123 KB
+    certifi-2022.6.15          |   py39haa95532_0         153 KB
+    cftime-1.5.1.1             |   py39h080aedc_0         148 KB
+    curl-7.82.0                |       h2bbff1b_0         140 KB
+    hdf4-4.2.13                |       h712560f_2         1.3 MB
+    hdf5-1.10.6                |       h1756f20_1         7.9 MB
+    jpeg-9e                    |       h2bbff1b_0         292 KB
+    libcurl-7.82.0             |       h86230a5_0         296 KB
+    libnetcdf-4.8.1            |       h6685c40_1         590 KB
+    libssh2-1.10.0             |       hcd4344a_0         222 KB
+    libzip-1.8.0               |       h49b8836_0          95 KB
+    netcdf4-1.5.7              |   py39h3de5c98_1         337 KB
+    numpy-1.22.3               |   py39h7a0a035_0          25 KB
+    numpy-base-1.22.3          |   py39hca35cd5_0         4.8 MB
+    openssl-1.1.1q             |       h2bbff1b_0         4.8 MB
+    pip-22.1.2                 |   py39haa95532_0         2.5 MB
+    python-3.9.12              |       h6244533_0        17.1 MB
+    setuptools-61.2.0          |   py39haa95532_0         1.0 MB
+    six-1.16.0                 |     pyhd3eb1b0_1          18 KB
+    sqlite-3.38.5              |       h2bbff1b_0         798 KB
+    tzdata-2022a               |       hda174b7_0         109 KB
+    wheel-0.37.1               |     pyhd3eb1b0_0          33 KB
+    xz-5.2.5                   |       h8cc25b3_1         246 KB
+    zlib-1.2.12                |       h8cc25b3_2         116 KB
+    zstd-1.5.2                 |       h19a0ad4_0         509 KB
+    ------------------------------------------------------------
+                                           Total:        43.7 MB
+
+The following NEW packages will be INSTALLED:
+
+  blas               pkgs/main/win-64::blas-1.0-mkl
+  bzip2              pkgs/main/win-64::bzip2-1.0.8-he774522_0
+  ca-certificates    pkgs/main/win-64::ca-certificates-2022.07.19-haa95532_0
+  certifi            pkgs/main/win-64::certifi-2022.6.15-py39haa95532_0
+  cftime             pkgs/main/win-64::cftime-1.5.1.1-py39h080aedc_0
+  curl               pkgs/main/win-64::curl-7.82.0-h2bbff1b_0
+  hdf4               pkgs/main/win-64::hdf4-4.2.13-h712560f_2
+  hdf5               pkgs/main/win-64::hdf5-1.10.6-h1756f20_1
+  icc_rt             pkgs/main/win-64::icc_rt-2019.0.0-h0cc432a_1
+  intel-openmp       pkgs/main/win-64::intel-openmp-2021.4.0-haa95532_3556
+  jpeg               pkgs/main/win-64::jpeg-9e-h2bbff1b_0
+  libcurl            pkgs/main/win-64::libcurl-7.82.0-h86230a5_0
+  libnetcdf          pkgs/main/win-64::libnetcdf-4.8.1-h6685c40_1
+  libssh2            pkgs/main/win-64::libssh2-1.10.0-hcd4344a_0
+  libzip             pkgs/main/win-64::libzip-1.8.0-h49b8836_0
+  lz4-c              pkgs/main/win-64::lz4-c-1.9.3-h2bbff1b_1
+  mkl                pkgs/main/win-64::mkl-2021.4.0-haa95532_640
+  mkl-service        pkgs/main/win-64::mkl-service-2.4.0-py39h2bbff1b_0
+  mkl_fft            pkgs/main/win-64::mkl_fft-1.3.1-py39h277e83a_0
+  mkl_random         pkgs/main/win-64::mkl_random-1.2.2-py39hf11a4ad_0
+  netcdf4            pkgs/main/win-64::netcdf4-1.5.7-py39h3de5c98_1
+  numpy              pkgs/main/win-64::numpy-1.22.3-py39h7a0a035_0
+  numpy-base         pkgs/main/win-64::numpy-base-1.22.3-py39hca35cd5_0
+  openssl            pkgs/main/win-64::openssl-1.1.1q-h2bbff1b_0
+  pip                pkgs/main/win-64::pip-22.1.2-py39haa95532_0
+  python             pkgs/main/win-64::python-3.9.12-h6244533_0
+  setuptools         pkgs/main/win-64::setuptools-61.2.0-py39haa95532_0
+  six                pkgs/main/noarch::six-1.16.0-pyhd3eb1b0_1
+  sqlite             pkgs/main/win-64::sqlite-3.38.5-h2bbff1b_0
+  tzdata             pkgs/main/noarch::tzdata-2022a-hda174b7_0
+  vc                 pkgs/main/win-64::vc-14.2-h21ff451_1
+  vs2015_runtime     pkgs/main/win-64::vs2015_runtime-14.27.29016-h5e58377_2
+  wheel              pkgs/main/noarch::wheel-0.37.1-pyhd3eb1b0_0
+  wincertstore       pkgs/main/win-64::wincertstore-0.2-py39haa95532_2
+  xz                 pkgs/main/win-64::xz-5.2.5-h8cc25b3_1
+  zlib               pkgs/main/win-64::zlib-1.2.12-h8cc25b3_2
+  zstd               pkgs/main/win-64::zstd-1.5.2-h19a0ad4_0
+
+
+Proceed ([y]/n)? y
+
+
+Downloading and Extracting Packages
+libcurl-7.82.0       | 296 KB    | ############################################################################ | 100%
+numpy-1.22.3         | 25 KB     | ############################################################################ | 100%
+libssh2-1.10.0       | 222 KB    | ############################################################################ | 100%
+hdf4-4.2.13          | 1.3 MB    | ############################################################################ | 100%
+wheel-0.37.1         | 33 KB     | ############################################################################ | 100%
+netcdf4-1.5.7        | 337 KB    | ############################################################################ | 100%
+curl-7.82.0          | 140 KB    | ############################################################################ | 100%
+six-1.16.0           | 18 KB     | ############################################################################ | 100%
+zlib-1.2.12          | 116 KB    | ############################################################################ | 100%
+setuptools-61.2.0    | 1.0 MB    | ############################################################################ | 100%
+libnetcdf-4.8.1      | 590 KB    | ############################################################################ | 100%
+ca-certificates-2022 | 123 KB    | ############################################################################ | 100%
+sqlite-3.38.5        | 798 KB    | ############################################################################ | 100%
+tzdata-2022a         | 109 KB    | ############################################################################ | 100%
+zstd-1.5.2           | 509 KB    | ############################################################################ | 100%
+jpeg-9e              | 292 KB    | ############################################################################ | 100%
+hdf5-1.10.6          | 7.9 MB    | ############################################################################ | 100%
+certifi-2022.6.15    | 153 KB    | ############################################################################ | 100%
+cftime-1.5.1.1       | 148 KB    | ############################################################################ | 100%
+libzip-1.8.0         | 95 KB     | ############################################################################ | 100%
+openssl-1.1.1q       | 4.8 MB    | ############################################################################ | 100%
+python-3.9.12        | 17.1 MB   | ############################################################################ | 100%
+xz-5.2.5             | 246 KB    | ############################################################################ | 100%
+numpy-base-1.22.3    | 4.8 MB    | ############################################################################ | 100%
+pip-22.1.2           | 2.5 MB    | ############################################################################ | 100%
+Preparing transaction: done
+Verifying transaction: done
+Executing transaction: done
+#
+# To activate this environment, use
+#
+#     $ conda activate pyclim
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+
+(base) C:\Users\anne.baranger> condal install -n pyclim gdal
+'condal' n’est pas reconnu en tant que commande interne
+ou externe, un programme exécutable ou un fichier de commandes.
+
+(base) C:\Users\anne.baranger> conda install -n pyclim gdal
+Collecting package metadata (current_repodata.json): done
+Solving environment: done
+
+## Package Plan ##
+
+  environment location: C:\Users\anne.baranger\Anaconda3\envs\pyclim
+
+  added / updated specs:
+    - gdal
+
+
+The following packages will be downloaded:
+
+    package                    |            build
+    ---------------------------|-----------------
+    cfitsio-3.470              |       h2bbff1b_7         518 KB
+    expat-2.4.4                |       h6c2663c_0         207 KB
+    gdal-3.4.1                 |   py39h9b7a543_0         1.3 MB
+    geos-3.8.0                 |       h33f27b4_0         905 KB
+    geotiff-1.7.0              |       h4545760_0         122 KB
+    kealib-1.4.14              |       hde4a422_1         140 KB
+    libgdal-3.4.1              |       h9b24a9a_1         7.7 MB
+    libiconv-1.16              |       h2bbff1b_2         651 KB
+    libpq-12.9                 |       hb652d5d_3         2.7 MB
+    libspatialite-4.3.0a       |      h14feca5_20         2.3 MB
+    libtiff-4.2.0              |       he0120a3_1         754 KB
+    libxml2-2.9.14             |       h0ad7f3c_0         1.5 MB
+    m2w64-expat-2.1.1          |                2         160 KB
+    m2w64-gettext-0.19.7       |                2         4.2 MB
+    m2w64-libiconv-1.14        |                6         1.5 MB
+    m2w64-xz-5.2.2             |                2         395 KB
+    proj-6.2.1                 |       h3758d61_0         7.9 MB
+    tiledb-2.3.3               |       h3649cd2_2         2.0 MB
+    xerces-c-3.2.3             |       ha925a31_0         2.8 MB
+    ------------------------------------------------------------
+                                           Total:        37.6 MB
+
+The following NEW packages will be INSTALLED:
+
+  cfitsio            pkgs/main/win-64::cfitsio-3.470-h2bbff1b_7
+  expat              pkgs/main/win-64::expat-2.4.4-h6c2663c_0
+  freexl             pkgs/main/win-64::freexl-1.0.6-h2bbff1b_0
+  gdal               pkgs/main/win-64::gdal-3.4.1-py39h9b7a543_0
+  geos               pkgs/main/win-64::geos-3.8.0-h33f27b4_0
+  geotiff            pkgs/main/win-64::geotiff-1.7.0-h4545760_0
+  kealib             pkgs/main/win-64::kealib-1.4.14-hde4a422_1
+  libgdal            pkgs/main/win-64::libgdal-3.4.1-h9b24a9a_1
+  libiconv           pkgs/main/win-64::libiconv-1.16-h2bbff1b_2
+  libpng             pkgs/main/win-64::libpng-1.6.37-h2a8f88b_0
+  libpq              pkgs/main/win-64::libpq-12.9-hb652d5d_3
+  libspatialite      pkgs/main/win-64::libspatialite-4.3.0a-h14feca5_20
+  libtiff            pkgs/main/win-64::libtiff-4.2.0-he0120a3_1
+  libxml2            pkgs/main/win-64::libxml2-2.9.14-h0ad7f3c_0
+  m2w64-expat        pkgs/msys2/win-64::m2w64-expat-2.1.1-2
+  m2w64-gcc-libgfor~ pkgs/msys2/win-64::m2w64-gcc-libgfortran-5.3.0-6
+  m2w64-gcc-libs     pkgs/msys2/win-64::m2w64-gcc-libs-5.3.0-7
+  m2w64-gcc-libs-co~ pkgs/msys2/win-64::m2w64-gcc-libs-core-5.3.0-7
+  m2w64-gettext      pkgs/msys2/win-64::m2w64-gettext-0.19.7-2
+  m2w64-gmp          pkgs/msys2/win-64::m2w64-gmp-6.1.0-2
+  m2w64-libiconv     pkgs/msys2/win-64::m2w64-libiconv-1.14-6
+  m2w64-libwinpthre~ pkgs/msys2/win-64::m2w64-libwinpthread-git-5.0.0.4634.697f757-2
+  m2w64-xz           pkgs/msys2/win-64::m2w64-xz-5.2.2-2
+  msys2-conda-epoch  pkgs/msys2/win-64::msys2-conda-epoch-20160418-1
+  openjpeg           pkgs/main/win-64::openjpeg-2.4.0-h4fc8c34_0
+  proj               pkgs/main/win-64::proj-6.2.1-h3758d61_0
+  tiledb             pkgs/main/win-64::tiledb-2.3.3-h3649cd2_2
+  xerces-c           pkgs/main/win-64::xerces-c-3.2.3-ha925a31_0
+
+
+Proceed ([y]/n)? y
+
+
+Downloading and Extracting Packages
+expat-2.4.4          | 207 KB    | ############################################################################ | 100%
+libxml2-2.9.14       | 1.5 MB    | ############################################################################ | 100%
+libtiff-4.2.0        | 754 KB    | ############################################################################ | 100%
+m2w64-gettext-0.19.7 | 4.2 MB    | ############################################################################ | 100%
+libpq-12.9           | 2.7 MB    | ############################################################################ | 100%
+tiledb-2.3.3         | 2.0 MB    | ############################################################################ | 100%
+kealib-1.4.14        | 140 KB    | ############################################################################ | 100%
+m2w64-expat-2.1.1    | 160 KB    | ############################################################################ | 100%
+geos-3.8.0           | 905 KB    | ############################################################################ | 100%
+geotiff-1.7.0        | 122 KB    | ############################################################################ | 100%
+gdal-3.4.1           | 1.3 MB    | ############################################################################ | 100%
+proj-6.2.1           | 7.9 MB    | ############################################################################ | 100%
+libspatialite-4.3.0a | 2.3 MB    | ############################################################################ | 100%
+cfitsio-3.470        | 518 KB    | ############################################################################ | 100%
+xerces-c-3.2.3       | 2.8 MB    | ############################################################################ | 100%
+libiconv-1.16        | 651 KB    | ############################################################################ | 100%
+m2w64-libiconv-1.14  | 1.5 MB    | ############################################################################ | 100%
+libgdal-3.4.1        | 7.7 MB    | ############################################################################ | 100%
+m2w64-xz-5.2.2       | 395 KB    | ############################################################################ | 100%
+Preparing transaction: done
+Verifying transaction: done
+Executing transaction: done
+
+(base) C:\Users\anne.baranger>conda activate pyclim
+
+(pyclim) C:\Users\anne.baranger>python
+Python 3.9.12 (main, Apr  4 2022, 05:22:27) [MSC v.1916 64 bit (AMD64)] :: Anaconda, Inc. on win32
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import numpy, netCDF4
+>>> from osgeo import gdal
+Traceback (most recent call last):
+  File "C:\Users\anne.baranger\Anaconda3\envs\pyclim\lib\site-packages\osgeo\__init__.py", line 29, in swig_import_helper
+    return importlib.import_module(mname)
+  File "C:\Users\anne.baranger\Anaconda3\envs\pyclim\lib\importlib\__init__.py", line 127, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "<frozen importlib._bootstrap>", line 1030, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1007, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 986, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 666, in _load_unlocked
+  File "<frozen importlib._bootstrap>", line 565, in module_from_spec
+  File "<frozen importlib._bootstrap_external>", line 1173, in create_module
+  File "<frozen importlib._bootstrap>", line 228, in _call_with_frames_removed
+ImportError: DLL load failed while importing _gdal: Le module spécifié est introuvable.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "C:\Users\anne.baranger\Anaconda3\envs\pyclim\lib\site-packages\osgeo\__init__.py", line 45, in <module>
+    _gdal = swig_import_helper()
+  File "C:\Users\anne.baranger\Anaconda3\envs\pyclim\lib\site-packages\osgeo\__init__.py", line 41, in swig_import_helper
+    raise ImportError(traceback_string + '\n' + msg)
+ImportError: Traceback (most recent call last):
+  File "C:\Users\anne.baranger\Anaconda3\envs\pyclim\lib\site-packages\osgeo\__init__.py", line 29, in swig_import_helper
+    return importlib.import_module(mname)
+  File "C:\Users\anne.baranger\Anaconda3\envs\pyclim\lib\importlib\__init__.py", line 127, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "<frozen importlib._bootstrap>", line 1030, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1007, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 986, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 666, in _load_unlocked
+  File "<frozen importlib._bootstrap>", line 565, in module_from_spec
+  File "<frozen importlib._bootstrap_external>", line 1173, in create_module
+  File "<frozen importlib._bootstrap>", line 228, in _call_with_frames_removed
+ImportError: DLL load failed while importing _gdal: Le module spécifié est introuvable.
+
+On Windows, with Python >= 3.8, DLLs are no longer imported from the PATH.
+If gdalXXX.dll is in the PATH, then set the USE_PATH_FOR_GDAL_PYTHON=YES environment variable
+to feed the PATH into os.add_dll_directory().
+>>> import gdal
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'gdal'
+>>> exit()
+
+(pyclim) C:\Users\anne.baranger> cd Documents\Era5-land\python
+
+(pyclim) C:\Users\anne.baranger\Documents\Era5-land\python>python help_Anne.py
+  File "C:\Users\anne.baranger\Documents\Era5-land\python\help_Anne.py", line 23
+    metfile = 'C:\Users\anne.baranger\Documents\Era5-land\data\swcd1-3_2011-2021.nc'
+                                                                                    ^
+SyntaxError: (unicode error) 'unicodeescape' codec can't decode bytes in position 2-3: truncated \UXXXXXXXX escape
+
+(pyclim) C:\Users\anne.baranger\Documents\Era5-land\python>python help_Anne.py
+Traceback (most recent call last):
+  File "C:\Users\anne.baranger\Documents\Era5-land\python\help_Anne.py", line 20, in <module>
+    import matplotlib.pyplot as plt
+ModuleNotFoundError: No module named 'matplotlib'
+
+(pyclim) C:\Users\anne.baranger\Documents\Era5-land\python>python
+Python 3.9.12 (main, Apr  4 2022, 05:22:27) [MSC v.1916 64 bit (AMD64)] :: Anaconda, Inc. on win32
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import matplotlib
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'matplotlib'
+>>> exit()
+
+(pyclim) C:\Users\anne.baranger\Documents\Era5-land\python>conda install -n pyclim matplotlib
+Collecting package metadata (current_repodata.json): done
+Solving environment: done
+
+## Package Plan ##
+
+  environment location: C:\Users\anne.baranger\Anaconda3\envs\pyclim
+
+  added / updated specs:
+    - matplotlib
+
+
+The following packages will be downloaded:
+
+    package                    |            build
+    ---------------------------|-----------------
+    cycler-0.11.0              |     pyhd3eb1b0_0          12 KB
+    kiwisolver-1.4.2           |   py39hd77b12b_0          58 KB
+    libwebp-1.2.2              |       h2bbff1b_0         658 KB
+    matplotlib-3.5.1           |   py39haa95532_1          29 KB
+    matplotlib-base-3.5.1      |   py39hd77b12b_1         5.6 MB
+    packaging-21.3             |     pyhd3eb1b0_0          36 KB
+    pillow-9.2.0               |   py39hdc2b20a_1         908 KB
+    tk-8.6.12                  |       h2bbff1b_0         3.1 MB
+    ------------------------------------------------------------
+                                           Total:        10.4 MB
+
+The following NEW packages will be INSTALLED:
+
+  brotli             pkgs/main/win-64::brotli-1.0.9-ha925a31_2
+  cycler             pkgs/main/noarch::cycler-0.11.0-pyhd3eb1b0_0
+  fonttools          pkgs/main/noarch::fonttools-4.25.0-pyhd3eb1b0_0
+  freetype           pkgs/main/win-64::freetype-2.10.4-hd328e21_0
+  icu                pkgs/main/win-64::icu-58.2-ha925a31_3
+  kiwisolver         pkgs/main/win-64::kiwisolver-1.4.2-py39hd77b12b_0
+  libwebp            pkgs/main/win-64::libwebp-1.2.2-h2bbff1b_0
+  matplotlib         pkgs/main/win-64::matplotlib-3.5.1-py39haa95532_1
+  matplotlib-base    pkgs/main/win-64::matplotlib-base-3.5.1-py39hd77b12b_1
+  munkres            pkgs/main/noarch::munkres-1.1.4-py_0
+  packaging          pkgs/main/noarch::packaging-21.3-pyhd3eb1b0_0
+  pillow             pkgs/main/win-64::pillow-9.2.0-py39hdc2b20a_1
+  pyparsing          pkgs/main/noarch::pyparsing-3.0.4-pyhd3eb1b0_0
+  pyqt               pkgs/main/win-64::pyqt-5.9.2-py39hd77b12b_6
+  python-dateutil    pkgs/main/noarch::python-dateutil-2.8.2-pyhd3eb1b0_0
+  qt                 pkgs/main/win-64::qt-5.9.7-vc14h73c81de_0
+  sip                pkgs/main/win-64::sip-4.19.13-py39hd77b12b_0
+  tk                 pkgs/main/win-64::tk-8.6.12-h2bbff1b_0
+  tornado            pkgs/main/win-64::tornado-6.1-py39h2bbff1b_0
+
+
+Proceed ([y]/n)? y
+
+
+Downloading and Extracting Packages
+packaging-21.3       | 36 KB     | ############################################################################ | 100%
+matplotlib-base-3.5. | 5.6 MB    | ############################################################################ | 100%
+libwebp-1.2.2        | 658 KB    | ############################################################################ | 100%
+cycler-0.11.0        | 12 KB     | ############################################################################ | 100%
+matplotlib-3.5.1     | 29 KB     | ############################################################################ | 100%
+kiwisolver-1.4.2     | 58 KB     | ############################################################################ | 100%
+tk-8.6.12            | 3.1 MB    | ############################################################################ | 100%
+pillow-9.2.0         | 908 KB    | ############################################################################ | 100%
+Preparing transaction: done
+Verifying transaction: done
+Executing transaction: done
+
+(pyclim) C:\Users\anne.baranger\Documents\Era5-land\python>python help_Anne.py
+
+(pyclim) C:\Users\anne.baranger\Documents\Era5-land\python>

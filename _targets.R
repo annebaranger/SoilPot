@@ -2,14 +2,14 @@
 
 #library
 library(targets)
-#lapply(c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf"),require,character.only=TRUE)
+#lapply(c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate"),require,character.only=TRUE)
 
 
 #Options
 source("R/functions_data.R")
 source("R/functions_plot.R")
 options(tidyverse.quiet = TRUE)
-tar_option_set(packages = c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf"))
+tar_option_set(packages = c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate"))
 
 #Targets
 list(
@@ -37,7 +37,31 @@ list(
     textureERA5,
     get_textureERA5(dir.data="data",
                     dir.file="texture-2020.nc",
-                    europe)
+                    europe,
+                    # pars from Wosten 1999, for SUBSOIL
+                    pars=data.frame(texture=c(6,5,4,3,2,1),
+                                    psi_e=c(-0.790569415,-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
+                                    b=c(2.6411388301,2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
+                                    teta_r=c(0.010,0.0250,0.0100,0.0100,0.0100,0.0100),
+                                    teta_s=c(0.766,0.3660,0.3920,0.4120,0.4810,0.5380),
+                                    alpha=c(0.0130,0.0430,0.0249,0.0082,0.0198,0.0168),
+                                    n=c(1.2039,1.5206,1.1689,1.2179,1.0861,1.0730),
+                                    m=c(0.1694,0.3424,0.1445,0.1789,0.0793,0.0680)))
+  ),
+  tar_target(
+    textureERA5Toth,
+    get_textureERA5(dir.data="data",
+                    dir.file="texture-2020.nc",
+                    europe,
+                    # pars from Toth 2015, for SUBSOIL
+                    pars=data.frame(texture=c(6,5,4,3,2,1),
+                                    psi_e=c(-0.790569415,-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
+                                    b=c(2.6411388301,2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
+                                    teta_r=c(0.111,0.045,0.000,0.000,0.000,0.000),
+                                    teta_s=c(0.697,0.438,0.459,0.432,0.478,0.522),
+                                    alpha=c(0.0069,0.0478,0.0309,0.0094,0.0403,0.0112),
+                                    n=c(1.4688,1.3447,1.1920,1.2119,1.1176,1.1433),
+                                    m=c(0.3192,0.2563,0.1611,0.1749,0.1053,0.1253)))
   ),
 ## Get forest cover at the right resolution ##
 ##############################################
@@ -49,66 +73,101 @@ list(
   ),
 ## Compute SWC according to depth required ##
 #############################################
+  #Get SWc
+  tar_target(
+    SWCtot,
+    get_SWC(dir.data="data",
+            dir.file="swc-1950-2021.nc",
+            europe)
+  ),
   #All horizons
   tar_target(
     SWC289,
-    volumetric_content(dir.data="data",
-                       dir.file="swc-1950-2021.nc",
-                       europe,
-                       depth=289)
+    extr_swc(weight_swc(dir.data="data",
+                        dir.file="swc-1950-2021.nc",
+                        SWCtot,
+                        depth=289),
+             "month",
+             "1949-12-01")
   ),
   # 3 first horizons
+  #keep time serie
+  tar_target(
+    SWC100t,
+    weight_swc(dir.data="data",
+               dir.file="swc-1950-2021.nc",
+               SWCtot,
+               depth=100)
+  ),
+  # extr 
   tar_target(
     SWC100,
-    volumetric_content(dir.data="data",
-                       dir.file="swc-1950-2021.nc",
-                       europe,
-                       depth=100)
+    extr_swc(SWC100t,
+             "month",
+             "1949-12-01")
   ),
   # 3 first horizons until 50
   tar_target(
     SWC50,
-    volumetric_content(dir.data="data",
-                       dir.file="swc-1950-2021.nc",
-                       europe,
-                       depth=50)
+    extr_swc(weight_swc(dir.data="data",
+                        dir.file="swc-1950-2021.nc",
+                        SWCtot,
+                        depth=50),
+             "month",
+             "1949-12-01")
   ),
 ## Compute psi_min according to texture and swc ##
 ##################################################
   # ERA5 x d50
   tar_target(
     psi_ERA_50,
-    soil_potential(textureERA5,SWC50[[1]])
+    compute_psiweighted(textureERA5,SWC50)
   ),
   # ERA5 x d100
   tar_target(
     psi_ERA_100,
-    soil_potential(textureERA5,SWC100[[1]])
+    compute_psiweighted(textureERA5,SWC100)
+  ),
+  # ERA5 x d289
+  tar_target(
+    psi_ERA_289,
+    compute_psiweighted(textureERA5,SWC289)
   ),
   # ESDAC x topsoil x d50
   tar_target(
     psi_ESDACt_50,
-    soil_potential(textureESDAC$topsoil,SWC50[[1]])
+    compute_psiweighted(textureESDAC$topsoil,SWC50)
   ),
   # ESDAC x topsoil x d100
   tar_target(
     psi_ESDACt_100,
-    soil_potential(textureESDAC$topsoil,SWC100[[1]])
+    compute_psiweighted(textureESDAC$topsoil,SWC100)
   ),
   # ESDAC x subsoil x d50
   tar_target(
     psi_ESDACs_50,
-    soil_potential(textureESDAC$subsoil,SWC50[[1]])
+    compute_psiweighted(textureESDAC$subsoil,SWC50)
   ),
   # ESDAC x subsoil x d100
   tar_target(
     psi_ESDACs_100,
-    soil_potential(textureESDAC$subsoil,SWC100[[1]])
+    compute_psiweighted(textureESDAC$subsoil,SWC100)
   ),
   # ESDAC x subsoil x d289
   tar_target(
     psi_ESDACs_289,
-    soil_potential(textureESDAC$subsoil,SWC289[[1]])
+    compute_psiweighted(textureESDAC$subsoil,SWC289)
+  ),
+## Compute psi_min swc and param per horizon ##
+###############################################
+  tar_target(
+    psihor_100,
+    compute_psihor(SWCtot,
+                   3,
+                   "month",
+                   "1949-12-01",
+                   dir.data="data",
+                   dir.file="EU_SoilHydroGrids_1km")
   ),
 ## Mask only forest plots ##
 ############################
@@ -120,13 +179,13 @@ list(
   ),
   tar_target(
     chronology_weighted,
-    chronology_swc(SWC=SWC289[[2]])
-  ),
-  tar_target(
-    HSMs,
-    HSM_distribution(dir.data="data",
-                      dir.p50="p50select.csv",
-                      europe,
-                      psi_ESDACs_100)
-  )
+    chronology_swc(SWC=SWC100t)
+  )#,
+  # tar_target(
+  #   HSMs,
+  #   HSM_distribution(dir.data="data",
+  #                     dir.p50="p50select.csv",
+  #                     europe,
+  #                     psi_ESDACs_100)
+  # )
 )
