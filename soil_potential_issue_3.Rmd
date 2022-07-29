@@ -1,0 +1,970 @@
+---
+title: "Soil potential issue 3"
+author: "Anne Baranger"
+date: "29/04/2022"
+output:
+  bookdown::html_document2:
+    number_sections: false
+    toc: true
+    toc_float: yes
+    theme: flatly
+  bookdown::word_document2: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.path = "plots/fig_",echo=FALSE)
+library(targets)
+library(tidyr)
+library(dplyr)
+library(viridis)
+library(terra)
+library(ggplot2)
+library(sf)
+library(data.table)
+library(stringr)
+```
+
+In this document, we use texture extracted from ERA5 directly, in order to be consistent with model used in ERA5. Overall, using a different source for texture do not change radically results, except resolution and extreme values.
+
+Two major issues emerge from the computation of soil minimum potential :
+* the time step used in swc time series to compute minimum, monthly or daily
+* the way different soil horizons are taken into account
+
+
+
+# Raw computation over all horizons
+A first method had been to take all soil layers in ERA5-land model and to weight soil water content of each layer by its depth.
+
+Doing so, the deepest horizon, which is also the thickest, weighed to much is the computation regarding the proportion of roots that can reach it. This horizon, because deep, always has a high water content and a high inertia. 
+
+This could be modulated by putting a depth threshold below which roots are assumed to be absent. Different horizons are weighted consequently.Still, computed potential was higher than expected.
+
+* comparison of potential computed using different soil depth : 50, 100 and 289 cm
+
+
+```{r ComparisonPsiDepth}
+tar_load(c("psi_ERA_50","psi_ERA_100","psi_ERA_289"))
+
+cbind(psi_ERA_50[,c(1,2,3,16)],psi_VG100=psi_ERA_100[,16],psi_VG289=psi_ERA_289[,16]) %>% 
+  mutate(across(.cols=matches("psi_VG"),
+                ~ cut(.,
+                       breaks=c(-Inf, -50000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                       labels=c("<-50MPa", "-50<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa", "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")))) %>% 
+  pivot_longer(cols=colnames(.)[matches("psi_VG")]) %>% 
+  ggplot()+
+    geom_tile(aes(x=x,y=y,fill=value))+
+    scale_fill_brewer(palette="RdYlBu")+
+    theme_bw()+
+    theme(axis.title=element_blank())+
+    facet_wrap(~name)+
+    coord_quickmap()
+
+```
+At this stage of the analysis, different options can explain that potential do not drop low enough :
+* parameters used to transform swc into potential are not well assessed -> try other parameter
+* swc of ERA5 is biased -> check consistency with measured sequence 
+* swc min has to be computed on a daily basis and not a monthly basis
+* the different horizons are not weighted accurately regarding soil root distribution
+
+
+# Pedotransfer function and parameters variation
+
+Different sets of parameters can be used as Van Genuchten equations have been calibrated many times. A first set of parameter is from Wosten 1999, who calibrated it on European soils. A second was from Toth 2015 who reviewed the different way to use pedotransfer equations. The latter gave equations that smoothed the weight of texture in potential computation.
+
+* comparison of pedo transfer function computed using different set of parameters 
+
+* comparison of potential obtained using different sets of parameters for 50cm depth
+
+```{r VGPars}
+pars_top_VG <- data.frame(texture=c(6,5,4,3,2,1),
+                        teta_r=c(0.010,0.0250,0.0100,0.0100,0.0100,0.0100),
+                        teta_s=c(0.766,0.4030,0.4390,0.4300,0.5200,0.6140),
+                        alpha=c(0.0130,0.0383,0.0314,0.0083,0.0367,0.0265),
+                        n=c(1.2039,1.3774,1.1804,1.2539,1.1012,1.1033),
+                        m=c(0.0936,0.2740,0.1528,0.2025,0.0919,0.0936)) %>% 
+    mutate(texture=as.factor(texture))
+
+pars_sub_VG <- data.frame(texture=c(6,5,4,3,2,1),
+                        teta_r=c(0.010,0.0250,0.0100,0.0100,0.0100,0.0100),
+                        teta_s=c(0.766,0.366,0.392,0.412,0.481,0.538),
+                        alpha=c(0.0130,0.0430,0.0249,0.0082,0.0198,0.0168),
+                        n=c(1.2039,1.5206,1.1689,1.2179,1.0861,1.0730),
+                        m=c(0.194,0.3424,0.1445,0.1789,0.0793,0.0680)) %>% 
+    mutate(texture=as.factor(texture))
+
+
+pars_top_TOTH <- data.frame(texture=c(6,5,4,3,2,1),
+                        teta_r=c(0.111,0.045,0.000,0.000,0.000,0.000),
+                        teta_s=c(0.697,0.438,0.459,0.432,0.478,0.522),
+                        alpha=c(0.0069,0.0478,0.0309,0.0094,0.0403,0.0112),
+                        n=c(1.4688,1.3447,1.1920,1.2119,1.1176,1.1433),
+                        m=c(0.3192,0.2563,0.1611,0.1749,0.1053,0.1253)) %>% 
+    mutate(texture=as.factor(texture))
+
+pars_sub_TOTH <- data.frame(texture=c(6,5,4,3,2,1),
+                        teta_r=c(0.000,0.057,0.000,0.000,0.000,0.000),
+                        teta_s=c(0.835,0.404,0.428,0.418,0.430,0.511),
+                        alpha=c(0.0113,0.0426,0.0347,0.0066,0.0011,0.0002),
+                        n=c(1.2256,1.5349,1.1725,1.2173,1.2290,1.4048),
+                        m=c(0.1841,0.3485,0.1471,0.1785,0.1863,0.2882)) %>% 
+    mutate(texture=as.factor(texture))
+
+```
+
+```{r PedotransferFunction}
+psi_ERA_50=psi_ERA_50 %>% select(x,y,texture,SWC_min) %>% mutate(texture=as.factor(texture))
+pars=tibble::lst(pars_top_VG,pars_sub_VG,pars_top_TOTH,pars_sub_TOTH)
+
+plots=lapply(seq_along(pars),function(x,y,i){
+  pars[[i]] %>% 
+    crossing(teta=seq(0,1,0.001)) %>% 
+    mutate(psi_min=-((((teta_s-teta_r)/(teta-0.05-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+    ggplot(aes(teta,psi_min,color=texture))+
+    geom_line(size=0.81)+
+    #geom_point(data=psi_min,aes(SWC_w_min,psi_t_VG,color=as.factor(texture_t)))+
+    ylab("Psi_min (kPa)")+
+    xlab("teta")+
+    ylim(0,-15000)+
+    theme_bw()+
+    geom_vline(xintercept=c(0.01,0.1))+ 
+    geom_hline(yintercept = -1000)+
+    scale_color_brewer(palette="Spectral",direction=-1)+
+    ggtitle(y[[i]])
+  },
+  x=pars,
+  y=names(pars))
+
+cowplot::plot_grid(plotlist=plots)
+
+```
+
+
+
+```{r PTFMapComp}
+psi50=plyr::join_all(lapply(seq_along(pars),function(x,y,i){
+  psi_ERA_50 %>% 
+    left_join(x[[i]],by="texture") %>%
+    mutate("{y[[i]]}":=-((((teta_s-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+    select(x,y,texture,SWC_min,!!y[[i]])
+  },
+  x=pars,
+  y=names(pars)
+  ),by=c("x","y","texture","SWC_min"))
+
+
+psi50 %>% 
+  mutate(across(.cols=matches("pars"),
+                ~ cut(.,
+                       breaks=c(-Inf, -50000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                       labels=c("<-50MPa", "-50<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa", "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")))) %>% 
+  pivot_longer(cols=colnames(.)[matches("pars")]) %>% 
+  ggplot()+
+    geom_tile(aes(x=x,y=y,fill=value))+
+    scale_fill_brewer(palette="RdYlBu")+
+    theme_bw()+
+    theme(axis.title=element_blank())+
+    facet_wrap(~name)+
+    coord_quickmap()
+
+```
+
+
+```{r PTFDensityComp}
+psi50 %>% 
+  pivot_longer(cols=colnames(.)[matches("pars")]) %>% 
+  ggplot(aes(-value*10^(-3),color=name))+
+  geom_density()+
+  scale_x_log10()+
+  geom_vline(xintercept = 1)
+```
+
+Conclusion: using Toth parameters enabled to give less weight to texture, and to have higher soil potential. Best seems to keeping Toth set of parameters.
+
+```{r PTFcleaning}
+rm(pars,pars_sub_TOTH,pars_sub_VG,pars_top_TOTH,pars_top_VG,plots,psi_ERA_100,psi_ERA_289,psi_ERA_50,psi50)
+```
+
+
+
+# Time series of SWC/psi
+Using soil water sequence from FontBlanche we can compare with swc sequences from ERA5-land, looking at different horizons.
+
+
+
+## Subset of 6 french locations
+
+A first step is to compare timeseries of different locations, using ERA5-land data, and looking at SWC and potential timeseries.
+
+Amplitude of variation of SWC is higher with daily time series, which in some locations highly impact minimum potential computed. Because PTF are exponential, tiny variations of SWC can lead to radically different minimum potential.
+This is mainly true for the first horizon. In the second and deeper, there is not that much variation between daily and monthly timestep for the same horizon.
+
+
+```{r ExtractTimeSeries}
+toextract <- data.frame(Loc=c("Luberon","Landes","Orléans","Chamrousse","GrandEst","Grignols"),
+                        Lon=c(5.387792,-0.438943,1.9,5.860739,5.569744,0.0),
+                        Lat=c(43.814892,44.427567,47.4,45.092439,48.475034,44.4))
+
+# Function to extract swc time series of specific points
+time_swc <- function(dir.file,time.step,toextract){
+  time=as.character(as.POSIXct(rast(dir.file)@ptr$time,origin = "1970-01-01",tz = "GMT"))
+  SWC_t=as.data.frame(extract(rast(dir.file),toextract[,2:3]),
+                      row.names=toextract[,1]) %>% 
+    select(-ID) %>% 
+    tibble::rownames_to_column(var="Loc") %>% 
+    pivot_longer(cols=colnames(.)[c(-1)],values_to = "swc") %>% 
+    bind_cols(date=rep(as.Date(time),dim(toextract)[1])) %>% 
+    separate(name,sep="_",c("drop","time")) %>% 
+    mutate(hor=as.factor(paste0("hor_",str_extract(drop,"\\d+")))) %>% 
+    select(-drop,-time) %>% 
+    pivot_wider(names_from="hor",values_from ="swc" )
+  return(SWC_t) 
+}
+
+# function to plot time series of swc or psi (for texture 5)
+plot_timeswc <- function(SWC_t,psi=TRUE){
+  if(psi==TRUE){
+    plot=SWC_t %>% 
+      pivot_longer(cols=colnames(.)[c(-1,-2)],values_to="swc",names_to = "hor") %>% 
+      mutate(psi=-((((0.438-0.045)/(swc-0.045))^(1/0.2563)-1)^(1/1.3447))*(1/0.0478)*9.78*10^(-2)) %>% 
+      ggplot(aes(date,psi,color=hor))+
+      geom_point()+
+      theme_bw()+
+      facet_wrap(~Loc,scales="free_y")
+  }
+  if(psi==FALSE){
+    plot=SWC_t %>% 
+      pivot_longer(cols=colnames(.)[c(-1,-2)],values_to="swc",names_to = "hor") %>% 
+      ggplot(aes(date,swc,color=hor))+
+      geom_point()+
+      ylim(0,1)+
+      theme_bw()+
+      facet_wrap(~Loc)
+  }
+  return(plot)
+}
+```
+
+
+```{r PlotTimeSeriesHor}
+SWC_dt=time_swc(dir.file="data/SWCd1-4_1950-2021.nc",time.step="d",toextract)
+plot_timeswc(SWC_dt,psi=FALSE) + ggtitle("Daily time series of swc")
+plot_timeswc(SWC_dt,psi=TRUE) + ggtitle("Daily time series of psi (kPa)")
+SWC_mt=time_swc(dir.file="data/swc-1950-2021.nc",time.step = "m",toextract)
+plot_timeswc(SWC_mt,psi=FALSE) + ggtitle("Monthly time series of swc")
+plot_timeswc(SWC_mt,psi=TRUE) + ggtitle("Monthly time series of psi (kPa)")
+```
+
+```{r PlotTimeSeries50}
+SWC_mt %>% 
+  mutate(hor_123=(7*hor_1+21*hor_2+22*hor_3)/50,
+          psi_123=-((((0.438-0.045)/(hor_123-0.045))^(1/0.2563)-1)^(1/1.3447))*(1/0.0478)*9.78*10^(-2)) %>% 
+  select(Loc,date,hor_123,psi_123) %>% 
+  pivot_longer(cols=c("hor_123","psi_123")) %>% 
+    ggplot(aes(date,value))+
+    geom_point(size=0.9)+
+    theme_bw()+
+    #geom_line()+
+    facet_grid(name~Loc,scales="free_y")+
+    theme(axis.text.x = element_text(angle=40))
+
+```
+
+
+```{r 6LocClean}
+rm(SWC_dt,SWC_mt,toextract)
+```
+
+## Fontblanche site
+
+Second, it is interesting to confront the model predictions with experimental measures. We overlayed water content time series at the Fontblanche site. 
+
+Soil water content time series match quite well for this site. A remaining question is which value of saturation water content use : theoretical parameters or experimental maxima. Using experimental maxima reveals that ERA5 maxima are underestimated, and therefor biases psi computation.
+
+The choice of the value of water content at saturation is key in psi computation.
+
+```{r PlotTimeSeriesFontblanche}
+# Data only for summer month over 1950-2021, daily, Europe
+#swc_fontblanche=time_swc("data/SWCd1-4_1950-2021.nc",time.step="d",data.frame(loc="fontblanche",lon=5.67865,lat=43.4))
+
+# Data for all months over 2011-2021, daily, Fr Spain
+swc_fontblanche=time_swc("data/swcd1-3_2011-2021_FrEsp.nc",time.step="d",data.frame(loc="fontblanche",lon=5.67865,lat=43.4))
+plot_timeswc(swc_fontblanche,psi=FALSE)
+
+swc_fontblanche=swc_fontblanche %>%
+  mutate(SWC50=(hor_1*7+hor_2*21+hor_3*22)/50)
+```
+
+
+```{r PlotMeasuresSWC}
+# Compute mean of SWC over the horizon 0-50cm, compute time of measures
+df_fontblanche=read.csv2("data/Fontblanche/FR-FBn_BM_Soil_Moisture_L2A.csv")%>% 
+  select(TIMESTAMP,matches("SWC_TD_2")) %>% 
+  mutate(across(.cols=matches("SWC_TD_2"),as.numeric)) %>% 
+  mutate(time=as.POSIXct(TIMESTAMP,format="%d/%m/%Y %H:%M",tz=Sys.timezone()),
+         date=as.Date(format(time, format = "%Y-%m-%d")),
+         hour=format(time, format = "%H:%M"),
+         year=format(time,format="%Y"))
+df_fontblanche$SWCmean=rowMeans(df_fontblanche[,2:6]) 
+
+cowplot::plot_grid(
+## Comp ERA5/Fontblanche SWC
+df_fontblanche %>% 
+  filter(hour=="13:00") %>% 
+  left_join(swc_fontblanche,by=c("date")) %>% 
+#  select(time.x,matches("SWC_TD"),matches("hor")) %>% 
+  select(date,SWCmean,SWC50) %>% 
+  rename(`SWC measured`="SWCmean",
+         `SWC ERA5`= "SWC50") %>% 
+  pivot_longer(cols=colnames(.)[-1]) %>% 
+  ggplot(aes(date,value,col=name))+
+  geom_point()+
+  ylim(0,1)+
+  theme_bw()+
+  ylab("Soil water content (m3.m-3)")+
+  geom_hline(yintercept = 0.439)+
+ # ylab("Soil potential (kPa)")+
+  theme(legend.title = element_blank()),
+## Comp ERA5/FOntblanche Psi
+df_fontblanche %>% 
+  filter(hour=="13:00") %>% 
+  left_join(swc_fontblanche,by=c("date")) %>% 
+#  select(time.x,matches("SWC_TD"),matches("hor")) %>% 
+  select(date,SWCmean,SWC50) %>% 
+  rename(`Psi measured`="SWCmean",
+         `Psi ERA5`= "SWC50") %>% 
+  mutate(`Psi measured`=(`Psi measured`/(0.617-0.01)),
+         `Psi ERA5`=(`Psi ERA5`/(0.4260-0.01))) %>% 
+  pivot_longer(cols=colnames(.)[-1]) %>% 
+  mutate(psi=-(((1/value)^(1/0.1611)-1)^(1/1.1920))*(1/0.0309)*9.78*10^(-2)) %>% 
+  ggplot(aes(date,psi,col=name))+
+  geom_point()+
+  #ylim(0,1)+
+  theme_bw()+
+ # ylab("Soil water content (m3.m-3)")+
+  ylab("Soil potential (kPa)")+
+  theme(legend.title = element_blank()),
+nrow=2)
+
+
+## Comp SWCERA5(SWCFontblanche)
+df_fontblanche %>% 
+  filter(hour=="13:00") %>% 
+  left_join(swc_fontblanche,by=c("date")) %>% 
+#  select(time.x,matches("SWC_TD"),matches("hor")) %>% 
+  select(date,year,SWCmean,SWC50) %>% 
+  filter(is.na(SWC50)==FALSE) %>% 
+  filter(SWCmean>0) %>% 
+  rename(`SWC measured`="SWCmean",
+         `SWC ERA5`= "SWC50") %>% 
+  ggplot(aes(`SWC measured`,`SWC ERA5`,color=year))+
+  geom_point()+
+  theme_bw()+
+  theme(legend.title = element_blank())+
+  geom_abline(slope=1,intercept=0)+
+  ylim(0.11,0.5)+xlim(0.1,0.5)
+
+
+## SWC error / ERA5
+df_fontblanche %>% 
+  filter(hour=="13:00") %>% 
+  left_join(swc_fontblanche,by=c("date")) %>% 
+#  select(time.x,matches("SWC_TD"),matches("hor")) %>% 
+  select(date,year,SWCmean,SWC50) %>% 
+  filter(is.na(SWC50)==FALSE) %>% 
+  filter(SWCmean>0) %>% 
+  mutate(dSWC=100*(SWCmean-SWC50)/SWCmean) %>% 
+  rename(`SWC measured`="SWCmean",
+         `SWC ERA5`= "SWC50") %>% 
+  ggplot(aes(`SWC ERA5`,dSWC,color=year))+
+  geom_point()+
+  theme_bw()+
+  theme(legend.title = element_blank())+
+  geom_abline(slope=1,intercept=0)
+# 
+# 
+# df_fontblanche%>% 
+#   select(matches("SWC_TD_1")) %>% 
+#   mutate_all(as.numeric) %>% 
+#   mutate(time=row_number()) %>% 
+#   pivot_longer(cols=colnames(.)[c(-6)]) %>% 
+#   ggplot(aes(time,value,col=name))+
+#   geom_point()+
+#   ylim(0,1)+
+#   theme(legend.position="none")
+```
+
+```{r FontblancheCleaning}
+rm(df_fontblanche,swc_fontblanche)
+```
+
+
+# Difference between hor - monthly data
+
+
+Even if changing parameters enabled to reach potential a bit more consistent, it was not sufficient to explain potential as low as those obtained in France. 
+
+To explore these differences, we compared soil potential by horizons. Doing so, we observed that first horizons had very low potential, sometimes far below the expected value, especially in Spain, were it outreached 50MPa. This was in agreement with the observation of lowest minimum soil water content in upper horizons, because texture is assumed to be constant between horizons. Still, in France, potential was not that low in any soil horizons.
+
+
+
+## Maps of different horizons potential
+```{r SWC.SMP.monthly.horizon}
+# Get monthly data time series of SWC cropped on Europe
+tar_load(SWCtot)
+#tar_load(textureERA5)
+tar_load(textureERA5Toth)
+#textureERA5=rast(textureERA5,crs="epsg:4326")
+ textureERA5Toth=rast(textureERA5Toth,crs="epsg:4326")
+# textureERA5Toth=resample(textureERA5Toth,rast(SWC[[1]],crs="epsg:4326"),method="near")
+ksat <- data.frame(
+  texture=c(6,5,4,3,2,1),
+  ksat=c(8,70,10.755,4,8.5,8.235)
+)
+time.step="m"
+
+# generates time series per horizon
+for (i in 1:3){
+  assign(paste0("SWC",time.step,"_",i),
+      cbind(SWCtot[,c("x","y")],SWCtot[,c(grepl(paste0("swvl",i), names(SWCtot)))]))
+}
+SWCm50 <- (7*SWCm_1+
+  21*SWCm_2+
+  22*SWCm_3)/50
+
+SWChor=mget(ls()[grepl(paste0("SWC",time.step),ls())])
+
+# looks for min/max per horizon
+SWC=lapply(seq_along(SWChor),
+       function(hor,i){
+         SWC=setDT(hor[[i]])
+         SWC=SWC[,loc_ID:=.I]
+         SWC=melt.data.table(SWC,id.vars=c("loc_ID","x","y"))
+         SWC[,time:=as.numeric(sub(".*_","",variable))]
+         SWC[,year:=as.factor(1950+(as.numeric(time)-1)%/%12)]
+         SWC[,month:=as.factor(as.numeric(time)%%12)]
+         SWC=SWC[month%in%c(6,7,8,9),][,.(Min=min(value),Max=max(value)),by="loc_ID,x,y,year"]
+         SWC=SWC %>% 
+           group_by(loc_ID,x,y) %>% 
+           summarise(SWC_min=mean(head(sort(Min),5)),
+                     SWC_max=mean(tail(sort(Max),5))) %>%
+           ungroup() %>% 
+           select(-loc_ID)
+         return(SWC)
+       },
+       hor=SWChor)
+names(SWC)=names(SWChor)
+
+
+# potential per horizon
+textureERA5Toth=resample(textureERA5Toth,rast(SWC[[1]],crs="epsg:4326"),method="near")
+psi_hor=lapply(seq_along(SWC),
+       function(SWC,hor,i){
+         assign(paste0("psi_",hor[i]),
+                as.data.frame(c(rast(SWC[[i]],crs="epsg:4326"),textureERA5Toth),
+                       xy=TRUE) %>%
+                  left_join(ksat,by="texture") %>% 
+                  mutate(psi_VG=-((((teta_s-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+                         psi_VGmax=-((((SWC_max-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>%
+                  mutate(psi_VG=case_when(SWC_min>teta_s~-0.1,TRUE~psi_VG))) %>% 
+                  mutate(REW_max=(SWC_min-teta_r)/(SWC_max-teta_r),
+                         REW_s=(SWC_min-teta_r)/(teta_s-teta_r))
+         
+         
+       },
+       SWC=SWC,
+       hor=names(SWC))
+names(psi_hor)=names(SWChor)
+```
+
+
+```{r SWC.SMP.monthly.horizon.maps}
+# maps SWCmin per horizon
+purrr::reduce(psi_hor,full_join,by=c("x","y")) %>% 
+  select(matches(c("^x$","^y$","SWC_min"))) %>% 
+  #rename(!!!setNames(names(matches("SWC_min")), c("50cm","Hor1","Hor2","Hor3")))
+  rename_with(~c("Hor 1","Hor 2","Hor 3","50cm"),.cols=matches("SWC_min")) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  ggplot()+
+  geom_tile(aes(x=x,y=y,fill=value)) + 
+  scale_fill_gradientn(name = "SWC min",colours = viridis(3,direction=-1), 
+                    na.value="transparent") +
+  facet_wrap(~name)+
+  theme(axis.title=element_blank())+
+  theme_bw()+
+  coord_quickmap()
+# map potential per horizon, gradient
+
+# plots=lapply(psi_hor,
+#        function(i){
+#          i%>% 
+#            ggplot()+
+#            geom_tile(aes(x=x,y=y,fill=-psi_VG)) +
+#            theme_bw() +
+#            labs(x = "Longitude", y = "Latitude") + # make plot more readable
+#            scale_fill_gradientn(name = "potential min",trans="log",colours = viridis(80),
+#                                 na.value="transparent",
+#                                 limits=c(0.1,100000),
+#                                 breaks=c(1,1000,5000,20000))+
+#            coord_quickmap()
+#          }
+#        )
+
+# map potential per horizon, category
+plots=lapply(seq_along(psi_hor),
+       function(i,names,psi_hor){
+         psi_hor[[i]]%>% 
+           mutate(across(.cols=matches("psi_VG"),
+                ~ cut(.,
+                       breaks=c(-Inf, -50000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                       labels=c("<-50MPa", "-50<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa", "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")))) %>% 
+           ggplot()+
+           geom_tile(aes(x=x,y=y,fill=psi_VG)) +
+           theme_bw() +
+           ggtitle(names[i])+
+           scale_fill_brewer(palette="RdYlBu")+
+           theme(axis.title=element_blank())+
+           coord_quickmap()
+         },
+       psi_hor=psi_hor,
+       names=names(psi_hor)
+       )
+
+
+
+cowplot::plot_grid(plots[[1]]+theme(legend.position = "none"),
+             plots[[2]]+theme(legend.position = "none"),
+             plots[[3]]+theme(legend.position = "none"),
+             plots[[4]] +theme(legend.position = "none"),
+             cowplot::get_legend(plots[[4]]+
+                                   theme(legend.text=element_text(size=8),
+                                         legend.title = element_text(size=8),
+                                         legend.key.size=unit(0.5,"cm"))+
+                                   ggtitle("SWC 50cm, Wosten")+
+                                   coord_quickmap()),
+             ncol=5,
+             rel_widths = c(1,1,1,1,0.6))
+
+```
+
+## Use Sureau to weight different horizons
+A way to account more accurately for differences between horizons is to weight them according to root distribution in different horizons and to soil conductivity.
+
+Using Sureau method we can weight the different horizons according to their conductivity. it depends on the soil water content and its PTF, and soil root distribution.
+
+In order to compare different methods, we will compare a Sureau weighted method using wosten parameters and horizons until 50cm depth, and a depth weighted method until 50cm.
+
+```{r Sureau.monthly}
+## Surean algo ##
+#################
+
+## Functions
+# sum conductance in serie
+kseriesum <- function(k1,k2) {return(1/(1/k1+1/k2))}
+
+# Compute B Garderner Cowan (BGC)=> Scaling soil conductivity (Koil) to the soil layer explored by roots (kSoil)
+compute.B_GC <- function (La, Lv, rootRadius) {
+  #calculate B Gardner cowen the scaling factor for soil conductance
+  #La : root length per m2 of soil in the layer
+  #Lv : root length per volume
+  #pi
+  b <- 1 / sqrt(pi * Lv)
+  return(La * 2 * pi / (log(b/rootRadius)))
+}
+
+#Compute kSoil with Van Genuchten
+compute.KSoil <- function(REW, I_vg=0.5, n_vg, Ksat_vg, B_GC) {
+  m <- (1 - 1 / n_vg)
+  KSoil = Ksat_vg * REW^(I_vg) * (1 - (1 - REW^(1 / m))^m)^2
+  kSoil_GC = 1000  * B_GC * KSoil
+  return(kSoil_GC) #c(KSoil, kSoil_GC)
+}
+
+
+## Default values
+#Root profile assumption see : Jackson et al 1996
+betaRootProfile =0.97 
+#Soil depth (in m)
+depth <- c(0.07,0.28,0.5)
+#Soil volume (in m3)
+SoilVolume <- depth 
+rootDistribution <-numeric(3) #Three soil layers
+rootDistribution[1] = 1-betaRootProfile^(depth[1]*100) # conversion of depth to cm 
+rootDistribution[2] = (1-betaRootProfile^(depth[2]*100))-rootDistribution[1]
+rootDistribution[3] = 1-(rootDistribution[1]+rootDistribution[2])
+
+# determine root length for soil conductance (La gardner-cowan model)
+#First estimate root area for the stand which depends:
+# on fRootToLeaf : fine root to leaf area ratio (assuming fRootToLeaf= 1)
+# on Leaf area index (assuming LAImax= 5m2/m2)
+# fine root radius (assuming rootRadius =0.0004 m) 
+fRootToLeaf=1
+LAImax = 5
+RAI = LAImax*fRootToLeaf
+rootRadius=0.0004
+
+#root length per unit area
+La = RAI*rootDistribution / (2*pi*rootRadius)
+#root length per unit volume
+Lv = La/(SoilVolume)
+compute.B_GC(La,Lv,rootRadius)
+
+#KRoot to stem for each root (soil layers) 
+k_RootToStem   = 1 * rootDistribution #Kroot to stem for each root
+#KSoil to stem for each root (soil layers) 
+
+
+## Compute conductivity for each horizons (and each point)
+for (i in 1:3){
+  psi_hor[[i]] <- psi_hor[[i]] %>% 
+  mutate(ksoil=compute.KSoil(REW_s,I_vg=0.5,n_vg=n,Ksat_vg=ksat,
+                             compute.B_GC(La,Lv,rootRadius)[i]),
+         ksoiltostem=kseriesum(ksoil,k_RootToStem[i]))
+}
+
+## Compute psi weighted by conductivity
+psi_allsoil=as.data.frame(cbind(x=psi_hor[[1]]$x,
+                  y=psi_hor[[1]]$y,
+                  psi_1=psi_hor[[1]]$psi_VG,
+                  ksoil_1=psi_hor[[1]]$ksoiltostem,
+                  psi_2=psi_hor[[2]]$psi_VG,
+                  ksoil_2=psi_hor[[2]]$ksoiltostem,
+                  psi_3=psi_hor[[3]]$psi_VG,
+                  ksoil_3=psi_hor[[3]]$ksoiltostem
+                  ))
+
+cowplot::plot_grid(
+  psi_allsoil %>% 
+    mutate(psi_allsoil=(psi_1*ksoil_1+psi_2*ksoil_2+psi_3*ksoil_3)/(ksoil_1+ksoil_2+ksoil_3)) %>% 
+    mutate(psi_allsoil=cut(psi_allsoil,breaks=c(-Inf, -50000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                         labels=c("<-50MPa", "-50<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa", "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))) %>% 
+    ggplot()+
+      geom_tile(aes(x=x,y=y,fill=psi_allsoil))+
+      scale_fill_brewer(palette="RdYlBu")+
+      ggtitle("SWC weighted with SUREAU,\n monthly data")+
+      theme_bw()+
+      theme(axis.title=element_blank(),
+            legend.position="none")+
+      coord_quickmap(),
+  plots[[4]]+theme(legend.position="none")+ggtitle("SWC averaged over 50 cm, \n monthly data"),
+  cowplot::get_legend(plots[[4]]),
+  ncol=3,
+  rel_widths = c(1,1,0.5))
+```
+
+```{r SurEauClean}
+rm(ksat,plots,psi_allsoil,psi_ERA_50,SWC,SWCm_1,SWCm_2,SWCm_3,SWCm_4,SWCtot,textureERA5,textureERA5Toth)
+```
+
+
+# SWC daily and min potential
+
+## Maps of difference between horizons with daily data
+
+```{r SWC.SMP.horizons.daily}
+# Get monthly data time series of SWC cropped on europe
+tar_load(europe)
+europe <- vect(st_as_sf(europe))
+SWCd_FrEsp=rast("data/swcd1-3_2011-2021_FrEsp.nc")
+#SWCd_FrEsp <- crop(SWCd_FrEsp,europe,mask=TRUE)
+#SWCd_FrEsp <- as.data.frame(SWCd_FrEsp,xy=TRUE)
+time.step="d_FrEsp"
+ext_fresp=ext(-9.95, 10.05, 34.95, 52.05)
+ksat <- data.frame(
+  texture=c(6,5,4,3,2,1),
+  ksat=c(8,70,10.755,4,8.5,8.235)
+)
+
+# generates time series per horizon
+for (i in 1:3){
+  assign(paste0("SWC",time.step,"_",i),
+         SWCd_FrEsp[[grepl(paste0("swvl",i), names(SWCd_FrEsp))]])
+}
+SWC50d_FrEsp <- (7*SWCd_FrEsp_1+
+  21*SWCd_FrEsp_2+
+  22*SWCd_FrEsp_3)/50
+
+
+SWCd_FrEsp=mget(ls()[grepl(paste0("SWC",time.step,"_|SWC50d_FrEsp"),ls())])
+
+# For each horizons -ie raster stack in the list - compute min and max of time series
+SWC_mx=lapply(SWCd_FrEsp,function(x){
+  SWC_df=setDT(as.data.frame(x,xy=TRUE)) 
+  time=as.character(as.Date(as.numeric(sub(".*_","",
+                              colnames(SWC_df)[c(-1,-2)])),
+               origin=paste0('2010-12-31')))
+  colnames(SWC_df)=c("x","y",time)
+  # selection of max/min per year
+  SWC_df=SWC_df[,loc_ID:=.I]
+  SWC_df=melt.data.table(SWC_df,id.vars=c("loc_ID","x","y"))
+  SWC_df[,year:=gsub("[-].*", "\\1",variable)]
+  SWC_df[,month:=gsub(".*[-]([^.]+)[-].*", "\\1",variable)]
+  SWC_df[,day:=gsub(".*[-]", "\\1",variable)]
+  SWC_df=SWC_df[,.(Min=min(value),Max=max(value)),by="loc_ID,x,y,year"]
+  SWC_df=SWC_df %>% 
+           group_by(loc_ID,x,y) %>% 
+           summarise(SWC_min=mean(head(sort(Min),5)),
+                     SWC_max=mean(tail(sort(Max),5))) %>%
+           ungroup()
+  return(SWC_df)
+})
+
+# Load texture from ERA5 with pars from Toth, and resample to swc resolution
+tar_load(textureERA5Toth)
+textureERA5Toth=rast(textureERA5Toth,crs="epsg:4326")
+textureERA5Toth=resample(textureERA5Toth,
+                         crop(rast(SWC_mx[[1]][2:5],crs="epsg:4326"),
+                              ext_fresp),
+                         method="near")
+
+# Compute psi_min using VG equation, and different max
+psi_dhor=lapply(seq_along(SWC_mx),
+       function(SWC,hor,i){
+         assign(paste0("psi_",hor[i]),
+                as.data.frame(c(crop(rast(SWC_mx[[i]][2:5],
+                                        crs="epsg:4326"),
+                                   ext_fresp),
+                              textureERA5Toth),
+                              xy=TRUE) %>%
+                  left_join(ksat,by="texture") %>% 
+                  mutate(psi_VG=-((((teta_s-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+                         psi_VGmax=-((((SWC_max-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>%
+                  mutate(psi_VG=case_when(SWC_min>teta_s~-0.1,TRUE~psi_VG))) %>% 
+                  mutate(REW_max=(SWC_min-teta_r)/(SWC_max-teta_r),
+                         REW_s=(SWC_min-teta_r)/(teta_s-teta_r))
+         
+         
+       },
+       SWC=SWC_mx,
+       hor=names(SWC_mx))
+names(psi_dhor)=names(SWC_mx)
+
+```
+
+
+```{r SWC.SMP.horizons.daily.maps}
+# maps SWCmin per horizon
+purrr::reduce(SWC_mx,full_join,by=c("x","y","loc_ID")) %>% 
+  select(matches(c("^x$","^y$","SWC_min"))) %>% 
+  #rename(!!!setNames(names(matches("SWC_min")), c("50cm","Hor1","Hor2","Hor3")))
+  rename_with(~c("50cm","Hor 1","Hor 2","Hor 3"),.cols=matches("SWC_min")) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  ggplot()+
+  geom_tile(aes(x=x,y=y,fill=value)) + 
+  scale_fill_gradientn(name = "SWC min",colours = viridis(3,direction=-1), 
+                    na.value="transparent") +
+  facet_wrap(~name)+
+  theme(axis.title=element_blank())+
+  theme_bw()+
+  coord_quickmap()
+
+
+# distribution of SWC min per horizon
+
+# as.data.frame(
+#   c(crop(rast(SWC[[1]],crs="epsg:4326"),
+#        ext_fresp),
+#   crop(rast(SWC_mx[[2]][2:5],crs="epsg:4326"),
+#        ext_fresp)
+#   ),
+#   xy=TRUE) %>% 
+#   select(x,y,SWC_min,SWC_min.1) %>% 
+#   ggplot(aes(SWC_min-SWC_min.1))+geom_density()
+# 
+# 
+# 
+
+
+
+# Compare psi_min per horizon.daily, weighted.daily, weighted.monthly
+plots_s=psi_dhor[[1]][,c(1,2,14,15)]
+names(plots_s)=c("x","y","50cm VG", "50cm VGmax")
+for(i in 1:3){
+  plots_s=cbind(plots_s,psi_dhor[[i+1]][,c(14,15)])
+  names(plots_s)=c(names(plots_s)[1:(4+(2*(i-1)))],paste0("Hor ",i," ",gsub(".*[_]", "\\1",names(psi_dhor[[i+1]])[14:15])))
+}
+plots_s=plots_s%>% 
+  mutate(across(.cols=matches(c("50cm","Hor")),
+                      ~ cut(.,
+                             breaks=c(-Inf, -50000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                             labels=c("<-50MPa", "-50<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa",
+                                      "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")))) 
+plots_s %>% select(matches(c("x","y","VGmax"))) %>% 
+  relocate(y,.after=x) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+   ggplot()+
+   geom_tile(aes(x=x,y=y,fill=value)) +
+   theme_bw() +
+   theme(axis.title=element_blank(),
+         legend.key.size = unit(0.5,"cm"))+
+  labs(fill="Potentiel (MPa)")+
+   facet_wrap(~name)+
+   scale_fill_brewer(palette="RdYlBu")+
+   coord_quickmap()
+
+
+
+cowplot::plot_grid(
+  plots_s %>%
+    select("x","y","50cm VG") %>% 
+    ggplot()+
+    geom_tile(aes(x=x,y=y,fill=`50cm VG`)) +
+    theme_bw() +
+    ggtitle("SWC averaged over 50 cm, daily data")+
+    theme(axis.title=element_blank(),
+         legend.key.size = unit(0.5,"cm"),
+         legend.position = "none")+
+    labs(fill="Potentiel (MPa)")+
+    scale_fill_brewer(palette="RdYlBu")+
+    coord_quickmap(),
+  as.data.frame(crop(rast(psi_hor[[4]],crs="epsg:4326"),ext_fresp),
+                xy=TRUE)%>%
+    mutate(across(.cols=matches("psi_VG"),
+                  ~ cut(.,
+                        breaks=c(-Inf, -50000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                        labels=c("<-50MPa", "-50<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa",
+                                 "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")))) %>% 
+    ggplot()+
+    geom_tile(aes(x=x,y=y,fill=psi_VG)) +
+    theme_bw() +
+    ggtitle("SWC averaged over 50 cm, monthly data")+
+    scale_fill_brewer(palette="RdYlBu")+
+    theme(axis.title=element_blank(),
+          legend.position = "none")+
+    coord_quickmap(),
+  cowplot::get_legend(plots_s %>%
+              select("x","y","50cm VGmax") %>% 
+              ggplot()+
+              geom_tile(aes(x=x,y=y,fill=`50cm VGmax`)) +
+              labs(fill="Potentiel (MPa)")+
+               scale_fill_brewer(palette="RdYlBu")+
+               coord_quickmap()),
+  ncol=3,
+  rel_widths = c(1,1,0.5))
+```
+
+
+
+## Weight horizons with sureau
+```{r Sureau.daily}
+psi_dhor123=psi_dhor[2:4]
+
+for (i in 1:3){
+  psi_dhor123[[i]] <- psi_dhor123[[i]] %>% 
+  mutate(ksoil=compute.KSoil(REW_s,I_vg=0.5,n_vg=n,Ksat_vg=ksat,
+                             compute.B_GC(La,Lv,rootRadius)[i]),
+         ksoiltostem=kseriesum(ksoil,k_RootToStem[i]))
+}
+
+psi_allsoil=as.data.frame(cbind(x=psi_dhor123[[1]]$x,
+                  y=psi_dhor123[[1]]$y,
+                  psi_1=psi_dhor123[[1]]$psi_VGmax,
+                  ksoil_1=psi_dhor123[[1]]$ksoiltostem,
+                  psi_2=psi_dhor123[[2]]$psi_VGmax,
+                  ksoil_2=psi_dhor123[[2]]$ksoiltostem,
+                  psi_3=psi_dhor123[[3]]$psi_VGmax,
+                  ksoil_3=psi_dhor123[[3]]$ksoiltostem
+                  )) %>% 
+    mutate(psi_allsoil=(psi_1*ksoil_1+psi_2*ksoil_2+psi_3*ksoil_3)/(ksoil_1+ksoil_2+ksoil_3))
+
+
+cbind(psi_allsoil[,c(1,2,9)],psi_VGmax=psi_dhor[[1]][,15]) %>% 
+  mutate(across(.cols = c("psi_allsoil","psi_VGmax"),
+                ~ cut(.,breaks=c(-Inf, -50000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                         labels=c("<-50MPa", "-50<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa",
+                                  "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")))) %>% 
+  pivot_longer(cols=c("psi_allsoil","psi_VGmax"),
+               values_to = "potential") %>% 
+  ggplot()+
+      geom_tile(aes(x=x,y=y,fill=potential))+
+      scale_fill_brewer(palette="RdYlBu")+
+      theme_bw()+
+      facet_wrap(~name)+
+      theme(axis.title=element_blank())+
+      coord_quickmap()
+
+
+cbind(psi_allsoil[,c(1,2,9)],psi_VGmax=psi_dhor[[1]][,15]) %>% 
+  pivot_longer(cols=c("psi_allsoil","psi_VGmax"),
+               values_to = "potential") %>% 
+  ggplot(aes(-potential,col=name))+
+  geom_density()+
+  scale_x_log10()+
+  theme_bw()+
+  geom_vline(xintercept=10000)
+```
+
+# Perspectives
+ 
+* integrate a model error 
+* assess a model error with measured time series
+* use relative HSM
+
+## Test with bias
+
+Correction of SWCmin using bias extracted from Munoz-sabater 2021.
+```{r BiasCor}
+tar_load(psi_ERA_100)
+tar_load(psi_ERA_50)
+psi_ERA_100=psi_ERA_100 %>% select(x,y,texture,SWC_min,SWC_max) %>% mutate(texture=as.factor(texture))
+psi_ERA_50=psi_ERA_50 %>% select(x,y,texture,SWC_min,SWC_max) %>% mutate(texture=as.factor(texture))
+pars_top_TOTH <- data.frame(texture=c(6,5,4,3,2,1),
+                        teta_r=c(0.111,0.045,0.000,0.000,0.000,0.000),
+                        teta_s=c(0.697,0.438,0.459,0.432,0.478,0.522),
+                        alpha=c(0.0069,0.0478,0.0309,0.0094,0.0403,0.0112),
+                        n=c(1.4688,1.3447,1.1920,1.2119,1.1176,1.1433),
+                        m=c(0.3192,0.2563,0.1611,0.1749,0.1053,0.1253)) %>% 
+    mutate(texture=as.factor(texture))
+
+
+psi_ERA_100 %>% 
+    left_join(pars_top_TOTH,by="texture") %>%
+    mutate(psi_s=-((((teta_s-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_max=-((((SWC_max-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_cor_s=-((((teta_s-teta_r)/((SWC_min-0.03)-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_cor_max=-(((((SWC_max-0.03)-teta_r)/((SWC_min-0.03)-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+      # mutate(across(.cols = matches("psi"),
+      #           ~ cut(.,breaks=c(-Inf, -20000, Inf),
+      #                    labels=c("<-20MPa", ">-20MPa")))) %>%
+    mutate(across(.cols = matches("psi"),
+                ~ cut(.,breaks=c(-Inf, -20000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                         labels=c("<-20MPa", "-20<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa",
+                                  "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")))) %>%
+    pivot_longer(cols=matches("psi")) %>% 
+    ggplot()+
+    geom_tile(aes(x=x,y=y,fill=value)) +
+    scale_fill_brewer(palette="RdYlBu")+
+    theme_bw()+
+    facet_wrap(~name)+
+    theme(axis.title=element_blank())+
+    coord_quickmap()
+    
+psi_ERA_50 %>% 
+    left_join(pars_top_TOTH,by="texture") %>%
+    mutate(psi_s=-((((teta_s-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_max=-((((SWC_max-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_cor_s=-((((teta_s-teta_r)/((SWC_min-0.03)-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_cor_max=-(((((SWC_max-0.03)-teta_r)/((SWC_min-0.03)-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+      # mutate(across(.cols = matches("psi"),
+      #           ~ cut(.,breaks=c(-Inf, -20000, Inf),
+      #                    labels=c("<-20MPa", ">-20MPa")))) %>%
+    mutate(across(.cols = matches("psi"),
+                ~ cut(.,breaks=c(-Inf, -20000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
+                         labels=c("<-20MPa", "-20<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa",
+                                  "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0")))) %>%
+    pivot_longer(cols=matches("psi")) %>% 
+    ggplot()+
+    geom_tile(aes(x=x,y=y,fill=value)) +
+    scale_fill_brewer(palette="RdYlBu")+
+    theme_bw()+
+    facet_wrap(~name)+
+    theme(axis.title=element_blank())+
+    coord_quickmap()
+
+psi_ERA_100 %>% 
+    left_join(pars_top_TOTH,by="texture") %>%
+    mutate(psi_s=-((((teta_s-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_max=-((((SWC_max-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_cor_s=-((((teta_s-teta_r)/((SWC_min-0.03)-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+           psi_cor_max=-(((((SWC_max-0.03)-teta_r)/((SWC_min-0.03)-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+  ggplot(aes(-psi_cor_s,-psi_s,colour=texture))+geom_point()+theme_bw()+scale_x_log10()+scale_y_log10()+geom_abline(slope=1)+geom_vline(xintercept = 20000)+geom_hline(yintercept = 20000)
+```

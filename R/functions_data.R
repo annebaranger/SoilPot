@@ -73,7 +73,7 @@ forest_cover <- function(dir.data="data",
 #### Section 2 - Downloading climatic and pedologic data ####
 #' @description Functions used to download/load required climatic and pedologic
 #'  data
-#' @authors Anne Baranger (INRAE - LESSEM)
+#' @authors Anne Baranger, Matthieu Combaud (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
@@ -157,8 +157,38 @@ terraclimate_data <- function() {
 #' @return a dataframe of TerraClimate data
 chelsabio6_data <- function(dir.data,dir.file,europe) {
   chelsabio6 <- crop(rast(file.path(dir.data,dir.file)),vect(europe),mask=TRUE)
-  
+  names(chelsabio6)="t.min"
   return(as.data.frame(chelsabio6,xy=TRUE))
+}
+
+
+#' Load FNI data from Franvr
+#'  
+#' @description function to load data from France National Inventory
+#' @note Code from Matthieu Combaud
+#' @param input.directory
+#' @param zip.file
+#' 
+get.fni <- function(input.directory="data/IFN",
+                    zip.file="export_dataifn_2005_2020.zip"){
+  db.tree<-as.data.table(read.table(unz(paste0(input.directory,"/",zip.file), "ARBRE.csv"),
+                                    header = TRUE, 
+                                    sep = ";", 
+                                    dec = ".", 
+                                    encoding = "UTF-8"))
+  db.cover<-as.data.table(read.table(unz(paste0(input.directory,"/",zip.file), "COUVERT.csv"), 
+                                     header = TRUE,
+                                     sep = ";",
+                                     dec = ".",
+                                     encoding = "UTF-8"))
+  db.stand<-as.data.table(read.table(unz(paste0(input.directory,"/",zip.file), "PLACETTE.csv"), 
+                                     header = TRUE,
+                                     sep = ";",
+                                     dec = ".", 
+                                     encoding = "UTF-8"))
+  return(list(tree=db.tree,
+              cover=db.cover,
+              stand=db.stand))
 }
 
 
@@ -611,6 +641,55 @@ campbell_par <- function(clay_ct,silt_ct,sand_ct){
   b=-2*psi_e+0.2*GSD
   return(data.frame(psi_e,b))
 }
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 6 - Compute safety margins ####
+#' @description Functions used to explore parametric pedotransfer functions
+#' @authors Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+#' Compute hydraulic and frost safety margins
+#' 
+#' @description Compute safety margin for selected species
+#' @param psi.min df of psimin computed over europe
+#' @param tmin df of min temperature over europe
+#' @param dir.data data directory
+#' @param dir.file directory of species file
+#' @return two dataframe for each safety margin, columns are sm of each species
+#' 
+compute.sm <- function(psimin,
+                       tmin,
+                       dir.data="data/Species traits/",
+                       dir.file="trait.select.csv"){
+  species.traits=read.table(file=paste0(dir.data,dir.file),
+                            header=TRUE,
+                            sep=";",
+                            dec=".") %>% 
+    separate(col = species.binomial,
+             into=c("genus","species"),
+             remove=FALSE) %>% 
+    mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)))
+  
+  # hydraulic safety margin
+  psimin <- psimin[,c("x","y","psi")]
+  for (i in 1:dim(species.traits)[1]){
+    psimin$hsm=psimin$psi-(species.traits$P50[i]*1000)
+    names(psimin)[names(psimin) == "hsm"] <- species.traits$sp.ind[i]
+  }
+  
+  # fros safety margin
+  for (i in 1:dim(species.traits)[1]){
+    if(!is.na(species.traits$LT50[i])){
+      tmin$fsm=tmin$t.min-(species.traits$LT50[i])
+      names(tmin)[names(tmin) == "fsm"] <- species.traits$sp.ind[i]
+    }
+  }
+  return(list(psimin=psimin,tmin=tmin))
+}
+
+
+
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

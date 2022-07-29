@@ -2,37 +2,59 @@
 
 #library
 library(targets)
-#lapply(c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate"),require,character.only=TRUE)
+#lapply(c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate","lme4"),require,character.only=TRUE)
 
 
 #Options
 source("R/functions_data.R")
 source("R/functions_plot.R")
 options(tidyverse.quiet = TRUE)
-tar_option_set(packages = c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate"))
+tar_option_set(packages = c("KrigR", "ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate","lme4"))
 
 #Targets
 list(
-## Create europe mask according to countries of interest ##
-###########################################################
+  
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 1 - Downloading climatic and pedologic data ####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+#' @description Create europe mask according to countries of interest
+#' 
   tar_target(
     europe,
     europe_extent()
   ),
-## Terraclimate, useless ##
-###########################
+#' @description Terraclimate, useless 
+#' 
   tar_target(
     terraclimate,
     terraclimate_data()
   ),
-## Get texture data from 2 databases ##
-#######################################
+#' @description Get Chelsa data 
+#' 
+  tar_target(
+    chelsabio6,
+    chelsabio6_data("data/CHELSA/","CHELSA_bio6_1981-2010_V.2.1.tif",europe)
+  ),
+
+#' @description Get IFN data
+#' 
+  tar_target(
+    db.fni,
+    get.fni()
+  ),
+
+#' @description Get texture data from 2 databases 
+#' 
+#' ESDAC
   tar_target(
     textureESDAC,
     get_textureESDAC(dir.data="data",
                  dir.soil="STU_EU_Layers",
                  europe)
   ),
+
+#' ERA5, pars from Wosten 1999, subsoil
   tar_target(
     textureERA5,
     get_textureERA5(dir.data="data",
@@ -48,6 +70,8 @@ list(
                                     n=c(1.2039,1.5206,1.1689,1.2179,1.0861,1.0730),
                                     m=c(0.1694,0.3424,0.1445,0.1789,0.0793,0.0680)))
   ),
+
+#' ERA5, pars from Toth 2015, subsoil
   tar_target(
     textureERA5Toth,
     get_textureERA5(dir.data="data",
@@ -63,24 +87,31 @@ list(
                                     n=c(1.4688,1.3447,1.1920,1.2119,1.1176,1.1433),
                                     m=c(0.3192,0.2563,0.1611,0.1749,0.1053,0.1253)))
   ),
-## Get forest cover at the right resolution ##
-##############################################
+
+#' @description Get forest cover at the right resolution 
+#' 
   tar_target(
     forestcover,
     forest_cover(dir.data="data",
                  dir.file="TCD_2018_100m_eu_03035_v020/DATA/TCD_2018_100m_eu_03035_V2_0.tif",
                  textureESDAC$topsoil)
   ),
-## Compute SWC according to depth required ##
-#############################################
-  #Get SWc
-  tar_target(
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 2 - Downloading soil water content to targetted depth ####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+#' @description SWC time series, all horizons
+#' 
+tar_target(
     SWCtot,
     get_SWC(dir.data="data",
             dir.file="swc-1950-2021.nc",
             europe)
   ),
-  #All horizons
+
+#' @description SWC weighted until 289cm, extrema
+#' 
   tar_target(
     SWC289,
     extr_swc(weight_swc(dir.data="data",
@@ -90,8 +121,9 @@ list(
              "month",
              "1949-12-01")
   ),
-  # 3 first horizons
-  #keep time serie
+
+#' @description SWC weighted until 100cm, timeseries
+#' 
   tar_target(
     SWC100t,
     weight_swc(dir.data="data",
@@ -99,14 +131,17 @@ list(
                SWCtot,
                depth=100)
   ),
-  # extr 
+#' @description SWC weighted until 100cm, extrema
+#' 
   tar_target(
     SWC100,
     extr_swc(SWC100t,
              "month",
              "1949-12-01")
   ),
-  # 3 first horizons until 50
+
+#' @description SWC weighted until 100cm, extrema
+#'
   tar_target(
     SWC50,
     extr_swc(weight_swc(dir.data="data",
@@ -116,50 +151,64 @@ list(
              "month",
              "1949-12-01")
   ),
-## Compute psi_min according to texture and swc ##
-##################################################
-  # ERA5 x d50
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 3 - Compute psi min with weighted swc####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+#' @description ERA5 x d50
+#'
   tar_target(
     psi_ERA_50,
     compute_psiweighted(textureERA5,SWC50)
   ),
-  # ERA5 x d100
+#' @description ERA5 x d100
+#'
   tar_target(
     psi_ERA_100,
     compute_psiweighted(textureERA5,SWC100)
   ),
-  # ERA5 x d289
+#' @description ERA5 x d289
+#' 
   tar_target(
     psi_ERA_289,
     compute_psiweighted(textureERA5,SWC289)
   ),
-  # ESDAC x topsoil x d50
+#' @description ESDAC x topsoil x d50
+#' 
   tar_target(
     psi_ESDACt_50,
     compute_psiweighted(textureESDAC$topsoil,SWC50)
   ),
-  # ESDAC x topsoil x d100
+#' @description ESDAC x topsoil x d100
+#' 
   tar_target(
     psi_ESDACt_100,
     compute_psiweighted(textureESDAC$topsoil,SWC100)
   ),
-  # ESDAC x subsoil x d50
+#' @description ESDAC x subsoil x d50
+#' 
   tar_target(
     psi_ESDACs_50,
     compute_psiweighted(textureESDAC$subsoil,SWC50)
   ),
-  # ESDAC x subsoil x d100
+#' @description ESDAC x subsoil x d100
+#' 
   tar_target(
     psi_ESDACs_100,
     compute_psiweighted(textureESDAC$subsoil,SWC100)
   ),
-  # ESDAC x subsoil x d289
+#' @description ESDAC x subsoil x d289
+#' 
   tar_target(
     psi_ESDACs_289,
     compute_psiweighted(textureESDAC$subsoil,SWC289)
   ),
-## Compute psi_min swc and param per horizon ##
-###############################################
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 4 - Compute psi_min swc and param per horizon####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   tar_target(
     psihor_100,
     compute_psihor(SWCtot,
@@ -169,14 +218,30 @@ list(
                    dir.data="data",
                    dir.file="EU_SoilHydroGrids_1km")
   ),
-## Mask only forest plots ##
-############################
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 5 - Compute safety margins####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  tar_target(
+    safety.margins,
+    compute.sm(psihor_100,
+               chelsabio6)
+  ),
+
+#%%%%%%%%%%%%%%%%%%
+#### Section Annexe
+#%%%%%%%%%%%%%%%%%%
+
+#' @description  Mask only forest plots
+#' 
   tar_target(
     psiforest,
     psi_forest(psi_ESDACs_289,
                forestcover,
                40)
   ),
+#' @description timeseries
+#' 
   tar_target(
     chronology_weighted,
     chronology_swc(SWC=SWC100t)
