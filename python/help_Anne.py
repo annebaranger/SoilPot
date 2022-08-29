@@ -20,10 +20,10 @@ from netCDF4 import Dataset,MFDataset
 import matplotlib.pyplot as plt
 
 ### Nom du fichier netcf
-metfile = 'C:/Users/anne.baranger/Documents/Era5-land/data/swcd1-3_2011-2021.nc'
+metfile = 'C:/Users/anne.baranger/Documents/Era5-land/data/ERA5-land/swcd-1950-2021-layer3.nc'
 
 ### Nom du fichier de sortie
-filecsv = 'C:/Users/anne.baranger/Documents/Era5-land/data/swvl3_min.csv'
+filecsv = 'C:/Users/anne.baranger/Documents/Era5-land/data/ERA5-land/swcd-1950-2021-layer3_min.csv'
 
 def plotraster(raster):
     plt.imshow(raster)

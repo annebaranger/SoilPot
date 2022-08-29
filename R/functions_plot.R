@@ -72,12 +72,12 @@ chronology_swc <- function(point_to_extract=data.frame(Luberon=c(5.387792,43.814
 }
 
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 2 - Species distribution and hydraulic safety margin ####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 2 - Species distribution and both safety margins ####
 #' @description Function used to compute HSM and to compare it with species
 #' distribution
 #' @authors Anne Baranger (INRAE - LESSEM)
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 #' Overlaying species distribution and hydraulic safety margin
@@ -90,41 +90,113 @@ chronology_swc <- function(point_to_extract=data.frame(Luberon=c(5.387792,43.814
 #' see before
 #' @param psi_min spatial dataframe of psi_min
 #' @return plots per species of interest
-HSM_distribution <- function(dir.data="data",
-                             dir.p50="p50select.csv",
+plot.sftym <- function(dir.data="data",
+                             dir.file="Species traits/trait.select.csv",
                              europe,
-                             psi_min){
-  P50_df=read.csv2(file.path(dir.data,dir.p50))
-  Species_distb=apply(P50_df,1,function(x){
-    P50_sp=as.numeric(x[2])
-    spdistrib=read_sf(dsn=file.path(dir.data,"chorological_maps_dataset",as.character(x[1]),"shapefiles"),
-                      layer=as.character(x[3]))
-    if(is.na(x[4])==FALSE){
-      spdistrib_sup=read_sf(dsn=file.path(dir.data,"chorological_maps_dataset",x[1],"shapefiles"),
-                            layer=as.character(x[4]))
-      spdistrib=st_union(rbind(spdistrib,spdistrib_sup))
-    }
-    spdistrib=st_crop(spdistrib,sf::st_bbox(europe))
-    
-    graph=psi_min %>%
-      select(x,y,psi_VG) %>%
-      filter(psi_VG>(-10^5)) %>% 
-      mutate(HSM=psi_VG-(P50_sp*10^3)) %>% 
-      mutate(HSM_bin=as.factor(case_when(HSM>0~1,
-                                         HSM<=0~0))) %>%
-      select(x,y,HSM,HSM_bin) %>% 
-      filter(is.na(HSM)==FALSE) %>% 
-      ggplot() + # create a plot
-      geom_raster( aes(x = x, y = y, fill = HSM_bin)) + # plot the raw data
-      geom_sf(data=spdistrib,fill=alpha("grey",0.6))+
-      theme_bw() +
-      #scale_fill_continuous(na.value="transparent")+
-      labs(x = "Longitude", y = "Latitude",fill=paste0(as.character(x[1])," HSM (kPa)")) 
-    return(graph)
-  })
-  return(Species_distb)
+                             safety.margins.day){
+  # Load and reshape species list and shapefiles list
+  species.trait <- read.table(file=file.path(dir.data,dir.file),
+                              header=TRUE,
+                              sep=";",
+                              dec=".") %>%
+    separate(col = species.binomial,
+             into=c("genus","species"),
+             remove=FALSE) %>% 
+    mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2))) 
+
+  # Aggregate safety margins raster for speed matters
+  tmin.simpl=as.data.frame(aggregate(rast(safety.margins.day$tmin,crs="epsg:4326"),
+                                   12,
+                                   fun="mean"),
+                         xy=TRUE)
+  psimin=safety.margins.day$psimin
+  rm(safety.margins.day)
   
-}
+  # Build and save graphs
+  
+  ## Load shapefiles
+  for (i in 1:dim(species.trait)[1]){
+    tryCatch(
+      {
+        spdistrib=read_sf(dsn=file.path(dir.data,
+                                        "chorological_maps_dataset",
+                                        species.trait$species.binomial[i],
+                                        "shapefiles"),
+                          layer=species.trait$file[i])
+        if(is.na(species.trait$extra.file[i])==FALSE){
+          spdistrib_sup=read_sf(dsn=file.path(dir.data,
+                                              "chorological_maps_dataset",
+                                              species.trait$species.binomial[i],
+                                              "shapefiles"),
+                                layer=species.trait$extra.file[i])
+          spdistrib=st_union(rbind(spdistrib,spdistrib_sup))
+        }
+        spdistrib=st_crop(spdistrib,sf::st_bbox(europe))
+        
+        ## Build graphs
+        HSM <- psimin %>% 
+          pivot_longer(cols=colnames(.)[c(-1,-2)],
+                       names_to = "Species",
+                       values_to = "HSM") %>% 
+          filter(Species==species.trait$sp.ind[i]) %>% 
+          mutate(HSM=cut(HSM,
+                         breaks=c(-Inf, -10000, -5000,-3000,0,500,1000,5000,Inf),
+                         labels=c("<-10MPa","-10<HSM<-5MPa","-5<HSM<-3MPa",
+                                  "-3<HSM<0MPa","0/0.5","0.5/1","1/5",">5MPa"))) %>% 
+          ggplot() +
+          geom_tile(aes(x=x,y=y,fill=HSM))+
+          geom_sf(data=spdistrib,
+                  fill=alpha("grey",0.6),
+                  lwd = 0)+
+          coord_sf()+
+          theme_bw() +
+          theme(axis.title=element_blank(),
+                legend.key.size = unit(0.5,"cm"),
+                legend.text = element_text(size=8),
+                legend.title = element_text(size=9))+
+          labs(fill=paste0("HSM (MPa), \nSpecies: ",species.trait$species.binomial[i],
+                           "\nP50=",species.trait$P50[i]))+
+          scale_fill_brewer(palette="RdYlBu")
+        ggsave(HSM,
+               filename = paste0(species.trait$sp.ind[i],"HSM.png"),
+               path="figs/",
+               device="png",
+               scale=2)
+        
+        FSM <- tmin.simpl %>% 
+          pivot_longer(cols=colnames(.)[c(-1,-2)],
+                       names_to = "Species",
+                       values_to = "FSM") %>% 
+          filter(Species==species.trait$sp.ind[i]) %>% 
+          mutate(FSM=cut(FSM,
+                         breaks=c(-Inf, -15,-10, -5,0,5,10,15,20,25,30,35,Inf),
+                         labels=c("<-15", "-15<FSM<-10", "-10/-5","-5/0","0/5","5/10","10/15","15/20","20/25","25/30","30/35",">35"))) %>% 
+          ggplot() +
+          geom_tile(aes(x=x,y=y,fill=FSM))+
+          geom_sf(data=spdistrib,
+                  fill=alpha("grey",0.6),
+                  lwd = 0)+
+          coord_sf()+
+          theme_bw() +
+          theme(axis.title=element_blank(),
+                legend.key.size = unit(0.5,"cm"),
+                legend.text = element_text(size=8),
+                legend.title = element_text(size=9))+
+          labs(fill=paste0("FSM (MPa), \nSpecies: ",species.trait$species.binomial[i],
+                           "\nLT50=",round(species.trait$LT50[i],digit=1)))+
+          scale_fill_brewer(palette="RdYlBu")
+        ggsave(FSM,
+               filename = paste0(species.trait$sp.ind[i],"FSM.png"),
+               path="figs/",
+               device="png",
+               scale=2)
+      },
+      error=function(e){print("File not loaded")}
+    )
+  }
+  }
+
+
 
 #' Extract values from species distribution
 #' @description function that extracts Psi_min or HSM into the distribution of a 

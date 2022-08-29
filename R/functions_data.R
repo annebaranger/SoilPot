@@ -192,6 +192,29 @@ get.fni <- function(input.directory="data/IFN",
 }
 
 
+#' Function to compute the water aridity index based on chelsa mean temperature data
+#'
+#' @param dir.chelsa
+#' @param df.loc
+#' 
+get_waisgdd <- function(dir.chelsa="data/CHELSA/",
+                           df.loc){
+  pr_chelsa=extract(rast("data/CHELSA/CHELSA_bio12_1981-2010_V.2.1.tif"),
+                    df.loc)[2]
+  pet_chelsa=extract(rast("data/CHELSA/CHELSA_pet_penman_mean_1981-2010_V.2.1.tif"),
+                     df.loc)[2]
+  sgdd_chelsa=extract(rast("data/CHELSA/CHELSA_gdd5_1981-2010_V.2.1.tif"),
+                      df.loc)[2]
+  df.loc=cbind(df.loc,
+               pr=pr_chelsa,
+               pet=pet_chelsa,
+               sgdd_chelsa)
+  colnames(df.loc)=c("x","y","pr","pet","sgdd")
+  df.loc <- df.loc %>% 
+    mutate(wai=(12*pet-pr)/pet)
+  return(df.loc)
+}
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 3 - Computing essential variable over spatial area ####
 #' @description Functions used to compute required variables to apply Campbell 
@@ -426,6 +449,46 @@ extr_swc <- function(SWC_t,timepath,date_begin) {
 }
 
 
+#' Load min computed externally with python
+#' 
+#' @description Load and reshape data computed with python program
+#' @note Python code need to be run prior executing this function
+#' @param dir.data
+#' @param dir.var
+#' @param vars list of vars corresponding to each horizons computed
+#' @return dataframe with min swc per horizon
+
+load_swc <- function(dir.data="data",
+                     dir.file="ERA5-land/swcd-1950-2021-",
+                     vars=c("layer1","layer2","layer3")){
+  rast.model=rast(paste0(dir.data,"/",dir.file,vars[1],".nc"))[[1]]
+  rast.swc=rast(nrows=dim(rast.model)[1],
+                ncol=dim(rast.model)[2],
+                xmin=ext(rast.model)$xmin,
+                xmax=ext(rast.model)$xmax,
+                ymin=ext(rast.model)$ymin,
+                ymax=ext(rast.model)$ymax,
+                nlyrs=3)
+  for (i in 1:length(vars)){
+    rast.min=as.matrix(read.table(paste0(dir.data,"/",dir.file,vars[i],"_min.csv"),
+                                  header=FALSE,
+                                  sep=",",
+                                  dec = "."))
+    rast.min[rast.min==-32767] <- NA
+    rast.swc[[i]]=rast(nrows=dim(rast.min)[1],
+                       ncol=dim(rast.min)[2],
+                       xmin=ext(rast.model)$xmin,
+                       xmax=ext(rast.model)$xmax,
+                       ymin=ext(rast.model)$ymin,
+                       ymax=ext(rast.model)$ymax,
+                       crs=crs(rast.model),
+                       vals=c(t(rast.min)))
+    
+  }
+  names(rast.swc)=vars
+  return(as.data.frame(rast.swc,xy=TRUE))
+}
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 4 - Computing Psi_min over the spatial area ####
 #' @description Functions used to compute psi_min with different
@@ -587,6 +650,130 @@ compute_psihor <- function(SWCtot,
   for(i in 1:length(psi_min)){
     plot_psi=cbind(plot_psi,psi_min[[i]][,c(3,4,17:19)])
     names(plot_psi)=c(names(plot_psi)[1:(2+5*(i-1))],paste0(names(psi_min[[i]][,c(3,4,17:19)]),i))
+    sum_psi=sum_psi+psi_min[[i]]$psi_w
+    sum_k=sum_k+psi_min[[i]]$ksoilGC
+  }
+  plot_psi$psi=sum_psi/sum_k 
+  return(plot_psi)
+}
+
+
+#' Compute psi min weighted over horizons with daily timepath
+#' 
+#' @description function applies Campbell equation to compute minimum soil 
+#' potential over spatial extent selected earlier using swc per horizon and 
+#' associated parameters extracted from 3D soil database
+#' @param SWCmin dataframe of SWC min of each horizons
+#' @param hor number of horizons to account for
+#' @return Psi_min dataframe, that contains values of Psi_min computed with the
+#' 2 different methods used for SWC (average/weighted)
+
+compute_psihorday <- function(SWCmin,
+                           hor,
+                           dir.data="data",
+                           dir.file="EU_SoilHydroGrids_1km"){
+  
+  ## Compute SUREAU ##
+  # necessary functions 
+  kseriesum <- function(k1,k2) {return(1/(1/k1+1/k2))}
+  compute.B_GC <- function (La, Lv, rootRadius) {
+    b <- 1 / sqrt(pi * Lv)
+    return(La * 2 * pi / (log(b/rootRadius)))
+  }
+  
+  # compute root characteristics
+  betaRootProfile =0.97 
+  ## check this
+  hor_corr=matrix(data=c(1,2,2,3,3,4,4,1,2,3,4,5,6,7,0,0.05,0.15,0.3,0.6,1,2),ncol=3)
+  hor_corr_inv=matrix(data=c(1,2,3,4,1,3,5,7),ncol=2)
+  depth <- hor_corr[,3][2:(hor_corr_inv[hor,2]+1)]
+  SoilVolume <- depth 
+  rootDistribution <-numeric(length(depth)) #Three soil layers
+  for (i in 1:(hor_corr_inv[hor,2]-1)){
+    rootDistribution[i]=1-betaRootProfile^(depth[i]*100)-sum(rootDistribution[1:(i-1)])
+  }
+  rootDistribution[hor_corr_inv[hor,2]] = 1-sum(rootDistribution[1:(hor_corr_inv[hor,2]-1)])
+  k_RootToStem   = 1 * rootDistribution
+  
+  fRootToLeaf=1
+  LAImax = 5
+  RAI = LAImax*fRootToLeaf
+  rootRadius=0.0004
+  La = RAI*rootDistribution / (2*pi*rootRadius)
+  Lv = La/(SoilVolume)
+  #compute.B_GC(La,Lv,rootRadius)
+  
+  ## Compute psi and ksoil and ksoiltostem
+  SWCmin=resample(rast(SWCmin,crs="epsg:4326"),
+                  rast(file.path(dir.data,
+                                 dir.file,
+                                 "MRC_alp_sl2.tif")),
+                  method="near")
+  #rast(SWCmin,crs="epsg:4326")
+  
+  names(SWCmin)=rep("SWC_min",hor)
+  pars.files=list.files(file.path(dir.data,dir.file))
+  mrc.files=pars.files[grepl("MRC_",pars.files)]
+  hcc.files=pars.files[grepl("HCC_",pars.files)]
+  for (i in 1:hor_corr_inv[hor,2]){
+    assign(paste0("psi_h",i),
+           c(SWCmin[[hor_corr[i,1]]],
+             rast(file.path(dir.data,dir.file,mrc.files[endsWith(mrc.files,paste0(i,".tif"))])),
+             rast(file.path(dir.data,dir.file,hcc.files[endsWith(hcc.files,paste0(i,".tif"))]))
+           )
+    )
+    
+  }
+  # assign(paste0("psi_h",i),
+  #        c(SWCmin[[hor_corr[i,1]]],
+  #          resample(rast(file.path(dir.data,dir.file,mrc.files[endsWith(mrc.files,paste0(i,".tif"))])),
+  #                   SWCmin[[hor_corr[i,1]]],
+  #                   method="near"),
+  #          resample(rast(file.path(dir.data,dir.file,hcc.files[endsWith(hcc.files,paste0(i,".tif"))])),
+  #                   SWCmin[[hor_corr[i,1]]],
+  #                   method="near")
+  #        )
+  # )
+  
+  list=mget(ls()[grepl("psi_h",ls())])
+  psi_min=lapply(seq_along(list),function(i){
+    psi_df=list[[i]]
+    names(psi_df)=str_replace(names(psi_df), paste0("_sl",i), "")
+    psi_df=as.data.frame(psi_df,xy=TRUE) %>% 
+      mutate(
+        REW_mrc=case_when((SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))<0~0.01,
+                          (SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))>1~1,
+                          TRUE~(SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))),
+        REW_hcc=case_when((SWC_min-HCC_thr*10^(-4))/((HCC_ths-HCC_thr)*10^(-4))<0~0.01,
+                          (SWC_min-HCC_thr*10^(-4))/((HCC_ths-HCC_thr)*10^(-4))>1~1,
+                          TRUE~(SWC_min-HCC_thr*10^(-4))/((HCC_ths-HCC_thr)*10^(-4))),
+        psi_min=-(((1/REW_mrc)
+                   ^(1/(MRC_m*10^(-4)))
+                   -1)
+                  ^(1/(MRC_n*10^(-4)))
+                  *(1/(MRC_alp*10^(-4)))
+                  *9.78*10^(-2)),
+        ksoil=(HCC_K0
+               *(REW_hcc^(HCC_L*10^(-4)))
+               *(1-(1-REW_hcc^(1/(HCC_m*10^(-4))))
+                 ^(HCC_m*10^(-4)))^2),
+        ksoilGC=(HCC_K0
+                 *(REW_hcc^(HCC_L*10^(-4)))
+                 *(1-(1-REW_hcc^(1/(HCC_m*10^(-4))))
+                   ^(HCC_m*10^(-4)))^2)*1000 *compute.B_GC(La,Lv,rootRadius)[i],
+        k_soiltostem=kseriesum(ksoilGC,k_RootToStem[i]),
+        psi_w=ksoilGC*psi_min
+      )
+    return(psi_df)
+  }
+  )
+  
+  plot_psi=psi_min[[1]][,1:2]
+  sum_psi=numeric(dim(psi_min[[1]])[1])
+  sum_k=numeric(dim(psi_min[[1]])[1])
+  for(i in 1:length(psi_min)){
+    plot_psi=cbind(plot_psi,psi_min[[i]][,c(3,16:18)])
+    names(plot_psi)=c(names(plot_psi)[1:(2+4*(i-1))],paste0(names(psi_min[[i]][,c(3,16:18)]),i))
     sum_psi=sum_psi+psi_min[[i]]$psi_w
     sum_k=sum_k+psi_min[[i]]$ksoilGC
   }
@@ -785,3 +972,25 @@ compute.sm <- function(psimin,
 #   facet_wrap(~name)+
 #   scale_fill_brewer(palette="RdYlBu")+
 #   coord_quickmap()
+
+#get_chelsa_wai
+# chelsa.files=list.files(dir.chelsa)
+# pet.files=chelsa.files[grepl("pet_penman_",chelsa.files)]
+# prec.files=chelsa.files[grepl("pr_",chelsa.files)]
+# test.files=chelsa.files[grepl("gdd",chelsa.files)]
+# # Loop on all years
+# for (i in substr(c(106:109), 2, 3)) {
+#   df.loc=cbind(df.loc,
+#                # extract(rast(file.path(dir.chelsa,
+#                #                        chelsa.files[grepl(paste0("pet_penman_",i),
+#                #                                           chelsa.files)])),
+#                #         df.loc),
+#                extract(rast(file.path(dir.chelsa,
+#                                       chelsa.files[grepl(paste0("pr_",i),
+#                                                          chelsa.files)])),
+#                        df.loc[,c("x","y")])[,2])
+#   # a modif avec pet
+#   colnames(df.loc)=c(colnames(df.loc)[1:(dim(df.loc)[2]-1)],paste0("pr_",i))
+# }
+# db.wai=cbind(df.loc[,1:2],
+#              apply(df.loc[,3:dim(df.loc)[2]],MARGIN = 1,mean))

@@ -140,7 +140,7 @@ tar_target(
              "1949-12-01")
   ),
 
-#' @description SWC weighted until 100cm, extrema
+#' @description SWC weighted until 50cm, extrema
 #'
   tar_target(
     SWC50,
@@ -152,6 +152,14 @@ tar_target(
              "1949-12-01")
   ),
 
+#' @description SWC min with daily timestep, computed with python
+#' 
+  tar_target(
+    SWC100d,
+    load_swc(dir.data="data",
+             dir.file="ERA5-land/swcd-1950-2021-",
+             vars=c("layer1","layer2","layer3"))
+  ),
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 3 - Compute psi min with weighted swc####
@@ -209,6 +217,7 @@ tar_target(
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 4 - Compute psi_min swc and param per horizon####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # With SWC min computed over horizons with R code
   tar_target(
     psihor_100,
     compute_psihor(SWCtot,
@@ -219,6 +228,14 @@ tar_target(
                    dir.file="EU_SoilHydroGrids_1km")
   ),
 
+  # With SWC min computed over horizons with Python code
+  tar_target(
+    psihorday_100,
+    compute_psihorday(SWC100d,
+                      3,
+                      dir.data="data",
+                      dir.file="EU_SoilHydroGrids_1km")
+  ),
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 5 - Compute safety margins####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -227,7 +244,21 @@ tar_target(
     compute.sm(psihor_100,
                chelsabio6)
   ),
-
+  tar_target(
+    safety.margins.day,
+    compute.sm(psihorday_100,
+               chelsabio6)
+  ),
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 6 - Plot safety margins####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  tar_target(
+    plots.sftymargins,
+    plot.sftym(dir.data="data",
+               dir.p50="Species traits/trait.select.csv",
+               europe,
+               safety.margins.day)
+  ),
 #%%%%%%%%%%%%%%%%%%
 #### Section Annexe
 #%%%%%%%%%%%%%%%%%%
