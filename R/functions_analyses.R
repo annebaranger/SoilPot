@@ -12,8 +12,167 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 1 - Generalized linear mixte model ####
+#### Section 1 - Presence/absence dataset ####
+#' @description Download pres/abs dataset
+#' @authors Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+get.mauri <- function(safety.margins,
+                      dir.occ="data/EUForestsMauri/EUForestspecies.csv",
+                      dir.species="data/Species traits/trait.select.csv"){
+  
+  #Load species selection
+  df.species=read.table(file=dir.species,
+                        header=TRUE,
+                        sep=";",
+                        dec=".") %>% 
+    separate(col = species.binomial,
+             into=c("genus","species"),
+             remove=FALSE) %>% 
+    mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)),
+           species.name=str_replace(species.binomial," ",".")) %>% 
+    filter(!is.na(LT50))
+  
+  #Load Mauri occurence data
+  db.tree.mauri=read.table(file=dir.occ,
+                           header=TRUE,
+                           sep=",",
+                           dec=".") %>%
+    #remove duplicated location_tree 
+    filter(!duplicated(paste(X,Y, SPECIES.NAME))) %>%
+    #create plot id
+    mutate(Pres = rowSums(cbind(NFI==1,FF==1,BS==1)),
+           Node = unclass(factor(paste(X, Y))))
+  #filter targetted species
+  # filter(SPECIES.NAME %in% as.character(df.species$species.binomial))
+  
+  db.cont=db.tree.mauri %>% 
+    group_by(Node,SPECIES.NAME) %>%
+    summarise(n=n())%>%
+    spread(SPECIES.NAME, n) %>% 
+    ungroup() %>%
+    pivot_longer(colnames(.)[-1],
+                 names_to = "species.binomial",
+                 values_to = "presence") %>% 
+    filter(species.binomial %in% as.character(df.species$species.binomial)) %>% 
+    left_join(db.tree.mauri[!duplicated(db.tree.mauri$Node), c("X","Y","COUNTRY","NFI","FF","BS","EEO","Node")],
+              by = "Node") %>% 
+    left_join(df.species[,c(1,4,5)],
+              by="species.binomial" )
+  #Change coordinates
+  coordinates(db.cont) <- c("X",  "Y")
+  proj4string(db.cont) <- CRS("+init=epsg:3035")
+  db.cont <- as.data.frame(spTransform(db.cont, CRS("+proj=longlat +datum=WGS84")))
+  
+  #Extract safety margins
+  db.cont <- cbind(db.cont,
+                   extract(rast(safety.margins$psimin,crs="epsg:4326")[["psi"]],
+                           data.frame(x=db.cont$X,y=db.cont$Y))[-1],
+                   extract(rast(safety.margins$tmin,crs="epsg:4326")[["t.min"]],
+                           data.frame(x=db.cont$X,y=db.cont$Y))[-1]) %>% 
+    mutate(fsm=t.min-LT50,
+           hsm=psi-P50*1000,
+           species.binomial=as.factor(species.binomial))
+  db.cont$presence[is.na(db.cont$presence)] <- 0
+  db.cont$fsm[is.nan(db.cont$fsm)] <- NA
+  db.cont$hsm[is.nan(db.cont$hsm)] <- NA
+  
+  # Extract climatic variables
+  db.clim <- cbind(
+    db.cont,
+    get_waisgdd(df.loc=data.frame(x=db.cont$X,
+                                  y=db.cont$Y))[,3:6])
+  
+  return(db.clim)
+}
+
+
+
+#' resampling absence data into ecoregions
+#' @description Using maps of ecorgeions in Europe, identify areas without forest
+#' to sample new absence data for nothern species
+#' @param europe Europe boarders
+#' @param dir.ecoregions directory of ecoregions shapefiles
+#' @note ecoregions are downloaded from the wwf
+#' @param db.clim pres/abs dataset with climatic variables
+#' @param safety.margins
+#' @param n_sample numbers of resampled pseudo-abs
+#' @return a map of occ data overlayed with distribution polygon
+#'
+
+sample.absence <- function(europe,
+                           dir.ecoregions="data/WWF/official",
+                           db.clim,
+                           safety.margins,
+                           n_sample,
+                           dir.species="data/Species traits/trait.select.csv"){
+  #Load species selection
+  df.species=read.table(file=dir.species,
+                        header=TRUE,
+                        sep=";",
+                        dec=".") %>% 
+    separate(col = species.binomial,
+             into=c("genus","species"),
+             remove=FALSE) %>% 
+    mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)),
+           species.name=str_replace(species.binomial," ",".")) %>% 
+    filter(!is.na(LT50))
+  
+  # Load Ecoregions to european scale
+  europe=st_as_sf(europe)
+  ecoregions=read_sf(dsn=dir.ecoregions,
+                     layer="wwf_terr_ecos") 
+  sf_use_s2(FALSE)
+  ecoregions=st_crop(ecoregions,sf::st_bbox(europe))
+  
+  # Draw buffer around abs+pres data using only 20000 points (for speed matter)
+  hull <- sample_n(db.clim,
+                   20000)  %>%
+    st_as_sf( coords = c( "X", "Y" ), crs = 4326 ) %>% 
+    # summarise( geometry = st_combine( geometry ) ) %>% 
+    st_buffer(dist=units::as_units(0.25, 'degree')) %>% 
+    st_union()
+  
+  abs.sampling=hull %>% 
+    st_difference(x=ecoregions[ecoregions$ECO_NAME=="Scandinavian Montane Birch forest and grasslands",
+                               c("ECO_NAME","geometry")],
+                  y=.) %>% 
+    st_sample(n_sample,
+              type="regular")
+  
+  
+  abs.plots=data.frame(st_coordinates(abs.sampling)) %>% 
+    crossing(df.species[,c(1,4,5)]) %>% 
+    cbind(.,
+          extract(rast(safety.margins$psimin,crs="epsg:4326")[["psi"]],
+                  data.frame(x=.$X,y=.$Y))[-1],
+          extract(rast(safety.margins$tmin,crs="epsg:4326")[["t.min"]],
+                  data.frame(x=.$X,y=.$Y))[-1]) %>% 
+    mutate(Node= max(db.clim$Node)+ unclass(factor(paste(X, Y))),
+           fsm=t.min-LT50,
+           hsm=psi-P50*1000,
+           species.binomial=as.factor(species.binomial))
+  abs.plots$presence <- 0
+  abs.plots$fsm[is.nan(abs.plots$fsm)] <- NA
+  abs.plots$hsm[is.nan(abs.plots$hsm)] <- NA
+  
+  
+  abs.plots <- cbind(
+    abs.plots,
+    get_waisgdd(df.loc=data.frame(x=abs.plots$X,
+                                  y=abs.plots$Y))[,3:6])
+  
+  db.clim=db.clim %>% 
+    bind_rows(abs.plots)
+  
+  return(db.clim)
+}
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 2 - Generalized linear mixte model ####
 #' @description 
 #' @authors Anne Baranger (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -112,7 +271,8 @@ sm.glmm.ifn <- function(db.fni,
 #' @return a glmm fitted
 #'
 
-sm.glmm.mauri <- function(safety.margins,
+sm.glmm.mauri <- function(db.clim,
+                          safety.margins,
                           dir.occ="data/EUForestsMauri/EUForestspecies.csv",
                           dir.species="data/Species traits/trait.select.csv"){
   
@@ -128,149 +288,401 @@ sm.glmm.mauri <- function(safety.margins,
            species.name=str_replace(species.binomial," ",".")) %>% 
     filter(!is.na(LT50))
   
-  #Load Mauri occurence data
-  db.tree.mauri=read.table(file=dir.occ,
-                           header=TRUE,
-                           sep=",",
-                           dec=".") %>%
-    #remove duplicated location_tree 
-    filter(!duplicated(paste(X,Y, SPECIES.NAME))) %>%
-    #create plot id
-    mutate(Pres = rowSums(cbind(NFI==1,FF==1,EEO==1)),
-           Node = unclass(factor(paste(X, Y)))) %>% 
-    #filter targetted species
-    filter(SPECIES.NAME %in% as.character(df.species$species.binomial))
 
-  # Pres/abs dataset
-  db.cont=db.tree.mauri %>% 
-    group_by(Node,SPECIES.NAME) %>%
-    summarise(n=n())%>%
-    spread(SPECIES.NAME, n) %>% 
-    ungroup() %>%
-    pivot_longer(colnames(.)[-1],
-                 names_to = "species.binomial",
-                 values_to = "presence") %>% 
-    left_join(db.tree.mauri[!duplicated(db.tree.mauri$Node), c("X","Y","COUNTRY","NFI","FF","BS","EEO","Node")],
-              by = "Node") %>% 
-    left_join(df.species[,c(1,4,5)],
-              by="species.binomial" )
-  #Change coordinates
-  coordinates(db.cont) <- c("X",  "Y")
-  proj4string(db.cont) <- CRS("+init=epsg:3035")
-  db.cont <- as.data.frame(spTransform(db.cont, CRS("+proj=longlat +datum=WGS84")))
-  
-  #Extract safety margins
-  db.cont <- cbind(db.cont,
-                   extract(rast(safety.margins$psimin,crs="epsg:4326")[["psi"]],
-                           data.frame(x=db.cont$X,y=db.cont$Y))[-1],
-                   extract(rast(safety.margins$tmin,crs="epsg:4326")[["t.min"]],
-                           data.frame(x=db.cont$X,y=db.cont$Y))[-1]) %>% 
-    mutate(fsm=t.min-LT50,
-           hsm=psi-P50*1000,
-           species.binomial=as.factor(species.binomial))
-  db.cont$presence[is.na(db.cont$presence)] <- 0
-  db.cont$fsm[is.nan(db.cont$fsm)] <- NA
-  db.cont$hsm[is.nan(db.cont$hsm)] <- NA
-  
-  # Extract climatic variables
-  db.clim <- cbind(
-    db.cont,
-    get_waisgdd(df.loc=data.frame(x=db.cont$X,
-                                  y=db.cont$Y)[,3:5])
-  )
-  
-  
   # Pres/abs filtered
-  hsm.q001=quantile(db.cont$hsm,0.001,na.rm=TRUE)
-  db.pres <- db.cont %>%
-    filter(species.binomial%in%c("Acer campestre","Acer monspessulanum","Fagus sylvatica","Fraxinus excelsior","Quercus ilex")) %>% 
-    filter(hsm>hsm.q001) %>% 
+  hsm.q05=quantile(db.clim$hsm,0.05,na.rm=TRUE)
+  db.pres <- db.clim %>%
+    #filter(species.binomial%in%c("Pinus sylvestris","Fagus sylvatica","Fraxinus excelsior","Quercus ilex")) %>% 
+    filter(hsm>hsm.q05) %>% 
+    group_by(species.binomial) %>% 
     mutate(hsm=scale(hsm,scale=TRUE,center=TRUE),
-           fsm=scale(fsm,scale=TRUE,center=TRUE))
-
-  
-#%%%%%%%%%%%%%%
-#### explo ####
-#%%%%%%%%%%%%%%
-
-  db.pres %>% 
-    ggplot(aes(fsm,presence))+ 
-    geom_point()+
-    geom_smooth()+
-    facet_wrap(~species.binomial)
-  db.pres %>% 
-    ggplot(aes(hsm,presence))+ 
-    geom_point()+
-    geom_smooth()+
-    facet_wrap(~species.binomial)
-  db.pres %>% 
-    mutate(presence=as.factor(presence)) %>% 
-    ggplot(aes(presence,hsm))+
-    geom_boxplot()
-  
-  db.cont %>% 
-    ggplot(aes(psi))+geom_density()
-  
-corrplot <- db.cont %>% 
-    select(-P50,-NFI,-FF,-BS,-EEO,-LT50,-COUNTRY) %>% 
-    filter(!is.na(psi)) %>% 
-    filter(!is.na(t.min)) %>% 
-    # filter(species.binomial%in%c("Fagus sylvatica","Pinus sylvestris","Quercus ilex")) %>% 
-    filter(psi>quantile(db.cont$psi,probs=0.01,na.rm=TRUE)) %>% 
-    mutate(hsm=hsm/1000,
-           fsm.class=cut(fsm,
-                         breaks=c(-Inf,0,5,10,12,14,16,18,20,25,30, Inf)),
-           hsm.class=cut(hsm,
-                         breaks=c(-Inf,-20,-15,-10,-7.5,-5,-2.5,0,1,2,3,4,5,7.5,10,15,Inf))) %>%
-    group_by(species.binomial,fsm.class,hsm.class) %>% 
-    mutate(ntot=n()) %>% 
-    filter(presence!=0) %>% 
-    mutate(npres=n(),
-           prop=npres/ntot) %>% 
-    select(species.binomial,fsm.class,hsm.class,prop,npres) %>% 
+           fsm=scale(fsm,scale=TRUE,center=TRUE),
+           pet=scale(pet,scale=TRUE,center=TRUE),
+           sgdd=scale(sgdd,scale=TRUE,center=TRUE)) %>% 
     ungroup() %>% 
-    distinct() %>% 
-  ggplot(aes(x=fsm.class,y=hsm.class))+
-    geom_tile(aes(fill=prop))+
-    scale_fill_distiller(palette="YlGnBu",direction=1)+
-    geom_point(aes(size=npres))+
-    theme_bw()+
-    theme(axis.text.x = element_text(angle = 45,
-                                     vjust = 0.6))+
-  xlab("FSM class (celsius)")+
-  ylab("HSM class (MPa)")+
-  labs(fill="Presence proportion",
-       size="Number of observations")+
-  facet_wrap(~species.binomial)
-corrplot
-  ggsave(corrplot,
-       filename = paste0("corrplot_all.png"),
-       path="figs/",
-       device="png",
-       scale=2)
+    filter(!is.na(hsm)) %>% 
+    filter(!is.na(fsm)) %>% 
+    filter(!is.na(sgdd)) %>% 
+    filter(!is.na(wai))
   
-#%%%%%%%%
-#### end
-#%%%%%%%%
-  
+
+ 
   # Fit glmm
   sm.glmm=glmer(presence ~  hsm + fsm + (1|species.binomial), 
                 data = db.pres,
                 family=binomial(link = "logit"))
-  for (species in unique(db.cont$species.binomial)){
-    hsm.q001=quantile(db.cont$hsm,0.001,na.rm=TRUE)
-    db.pres.sp<- db.cont %>%
+  for (species in unique(db.clim$species.binomial)){
+    hsm.q01=quantile(db.clim$hsm,0.01,na.rm=TRUE)
+    db.pres.sp<- db.clim %>%
       filter(species.binomial==species) %>% 
-      filter(hsm>hsm.q001) %>% 
+      filter(hsm>hsm.q01) %>% 
       mutate(hsm=scale(hsm,scale=TRUE,center=TRUE),
-             fsm=scale(fsm,scale=TRUE,center=TRUE))
+             fsm=scale(fsm,scale=TRUE,center=TRUE),
+             pet=scale(pet,scale=TRUE,center=TRUE),
+             sgdd=scale(sgdd,scale=TRUE,center=TRUE))
     smsp.glmm=glm(presence ~  hsm + fsm, 
                     data = db.pres.sp,
                     family=binomial(link = "logit"))
+    clsp.glmm=glm(presence ~ fsm, #sgdd + wai
+                  data=db.pres.sp,
+                  family=binomial(link = "logit"))
+    # mixt.glmm=glm(presence ~  hsm + sgdd, 
+    #               data = db.pres.sp,
+    #               family=binomial(link = "logit"))
     print(species)
     print(summary(smsp.glmm))
+    print(summary(clsp.glmm))
+    # print(summary(mixt.glmm))
   }
 
+  return(sm.glmm)
+  
+}
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 3 - Exploratory Plots ####
+#' @description 
+#' @authors Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+#' Presence data comparison with predicted niche
+#' @description Overlay species distribution
+#' @param dir.occ Mauri occ data
+#' @param dir.species list of species of interest
+#' @return a map of occ data overlayed with distribution polygon
+#'
+
+overlay.abs <- function(dir.species="data/Species traits/trait.select.csv",
+                        db.pres,
+                        europe){
+  #load europe extent in sf format
+  europe=st_as_sf(europe)
+  
+  #load species list and files
+  df.species=read.table(file=dir.species,
+                        header=TRUE,
+                        sep=";",
+                        dec=".") %>% 
+    separate(col = species.binomial,
+             into=c("genus","species"),
+             remove=FALSE) %>% 
+    mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)),
+           species.name=str_replace(species.binomial," ",".")) %>% 
+    filter(!is.na(LT50))
+  
+  #plot presence data and euforgen distribution
+  for (i in 1:dim(df.species)[1]){
+    tryCatch(
+      {
+        spdistrib=read_sf(dsn=file.path("data",
+                                  "chorological_maps_dataset",
+                                  df.species$species.binomial[i],
+                                  "shapefiles"),
+                          layer=df.species$file[i])
+        if(is.na(df.species$extra.file[i])==FALSE){
+          spdistrib_sup=read_sf(dsn=file.path("data",
+                                              "chorological_maps_dataset",
+                                              df.species$species.binomial[i],
+                                              "shapefiles"),
+                                layer=df.species$extra.file[i])
+          spdistrib=st_union(rbind(spdistrib,spdistrib_sup))
+          }
+        spdistrib=st_crop(spdistrib,sf::st_bbox(europe))
+        
+        ## Build graphs
+        presence= db.pres %>%
+          filter(species.binomial==df.species$species.binomial[i]) %>%
+          filter(presence==1) %>% 
+          ggplot()+
+          geom_sf(data=spdistrib,
+                  fill=alpha("grey",0.6),
+                  lwd = 0)+
+          geom_sf(data=europe,
+                  fill=NA)+
+          geom_point(aes(X,Y),size=0.5)+
+          theme_bw()
+        ggsave(presence,
+               filename = paste0(df.species$sp.ind[i],"presence.png"),
+               path="figs/",
+               device="png",
+               scale=2)
+        absence=db.pres %>%
+          filter(species.binomial==df.species$species.binomial[i]) %>%
+          filter(presence!=1) %>% 
+          ggplot()+
+          geom_sf(data=spdistrib,
+                  fill=alpha("grey",0.6),
+                  lwd = 0)+
+          geom_sf(data=europe,
+                  fill=NA)+
+          geom_point(aes(X,Y),
+                     size=0.05)+
+          theme_bw()
+        ggsave(absence,
+               filename = paste0(df.species$sp.ind[i],"absence.png"),
+               path="figs/",
+               device="png",
+               scale=2)
+      },
+      error=function(e){print("File not loaded")}
+    )
+  }
+}
+
+
+#' Random plots for exploratory analysis
+#' @description 1 Ecoregions & absence of a species
+#' @param dir.occ Mauri occ data
+#' @param dir.species list of species of interest
+#' @return a map of occ data overlayed with distribution polygon
+#'
+
+explots <- function(db.clim,
+                    europe,
+                    dir.ecoregions="data/WWF/official"){
+  # Load Ecoregions to european scale
+  europe=st_as_sf(europe)
+  ecoregions=read_sf(dsn=dir.ecoregions,
+                     layer="wwf_terr_ecos") 
+  sf_use_s2(FALSE)
+  ecoregions=st_crop(ecoregions,sf::st_bbox(europe))
+  
+  # Plot of ecoregions + absence of a particular species
+  db.clim %>%
+    filter(species.binomial=="Picea abies") %>%
+    filter(presence!=1) %>% 
+    ggplot()+
+    geom_sf(data=ecoregions,aes(fill=ECO_NAME),
+            show.legend = FALSE)+
+    geom_point(aes(X,Y),
+               size=0.05)+
+    theme_bw()+
+    coord_sf()
+  
+  # Plot buffer and newly sampled pseudo-abs over europe
+  db.clim %>% 
+    dplyr::select(Node,X,Y,t.min,psi) %>% 
+    distinct() %>% 
+    mutate(pseudo.abs=case_when(eval(max(db.clim$Node))-Node<10008~"Added", ## warning , change the formula according to number of pseudo-abs
+                                TRUE~"Mauri")) %>%
+    filter(pseudo.abs=="Added") %>% 
+    ggplot()+
+    geom_point(aes(x=X,y=Y),size=0.01)+
+    geom_sf(data=ecoregions,fill=NA)#+
+  # geom_sf(data=hull,fill="red")
+
+  # Plot proportion of pseudo absence in each bin of t.min 
+  db.clim %>% 
+    dplyr::select(Node,X,Y,t.min,psi) %>% 
+    distinct() %>% 
+    mutate(pseudo.abs=case_when(eval(max(db.clim$Node))-Node<10008~"Added", ## warning , change the formula according to number of pseudo-abs
+                                TRUE~"Mauri")) %>% 
+    ggplot(aes(t.min,fill=pseudo.abs))+
+    geom_histogram(position = "fill")
   
   
 }
+
+
+# specific case of abies alba
+db.clim %>% 
+  mutate(pseudo.abs=case_when(eval(max(db.clim$Node))-Node<10008~"Added", ## warning , change the formula according to number of pseudo-abs
+                              TRUE~"Mauri")) %>%
+  filter(species.binomial=="Abies alba") %>% 
+  filter(presence!=1) %>% 
+  filter(pseudo.abs=="Mauri") %>% 
+  ggplot(aes(fsm))+
+  geom_density()
+
+db.pres %>% 
+  mutate(pseudo.abs=case_when(eval(max(db.clim$Node))-Node<10008~"Added", ## warning , change the formula according to number of pseudo-abs
+                              TRUE~"Mauri")) %>%
+  filter(species.binomial=="Abies alba") %>% 
+  ggplot(aes(hsm,presence))+
+  geom_point()+
+  geom_smooth()
+
+## density plot of presence according to hsm/fsm
+db.clim %>% 
+  filter(hsm>hsm.q05) %>% 
+  mutate(pseudo.abs=case_when(eval(max(db.clim$Node))-Node<10008~"Added", ## warning , change the formula according to number of pseudo-abs
+                              TRUE~"Mauri")) %>%
+  filter(species.binomial=="Abies alba") %>% 
+  filter(presence!=0) %>% 
+  ggplot(aes(fsm,hsm))+
+  geom_bin2d(bins = 70) +
+  scale_fill_continuous(type = "viridis") +
+  theme_bw()
+
+#subset data in the alps
+db.alps=
+    st_filter(
+      st_as_sf(db.clim,
+               coords=c('X','Y'),
+               crs="epsg:4326"),
+      ecoregions[ecoregions$ECO_NAME=="Alps conifer and mixed forests",]) %>% 
+    dplyr::mutate(X = sf::st_coordinates(.)[,1],
+                  Y = sf::st_coordinates(.)[,2])
+db.alps %>% 
+  filter(hsm>hsm.q05) %>% 
+  filter(species.binomial=="Picea abies") %>%
+  ggplot(aes(fsm,hsm))+
+  geom_point(aes(colour=presence)) +
+  theme_bw()
+#%%%%%%%%%%%%%%
+#### explo ####
+#%%%%%%%%%%%%%%
+
+
+# Look for relation between presence and all explicative variables
+db.pres %>% 
+  select(species.binomial,presence,fsm,hsm,pet,sgdd) %>% 
+  pivot_longer(cols = colnames(.)[c(-1,-2)],
+               names_to = "variables",
+               values_to = "value") %>% 
+  sample_frac(0.3) %>% 
+  ggplot(aes(value,presence))+ 
+  geom_point()+
+  geom_smooth()+
+  facet_grid(variables~species.binomial,scales = "free_x")
+db.pres %>% 
+  ggplot(aes(hsm,presence))+ 
+  geom_point()+
+  geom_smooth()+
+  facet_wrap(~species.binomial)
+db.pres %>% 
+  mutate(presence=as.factor(presence)) %>% 
+  ggplot(aes(presence,hsm))+
+  geom_boxplot()
+
+db.pres %>% 
+  ggplot(aes(-psi))+geom_density()+scale_x_log10()
+
+db.pres %>% 
+  #filter(species.binomial=="Fagus sylvatica") %>% 
+  sample_frac(0.01) %>% 
+  ggplot(aes(fsm,presence)) +
+  geom_point()+
+  geom_smooth()
+
+db.pres %>% 
+  filter(presence==1) %>% 
+  ggplot(aes(hsm,wai))+
+  geom_point()
+
+
+# draw corplots
+corrplot <- db.clim %>% 
+  select(-P50,-NFI,-FF,-BS,-EEO,-LT50,-COUNTRY) %>% 
+  filter(!is.na(psi)) %>% 
+  filter(!is.na(t.min)) %>% 
+  filter(species.binomial%in%c("Picea abies")) %>% 
+  filter(psi>quantile(db.clim$psi,probs=0.05,na.rm=TRUE)) %>% 
+  group_by(species.binomial) %>% 
+  mutate(hsm=hsm/1000,
+         fsm.class=cut(fsm,
+                       breaks=10),
+         hsm.class=cut(hsm,
+                       breaks=10)) %>% 
+  ungroup() %>% 
+  group_by(species.binomial,fsm.class,hsm.class) %>% 
+  mutate(ntot=n(), #number of obs per species in each class
+         npres=sum(presence>0),
+         prop=npres/ntot+0.0001) %>% 
+  ungroup() %>% 
+  select(species.binomial,fsm.class,hsm.class,prop,npres,ntot) %>% 
+  distinct() %>% 
+  ggplot(aes(x=fsm.class,y=hsm.class))+
+  geom_tile(aes(fill=prop))+
+  scale_fill_distiller(palette="YlGnBu",direction=1)+
+  geom_point(aes(size=ntot))+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45,
+                                   vjust = 0.6))+
+  xlab("FSM class (celsius)")+
+  ylab("HSM class (MPa)")+
+  labs(fill="Presence proportion",
+       size="Number of observations")+
+  facet_wrap(~species.binomial,scales="free")
+
+#%%%%%%%%
+#### end
+#%%%%%%%%
+for (species in df.species$species.binomial){
+  print(species)
+  threshold.cold=quantile(db.pres[c(db.pres$species.binomial==species & db.pres$presence==1),]$t.min)[4]
+  threshold.hot=quantile(db.pres[c(db.pres$species.binomial==species & db.pres$presence==1),]$t.min)[2]
+  glm.cold=glm(formula = presence ~ hsm + fsm,
+                     data=db.pres %>% 
+                       filter(t.min<threshold.cold) %>% 
+                       filter(species.binomial==species),
+                     family=binomial(link = "logit"))
+  glm.hot=glm(formula = presence ~ hsm + fsm,
+               data=db.pres %>% 
+                 filter(t.min>threshold.hot) %>% 
+                 filter(species.binomial==species),
+               family=binomial(link = "logit"))
+  print("cold")
+  print(summary(glm.cold))
+  print("hot")
+  print(summary(glm.hot))
+  
+}
+threshold.cold=quantile(db.pres[c(db.pres$species.binomial=="Pinus sylvestris"& db.pres$presence==1),]$t.min)[2]
+threshold.hot=quantile(db.pres[c(db.pres$species.binomial=="Abies alba"& db.pres$presence==1),]$t.min)[2]
+glm.abies.cold=glm(formula = presence ~ fsm,
+                  data=db.pres %>% 
+                    filter(t.min<threshold.cold) %>% 
+                    filter(species.binomial=="Pinus sylvestris"),
+                  family=binomial(link = "logit"))
+
+summary(glm.abies.cold)
+
+
+#%%%%%%%%%%%%%
+#### explo glm
+#%%%%%%%%%%%%%
+# step AIC using db.pres
+fullmod=glmer(presence ~  hsm + fsm + sgdd + wai + (1|species.binomial), 
+                data = db.pres,
+                family=binomial(link = "logit"),
+              na.action = "na.omit")
+ nullmod=glmer(presence ~  (1|species.binomial), 
+              data = db.pres,
+              family=binomial(link = "logit"))
+forwards=step(nullmod,
+              scope=list(lower=formula(nullmod),
+                         upper=formula(fullmod)),
+              direction="forward",
+              )
+dredge(fullmod)
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 4 - Recompute vdp ####
+#' @description 
+#' @authors Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+compute.vpd <- function(europe,
+                        dir.file="data/CHELSA/CHELSA_vpd_max_1981-2010_V.2.1.tif"){
+  europe=st_as_sf(europe)
+  vpd.max=crop(rast(dir.file),
+               vect(europe),
+               mask=TRUE)
+  names(vpd.max)="vpd.max"
+  vpd.psi <- as.data.frame(vpd.max,xy=TRUE) %>% 
+    mutate(psi.contrib=-5*(vpd.max/101325))
+  vpd.psi %>% 
+    ggplot()+
+    geom_tile(aes(x=x,y=y,fill=psi.contrib))+
+    theme_bw() +
+    labs(x = "Longitude", y = "Latitude") + 
+    scale_fill_gradientn(name = "potential min",colours = viridis(80),na.value="transparent")+
+    coord_quickmap()
+  
+  return(vpd.psi)
+}
+
+

@@ -1,0 +1,485 @@
+---
+title: "Trees safety margins to their  main physiological stresses in Europe"
+author: "Anne Baranger"
+date: "19/10/2022"
+output:
+  bookdown::html_document2:
+    number_sections: false
+    toc: true
+    toc_float: yes
+    theme: flatly
+  bookdown::word_document2: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning=FALSE)
+packages=c("targets","tidyr","dplyr","ggplot2","terra","stringr","sf")
+# lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate","lme4"),require,character.only=TRUE)
+lapply(packages,require,character.only=TRUE)
+tar_load(df.traits)
+species.select=c("Quercus ilex","Quercus robur","Betula pendula","Abies alba","Pinus sylvestris")
+df.select <- df.traits %>% 
+  filter(species.binomial %in% species.select)
+ 
+```
+
+# Introduction
+
+## Context
+Forest cover over 30% of the Earth land area (FAO 2020) and account for 45% of terrestrial carbon stocks (Pan et al. 2011). The climate change that has been taking place over the last century is impacting the structure and functioning of forests globally. In Europe, climate projections suggest that by 2100 temperatures will increase by up to 4°C in the southern margin, with a reduction in precipitation of up to 50%. In recent years these trends have led to massive drought-induced diebacks and no later than in the summer of 2022, to large-scale forest fires. By keeping up this pace, the drastic changes in climate patterns create large areas of climatic vulnerability in European forests, in which ecosystems are subject to a complete reorganization or even disappearance (Lindner et al.2014).
+
+## Vulnerability through physiology
+To understand and therofore predict climate change impacts, ecologists have long focused on the determination of biotic and abiotic drivers of species niche (Cheaib et al. 2012). According to Hutchinson (Hutchinson 1957), they delimit an "n-dimensional hypervolume", every
+point in which corresponds to a state of the environment which would permit a species to exist indefinitely. Using spatial projection of environmental drivers, one can draw the distribution of species and follow its evolution under climate projections. In particular, species distribution models (SDM) rely on this conceptual framework and are the major tools used to predict species vulnerability to climate change. Basically, SDMs infer correlations between occurrence data and climatic variables, assuming equilibrium with current climate, and predict the probability of presence. A decreasing probability of presence means a potential distribution shrinkage and a higher vulnerability.
+
+Despite being an alarming trend at the global scale (IPCC 2014; Parmesan and Yohe 2003), species range shifts that had been predicted with SDMs do not always match observed shifts. In particular in the case of trees, which are long-lived and non-mobile species, range shifts are less marked: many species have shown no change in their range and others have even changed in the opposite direction to that predicted. This might be because decreased probability of presence might not be linked with decreased abundance or fitness (Pironon et al. 2017; Sexton et al. 2009). This inconsistencies reveal that classical assumptions made in SDMs may mask significant variations within species’ response to climate change and could lead to erroneous predictions of vulnerability.
+
+## Two major physiological constraints : frost and drought
+
+## Safety margins
+
+## Hypothesis
+
+# Hydraulic safety margins
+
+To assess the distance to their hydraulic tolerance of species in different climatic context we compute the distance between hydraulic resistance and hydric constraints of the environment.
+Hydraulic resistance is measured by the hydraulic potential at which 50% (or 88% for angiosperms) of the vessels of a species are embolized. Hydric constraints is assessed by the minimum soil hydraulic potential. Indeed, plant hydraulic potential is supposed to range between that of the soil and of the air. However, plant potential is regulated by stomatal closure that enables potential not to drop beneath critical values. Therefore it is assumed that soil potential sets the upper limit of plant potential. 
+
+Hydraulic safety margin is expressed as:
+$$LT_{50}=\Psi_{min}-\Psi_{50/88}$$
+
+## Measures of resistance to cavitation
+$\Psi_{50/88}$ is assessed experimentally using a large Cavitron. Branch samples are fixed on a large rotor, and using a flow-centrifugation technique, the percentage loss of con- ductivity (PLC) is measured as a function pressure imposed (Cochard 2002).
+$\Psi_{50/88}$ is deduced from PLC curves.There are databases that list this trait per species (Choat, Jansen, et al. 2012).
+
+Few studies have investigated the intra-specific variability of $\Psi_{50/88}$ and most conclude that this variability is much lower than the inter-specific variability, with $\Psi_{50/88}$ varying between -1 and -14MPa (W. R. L. Anderegg 2015; Delzon et al. 2010; Maherali, Pockman, and Jackson 2004). Yet within a species there can be variation of up to 1MPa in $\Psi_{50/88}$ (Stojnić et al. 2018), which could have a significant impact on HSM. However, as a first approximation we will not include intra-specific variability, and $\Psi_{50/88}$ will be assumed to be constant across the species distribution.
+
+```{r P50species, fig.cap="P50 and LT50 of species",fig.height=6,fig.width=5}
+
+df.traits %>% 
+  mutate(species.binomial=factor(df.traits$species.binomial, levels=unique(df.traits$species.binomial[order(df.traits$P50)]), ordered=TRUE)) %>% 
+  select(species.binomial,LT50,P50) %>% 
+  mutate(LT50=LT50/10) %>% 
+  pivot_longer(cols = c("P50","LT50"),
+               names_to = "Trait") %>% 
+  ggplot(aes(value,species.binomial,fill=Trait))+
+  geom_bar(stat = "identity",width=0.4,position = "dodge")+
+  theme(axis.text.x = element_text(angle=90))+
+  theme_bw()+
+  scale_x_reverse()+
+  ylab("")+
+  xlab("P50 (MPa)")
+```
+## Compute minimum soil potential
+
+Minimum soil potential $\Psi_{min}$ is not a largescale measured parameter, it needs to be computed according physical assumptions. It requires soil water content (SWC) and parameter associated to soil texture.
+
+### Pedotransfer equation
+
+Different methods have been proposed to this end:
+
+* Campbell equation $\Psi_{min} = \Psi_{e} \cdot (SWC_{max}/SWC_{min})^b$ with SWC being soil water content, $\Psi_{e}$ and $b$ paramaters that depend on local soil texture   
+* van Genuchten equation $\Psi_{min}= [ (\frac{\theta_s - \theta_r}{SWC_{min}-\theta_r})^{1/m}-1]^{1/n} \cdot \frac{1}{\alpha}$
+
+$\Psi_e$, $b$, $\theta_s$, $\theta_r$, $n$, $m$, $\alpha$ are parameters computed based on soil texture or fitted over empirical data.
+
+For Campbell equation, we computed parameters according to the formula given in the related book (Campbell 1985). For Van Genuchten, we proceed a litterature review to extract parameters fitted over datasets that corresponds to the range of our study, ie Europe (Wösten et al. 1999). (Toth et al 2015) also computed van genuchten parameters over Europe using machine learning algorithm that take into account fine texture dataset (soilgrid).
+
+We tested each model (Campbel/Van Genuchten) and opted for Van Genuchten equation.
+
+```{r PDFequations, fig.cap="Water retention curves with Campbell function and Van Genuchten function",fig.width=7}
+
+pars_t_VG <- data.frame(
+  texture=c(5,4,3,2,1),
+  psi_e=c(-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
+  b=c(2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
+  teta_r=c(0.0250,0.0100,0.0100,0.0100,0.0100),
+  teta_s=c(0.4030,0.4390,0.4300,0.5200,0.6140),
+  alpha=c( 0.0383,0.0314,0.0083,0.0367,0.0265),
+  n=c(1.3774,1.1804,1.2539,1.1012,1.1033),
+  m=c(0.2740,0.1528,0.2025,0.0919,0.0936)
+  ) %>% 
+    mutate(texture=as.factor(texture))
+
+
+a=pars_t_VG %>%
+  select(texture,psi_e,b,teta_s) %>% 
+  crossing(teta=seq(0,1,0.001)) %>% 
+  mutate(psi_min=psi_e*((teta_s/teta)^b)) %>% 
+  ggplot(aes(teta,psi_min,color=texture))+
+  geom_line(size=0.81)+
+  #eom_point(data=psi_min,aes(SWC_w_min,psi_t_CB,color=as.factor(texture_t)))+
+  ylab("Psi_min (kPa)")+
+  xlab("teta")+
+  ylim(0,-15000)+
+  theme_bw()+
+  scale_color_brewer(palette="Spectral",direction=-1)+
+  ggtitle("Campbell model, parameters Sperry 1998")
+
+
+b=pars_t_VG %>%
+  select(texture,teta_r,teta_s,alpha,n,m) %>% 
+  crossing(teta=seq(0,1,0.001)) %>% 
+  mutate(psi_min=-((((teta_s-teta_r)/(teta-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>% 
+  ggplot(aes(teta,psi_min,color=texture))+
+  geom_line(size=0.81)+
+  #geom_point(data=psi_min,aes(SWC_w_min,psi_t_VG,color=as.factor(texture_t)))+
+  ylab("Psi_min (kPa)")+
+  xlab("teta")+
+  ylim(0,-15000)+
+  theme_bw()+
+  geom_vline(xintercept=c(0.01,0.1))+ 
+  geom_hline(yintercept = -1000)+
+  scale_color_brewer(palette="Spectral",direction=-1)+
+  ggtitle("VG model, parameters Wösten 1999")
+
+cowplot::plot_grid(a,b,ncol=2)
+rm(a,b,pars)
+```
+
+
+### Spatial computation
+To compute minimum soil water content, different parameters are to be taken into account:
+* the time series timestep in which we should look for minimum : months or days
+* the depth until which we should compute soil water content
+* how differences between horizons should be integrated in the final potential : weighted according to horizons depth, or horizons conductivity (use of SUREAU)
+
+We finally opted for a weighting of each horizon by taking into account the conductivity of the horizon and the root distribution, using the SUREAU model. We tested with a fixed depth of 1m, and a monthly and daily time step. Then we performed the same calculation with a daily time step and the actual depth.
+
+The change from a monthly to a daily time step allows us to better take into account the local extrema, and thus gives a more negative distribution of potentials with daily data.
+The integration of the real depth allows to correct extreme values in some areas that result from an underestimation of the soil depth in the previous case (e.g. Poland).
+
+The safety margins will therefore be calculated with the last method: daily time step and real depth.
+
+```{r psimincompare,fig.cap="Comparison of the 3 different methods to compute minimum soil potential",fig.width=7}
+tar_load(c(psihormonth_100,psihorday_100,psihorday_real))
+
+
+plot.psi <- function(psi,horizons=FALSE){
+  if(horizons==FALSE){
+    plot=psi %>% 
+    mutate(across(.cols=matches(c("psi")),
+                  ~ cut(.,
+                        breaks=c(-Inf, -50000,-25000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), 
+                        labels=c("<-50MPa","-50<Psi<-25MPa","-25<Psi<-10MPa","-10<Psi<-5MPa",
+                                 "-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa",
+                                 "-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))))  %>% 
+    dplyr::select(x,y,psi) %>%
+    ggplot()+
+      geom_tile(aes(x=x,y=y,fill=psi)) +
+      theme_bw() +
+      theme(axis.title=element_blank(),
+            legend.key.size = unit(0.5,"cm"))+
+      labs(fill="Potentiel (MPa)")+
+      #facet_wrap(~name)+
+      scale_fill_brewer(palette="RdYlBu")+
+      coord_equal()
+  } else{
+    plot=psi %>% 
+      mutate(across(.cols=matches(c("psi")),
+                    ~ cut(.,
+                          breaks=c(-Inf, -50000,-25000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), 
+                          labels=c("<-50MPa","-50<Psi<-25MPa","-25<Psi<-10MPa","-10<Psi<-5MPa",
+                                   "-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa",
+                                   "-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))))  %>% 
+      dplyr::select(matches(c("^x$","^y$","psi"))) %>%
+      relocate(y,.after=x) %>% 
+      pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+      ggplot()+
+        geom_tile(aes(x=x,y=y,fill=value)) +
+        theme_bw() +
+        theme(axis.title=element_blank(),
+              legend.key.size = unit(0.5,"cm"),
+              legend.position = "bottom")+
+        labs(fill="Potentiel (MPa)")+
+        facet_wrap(~name)+
+        scale_fill_brewer(palette="RdYlBu")+
+        coord_equal()
+  }
+  return(plot)
+}
+
+psihormonth_100=rast(psihormonth_100,crs="epsg:4326")
+psi.gather= as.data.frame(c(psihormonth_100[[26]],
+  project(rast(psihorday_100,crs="epsg:4326"),psihormonth_100,method="near")[[15]],
+  project(rast(psihorday_real,crs="epsg:4326"),psihormonth_100,method="near")[[15]]),
+  xy=TRUE)
+colnames(psi.gather)=c("x","y","psi_month_100","psi_day_100","psi_day_real")
+psi.gather  %>% 
+  plot.psi(horizons =TRUE)
+
+plot.psi(psihorday_real,horizons = TRUE)
+```
+
+
+```{r psimindensity,fig.cap="Density the 3 different computations of minimum soil potential"}
+limit.psi=quantile(psi.gather$psi_day_real, probs=0.01,na.rm=TRUE)
+psi.gather %>% 
+  pivot_longer(cols = colnames(.)[c(-1,-2)],names_to = "Psi method") %>% 
+  filter(value>limit.psi) %>% 
+  ggplot(aes(abs(value),color=`Psi method`))+
+  geom_density()+
+  theme_bw()+
+  theme(axis.title = element_blank())+
+  scale_x_log10()
+```
+
+
+
+
+## Hydraulic safety margins
+
+Maps of hydraulic safety margins for few species compared to their actual distribution from expert knowledge.
+We plotted the hydraulic safety margins for 5 species with distributions in different biomes, and compared the different safety margins according to the minimum potential calculation.
+It is difficult to conclude that the safety margins correspond to the southern distribution of some species, but it remains essential to test this hypothesis statistically.
+
+```{r HSM,fig.cap="Safety margins for 5 species, computed with the 3 different methods",fig.width=7}
+tar_load(europe)
+
+
+for (i in 1:dim(df.select)[1]){
+  tryCatch(
+      {
+        spdistrib=read_sf(dsn=file.path("data",
+                                        "chorological_maps_dataset",
+                                        df.select$species.binomial[i],
+                                        "shapefiles"),
+                          layer=df.select$file[i])
+        spdistrib=st_crop(spdistrib,sf::st_bbox(europe))
+        
+        ## Build graphs
+        print(psi.gather %>% 
+          pivot_longer(cols = colnames(.)[c(-1,-2)],names_to = "Psi method") %>%
+          mutate(HSM=value-df.select$P50[i]) %>% 
+          mutate(HSM=cut(HSM,
+                         breaks=c(-Inf, -10000, -5000,-3000,0,500,1000,5000,Inf),
+                         labels=c("<-10MPa","-10<HSM<-5MPa","-5<HSM<-3MPa",
+                                  "-3<HSM<0MPa","0/0.5","0.5/1","1/5",">5MPa"))) %>% 
+          ggplot() +
+          geom_tile(aes(x=x,y=y,fill=HSM))+
+          geom_sf(data=spdistrib,
+                  fill=alpha("grey",0.6),
+                  lwd = 0)+
+          coord_sf()+
+          theme_bw() +
+          theme(axis.title=element_blank(),
+                legend.key.size = unit(0.5,"cm"),
+                legend.text = element_text(size=8),
+                legend.title = element_text(size=9),
+                legend.position = "bottom")+
+          labs(fill=paste0("HSM (MPa), \nSpecies: ",df.select$species.binomial[i],
+                           "\nP50=",df.select$P50[i]))+
+          scale_fill_brewer(palette="RdYlBu")+
+          facet_wrap(~`Psi method`))
+      },
+      error=function(e){print("File not loaded")}
+    )
+  }
+
+```
+
+# Frost safety margins
+
+## Frost index raw
+To characterise the risk of frost in trees we looked at two processes by which frost can damage trees:
+* in the middle of winter, when very negative temperatures exceed the frost hardiness of the trees and damage the vital tissues of the tree
+* in spring, when the frost hardiness of the trees is released and late frost events can damage the newly formed tissues, and thus impact growth and fertility.
+
+For this we used different indicators.
+* First, we used the mean daily minimum temperature of the coldest month over the period 1981-2010
+* Based on daily minimum temperature time series, we calculated the minimum of the daily minimum for each month over the period 1980-2005,
+* on the same data we calculated the 5% quantile of the period 1995-2005
+
+Then we compared each indicators to the LT50 in the middle of winter (which the lowest LT50). 
+Using mean estimation of budburst date assessed with remote sensing data (MODIS) we computed the mean LT50 in the 30-day-period before budburst. We assumed that LT50 reached -5°C for all species at budburst and that the decrease from winter to spring was linear.
+Then we compared LT50 in spring with the 2 last indicators computed on the 30-day-period before budburst.
+
+The comparison of the density of the minimum of each indicators clearly shows a gap between the minimum of daily minima and the minimum of mean daily minima, with almost 24°C difference in their mean.
+```{r CompareFrostIndex,fig.cap="Comparison of the 3 frost index",fig.width=7}
+rast.bio6=crop(rast("data/CHELSA/CHELSA_bio6_1981-2010_V.2.1.tif"),vect(europe),mask=TRUE)
+names(rast.bio6)="bio6"
+rast.min=crop(min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm = FALSE),europe,mask=TRUE)
+names(rast.min)="min"
+rast.quant=crop(min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_quant_19952005.nc"),na.rm = FALSE),europe,mask=TRUE)
+names(rast.quant)="quant"
+
+frost.gather=aggregate(c(rast.bio6,rast.min,rast.quant),
+                           10,
+                           fun="mean",
+                           na.rm=TRUE)
+rm(rast.bio6,rast.min,rast.quant)
+as.data.frame(frost.gather,xy=TRUE) %>% 
+  mutate(quant=quant/100) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  mutate(value=cut(value,
+                   breaks=c(-Inf,-50,-40,-30,-20,-15,-10,-5,0,5,10, Inf),
+                   labels=c("<-50", "-50<Tmin<-40","-40/-30","-30/-20","-20/-15", "-15/-10","-10/-5","-5/0","0/5","5/10",">10"))) %>% 
+  ggplot(aes(x=x,y=y,fill=value))+
+  geom_tile()+
+  labs(fill="Min temperature (Celsius)")+
+  theme_bw() +
+  theme(axis.title=element_blank(),
+        legend.key.size = unit(0.5,"cm"))+
+  scale_fill_brewer(palette="RdYlBu")+
+  coord_equal()+
+  facet_wrap(~name)
+```
+
+
+```{r CompareFrostIndexDensity,fig.cap="Density of the 3 frost index"}
+as.data.frame(frost.gather,xy=TRUE) %>% 
+  mutate(quant=quant/100) %>% 
+  pivot_longer(cols = colnames(.)[c(-1,-2)],names_to = "Frost method") %>% 
+  ggplot(aes(value,color=`Frost method`,fill=`Frost method`))+
+  geom_density(alpha=0.4)+
+  theme_bw()+
+  theme(axis.title = element_blank())
+```
+
+
+## Frost index refined with budburst date
+We were not able to calculate the second indicator for the 30 days before each budburst date, because the calculation was too heavy (it will be launched on the server after the holidays).
+
+```{r CompareFrostIndexFDG,fig.cap="Comparison of the 2 frost index adjusted to budburst date",fig.width=7}
+tar_load(frost.index)
+load("rasttempminfdg_df.RData")
+
+frost.index.quant=rast(frost.index$rast.temp,crs="epsg:4326")
+fdg=rast(frost.index$rast.fdg.mean,crs="epsg:4326")
+frost.fdg.gather=aggregate(c(
+                              frost.index.quant,
+                              project(rast(df.temp,crs="epsg:4326"),frost.index.quant,method="near"),
+                              fdg
+                            ),
+                           10,
+                           fun="mean",
+                           na.rm=TRUE)
+names(frost.fdg.gather)=c("quant","min","fdg")
+rm(frost.index,frost.index.quant,df.temp,fdg)
+
+as.data.frame(frost.fdg.gather,xy=TRUE) %>% 
+  select(-fdg) %>% 
+  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  mutate(tmin=cut(value,
+                   breaks=c(-Inf,-20,-15,-10,-5,0,5,10, Inf),
+                   labels=c("<-20", "-20<Tmin<-15", "-15/-10","-10/-5","-5/0","0/5","5/10",">10"))) %>% 
+  ggplot(aes(x=x,y=y,fill=tmin))+
+  geom_tile()+
+  labs(fill="Temperature x fdg (Celsius)")+
+  theme_bw() +
+  theme(axis.title=element_blank(),
+        legend.key.size = unit(0.5,"cm"))+
+  scale_fill_brewer(palette="RdYlBu")+
+  coord_equal()+
+  facet_wrap(~name)
+
+as.data.frame(frost.fdg.gather,xy=TRUE) %>% 
+  select(-fdg) %>% 
+  pivot_longer(cols = colnames(.)[c(-1,-2)],names_to = "Frost method") %>% 
+  ggplot(aes(value,color=`Frost method`,fill=`Frost method`))+
+  geom_density(alpha=0.4)+
+  theme_bw()+
+  theme(axis.title = element_blank())
+
+```
+
+## Safety margins with LT50 winter
+
+```{r SafetyMarginsLT50winter,fig.cap="Safety margins of the 5 selected species, computed for the 3 frost index and LT50 of winter",fig.width=7}
+frost.gather=as.data.frame(frost.gather,xy=TRUE)
+
+for (i in 1:dim(df.select)[1]){
+  tryCatch(
+      {
+        spdistrib=read_sf(dsn=file.path("data",
+                                        "chorological_maps_dataset",
+                                        df.select$species.binomial[i],
+                                        "shapefiles"),
+                          layer=df.select$file[i])
+        spdistrib=st_crop(spdistrib,sf::st_bbox(europe))
+                
+        ## Build graphs
+        print(frost.gather %>% 
+          mutate(quant=quant/100) %>% 
+          pivot_longer(cols=colnames(.)[c(-1,-2)],
+                       names_to = "Frost.index",
+                       values_to = "FSM") %>%
+          mutate(FSM=FSM-df.select$LT50[i]) %>% 
+          mutate(FSM=cut(FSM,
+                         breaks=c(-Inf, -15,-10, -5,0,5,10,15,20,25,30,35,Inf),
+                         labels=c("<-15", "-15<FSM<-10", "-10/-5","-5/0","0/5","5/10","10/15","15/20","20/25","25/30","30/35",">35"))) %>%
+          ggplot() +
+          geom_tile(aes(x=x,y=y,fill=FSM))+
+          geom_sf(data=spdistrib,
+                  fill=alpha("grey",0.4),
+                  lwd = 0)+
+          coord_sf()+
+          theme_bw() +
+          theme(axis.title=element_blank(),
+                legend.key.size = unit(0.5,"cm"),
+                legend.text = element_text(size=8),
+                legend.title = element_text(size=9),
+                legend.position="bottom")+
+          labs(fill=paste0("FSM (°C), \nSpecies: ",df.select$species.binomial[i],
+                           "\nLT50=",round(df.select$LT50[i],digit=1)))+
+          scale_fill_brewer(palette="RdYlBu")+
+          facet_wrap(~Frost.index))
+      },
+      error=function(e){print("File not loaded")}
+    )
+  }
+
+```
+
+
+
+## Safety margins with LT50 spring
+
+```{r SafetyMarginsFrostQuant,fig.cap="Safety margins of the 5 selected species, computed for the 2 frost index and LT50 of spring",fig.width=7}
+frost.fdg.gather=as.data.frame(frost.fdg.gather,xy=TRUE)
+for (i in 1:dim(df.select)[1]){
+  tryCatch(
+      {
+       spdistrib=read_sf(dsn=file.path("data",
+                                        "chorological_maps_dataset",
+                                        df.select$species.binomial[i],
+                                        "shapefiles"),
+                          layer=df.select$file[i])
+        spdistrib=st_crop(spdistrib,sf::st_bbox(europe))
+        
+        ## Build graphs
+        print(
+          frost.fdg.gather %>% 
+            mutate(fdg=-5+30*(5+df.select$LT50[i])/(2*fdg)) %>% 
+            pivot_longer(cols=c("quant","min")) %>% 
+            mutate(fsm=cut(fdg-value,
+                           breaks=c(-Inf, -15,-10, -5,0,5,10,15,20,25,30,35,Inf),
+                           labels=c("<-15", "-15<FSM<-10","-10/-5","-5/0",
+                                    "0/5","5/10","10/15","15/20","20/25",
+                                    "25/30","30/35",">35")))%>%
+            ggplot() +
+            geom_tile(aes(x=x,y=y,fill=fsm))+
+            geom_sf(data=spdistrib,
+                    fill=alpha("grey",0.4),
+                    lwd = 0)+
+            coord_sf()+
+            theme_bw() +
+            theme(axis.title=element_blank(),
+                  legend.key.size = unit(0.5,"cm"),
+                  legend.text = element_text(size=8),
+                  legend.title = element_text(size=9))+
+            labs(fill=paste0("FSM (°C), \nSpecies: ",df.select$species.binomial[i],
+                             "\nLT50=",round(df.select$LT50[i],digit=1)))+
+            scale_fill_brewer(palette="RdYlBu")+
+            facet_wrap(~name)
+        )
+      },
+      error=function(e){print("File not loaded")}
+    )
+  }
+```
+
+## Further improvements
+
+Compute thermal time dependency of LT50.
+

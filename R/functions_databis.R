@@ -1,93 +1,129 @@
 
-psihor_100 %>% 
+psi_min=psihorday_100 %>% 
   mutate(across(.cols=matches(c("psi")),
                 ~ cut(.,
-                      breaks=c(-Inf, -20000, -10000, -5000, -3000, -1000, -500, -300, -200, -100, Inf),
-                      labels=c("<-20MPa", "-20<Psi<-10MPa", "-10<Psi<-5MPa", "-5<Psi<-3MPa","-3<Psi<-1MPa",
-                               "-1<Psi<-0.5MPa","-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))))  %>% 
+                      breaks=c(-Inf, -50000,-25000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), 
+                      labels=c("<-50MPa","-50<Psi<-25MPa","-25<Psi<-10MPa","-10<Psi<-5MPa",
+                               "-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa",
+                               "-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))))  %>% 
   # dplyr::select(matches(c("^x$","^y$","psi"))) %>%
   dplyr::select(x,y,psi) %>%
   relocate(y,.after=x) %>% 
-  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  #pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
   ggplot()+
-  geom_tile(aes(x=x,y=y,fill=value)) +
-  geom_sf(data = occ.fagsy)+
+  geom_tile(aes(x=x,y=y,fill=psi)) +
+  #geom_sf(data = occ.fagsy)+
   theme_bw() +
   theme(axis.title=element_blank(),
         legend.key.size = unit(0.5,"cm"))+
   labs(fill="Potentiel (MPa)")+
-  facet_wrap(~name)+
+  #facet_wrap(~name)+
   scale_fill_brewer(palette="RdYlBu")+
+  coord_equal()
+
+safety.margins.day$tmin %>% 
+  mutate(t.min=scale(t.min,scale=TRUE,center=TRUE)) %>% 
+  ggplot(aes(x=x,y=y,fill=t.min))+
+  geom_tile()+
+  scale_fill_gradientn(name = "Sensitivity of performance to x ",colours = turbo(6),na.value="transparent")+
+  labs(fill="Performance")+
+  theme_bw() +
+  theme(axis.title=element_blank())+
+  coord_equal()
+
+
+
+safety.margins.day$tmin %>% 
+  mutate(t.min=cut(t.min,
+                   breaks=c(-Inf,-20,-15,-10,-5,0,5,10, Inf),
+                   labels=c("<-20", "-20<Tmin<-15", "-15/-10","-10/-5","-5/0","0/5","5/10",">10"))) %>% 
+  ggplot(aes(x=x,y=y,fill=t.min))+
+  geom_tile()+
+  labs(fill="Min temperature (Celsius)")+
+  theme_bw() +
+  theme(axis.title=element_blank(),
+        legend.key.size = unit(0.5,"cm"))+
+  scale_fill_brewer(palette="RdYlBu")+
+  coord_equal()
+ggsave(psi_min,
+       filename = paste0("psi_min2.png"),
+       path="figs/",
+       device="png",
+       scale=2)
+
+safety.margins.day$tmin %>% 
+    mutate(across(.cols=colnames(.)[c(-1,-2,-3)],
+                  ~ cut(.,
+                        breaks=c(-Inf,0,3,7,10,15,20,30, Inf),
+                        labels=c("<0", "0<FSM<3", "3/7","7/10","10/15","15/20","20/30",">30"))))  %>% 
+    # dplyr::select(matches(c("^x$","^y$","psi"))) %>%
+    dplyr::select(-t.min) %>%
+    pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+    filter(name %in% c("Abal","Bepe","Fasy","Piab","Psme","Quro")) %>% 
+    mutate(name=as.factor(name)) %>% 
+    ggplot()+
+    geom_tile(aes(x=x,y=y,fill=value)) +
+    theme_bw() +
+    # theme(axis.title=element_blank(),
+    #       legend.key.size = unit(0.5,"cm"))+
+    # labs(fill="Potentiel (MPa)")+
+    facet_wrap(~name)+
+    scale_fill_brewer(palette="RdYlBu")+
+    coord_equal()
+
+## load chelsa and compute wai
+
+
+psi_min %>% 
+  select(x,y,psi) %>% 
+  mutate(psi=cut(psi,
+                 breaks=c(-Inf, -50000,-25000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), 
+                 labels=c("<-50MPa","-50<Psi<-25MPa","-25<Psi<-10MPa","-10<Psi<-5MPa",
+                          "-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa",
+                          "-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))) %>% 
+  #pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+  ggplot()+
+  geom_tile(aes(x=x,y=y,fill=psi)) +
+  #geom_sf(data = occ.fagsy)+
+  theme_bw() +
+  theme(axis.title=element_blank(),
+        legend.key.size = unit(0.5,"cm"))+
+  labs(fill="Potentiel (MPa)")+
+  #facet_wrap(~name)+
+  scale_fill_brewer(palette="RdYlBu")+
+  coord_equal()
+
+
+
+psi_h1 %>% 
+  filter(is.na(psi_w)) %>% 
+  filter(x<11) %>% 
+  filter(x>8) %>% 
+  filter(y<48) %>% 
+  filter(y>43)
+  ggplot()+
+  geom_tile(aes(x=x,y=y),fill="red")+
+  geom_sf(data=europe,fill=NA)+
   coord_sf()
 
-occ.fagsy = db.tree %>%  
-  filter(ESPAR=="09") %>% 
-  dplyr::select(IDP) %>% 
-  distinct() %>% 
-  left_join(db.stand,by="IDP") %>% 
-  dplyr::select(IDP,XL,YL) %>% 
-  distinct()
-occ.fagsy=st_as_sf(occ.fagsy, coords = c("XL", "YL"), crs = 2154)
-occ.fagsy=st_transform(occ.fagsy,crs="epsg:4326")
-
-occ.fagsy=cbind(occ.fagsy,extract(rast(psihor_100,crs="epsg:4326"),vect(occ.fagsy)))
-
-
-occ.fagsy %>% 
-  ggplot(aes(abs(psi)))+
-  geom_density()+
-  scale_x_log10()+
-  geom_vline(xintercept = 3150,color="red")+
-  geom_vline(xintercept = 3556.795, color="green")
-plot(vect(occ.fagsy))
-
-
-# list of targetted species in fni data
-tree.target=data.frame(species=c("quro","fagsy","abab","pial"),
-                       fni.key=c("02","09","61","62"),
-                       p50=c(6880,3150,3790,5810))
-
-for (i in 1:dim(tree.target)[1]){
-  occ.tree = db.tree %>%  
-    filter(ESPAR==tree.target$fni.key[i]) %>% 
-    dplyr::select(IDP) %>% 
-    distinct() %>% 
-    left_join(db.stand,by="IDP") %>% 
-    dplyr::select(IDP,XL,YL) %>% 
-    distinct()
-  occ.tree=st_as_sf(occ.tree, coords = c("XL", "YL"), crs = 2154)
-  occ.tree=st_transform(occ.tree,crs="epsg:4326")
   
-  occ.tree=cbind(occ.tree,extract(rast(psihor_100,crs="epsg:4326"),vect(occ.tree)))
-  
-  q05=quantile(occ.tree$psi,probs=0.05,na.rm=TRUE)
-  plot=occ.tree %>%
-    ggplot()+
-    geom_density(aes(abs(psi)))+
-    geom_vline(xintercept = tree.target$p50[i],colour="red")+
-    geom_vline(xintercept = -q05,colour="green")+
-    scale_x_log10()
-  print(plot)
-  print(q05+tree.target$p50[i])
-}
 
+#test plot LT50_spring for different LT50_winter and burburst date
 
+df.LT50.t=data.frame(LT50_winter=seq(-60,-20,1)) %>% 
+  mutate(spring_80=-5+30*(5+LT50_winter)/(2*80),
+         spring_90=-5+30*(5+LT50_winter)/(2*90),
+         spring_100=-5+30*(5+LT50_winter)/(2*100),
+         spring_110=-5+30*(5+LT50_winter)/(2*110))
+df.LT50.t %>% 
+  pivot_longer(cols=matches("spring")) %>% 
+  ggplot(aes(LT50_winter,value,color=name))+
+  geom_point()+
+  theme_bw()
+       
 
-### safety margins
-psimin[,1:6] %>% 
-  pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
-  filter(value>-10000) %>% 
-  ggplot()+
-  geom_tile(aes(x=x,y=y,fill=value))+
-  facet_wrap(~name)
-
-
-## look for correlations between tmin and psimin
-as.data.frame(c(rast(psimin[,1:3],crs="epsg:4326"),
-  resample(rast(tmin[,1:3],crs="epsg:4326"),rast(psimin[,1:3],crs="epsg:4326"))),xy=TRUE) %>% 
-  filter(psi>(-20000)) %>% 
-  ggplot(aes(x=psi,y=t.min)) +
-  geom_point(alpha=0.3)
-
-
-## buil
+as.data.frame(rast.fdg.sd,xy=TRUE) %>% 
+  mutate(std=cut(std,
+                 breaks=c(0,10,20,30,60,Inf))) %>% 
+  ggplot(aes(x=x,y=y,fill=std))+
+  geom_tile()

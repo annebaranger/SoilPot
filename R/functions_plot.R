@@ -91,9 +91,9 @@ chronology_swc <- function(point_to_extract=data.frame(Luberon=c(5.387792,43.814
 #' @param psi_min spatial dataframe of psi_min
 #' @return plots per species of interest
 plot.sftym <- function(dir.data="data",
-                             dir.file="Species traits/trait.select.csv",
-                             europe,
-                             safety.margins.day){
+                       dir.file="Species traits/trait.select.csv",
+                       europe,
+                       safety.margins.day){
   # Load and reshape species list and shapefiles list
   species.trait <- read.table(file=file.path(dir.data,dir.file),
                               header=TRUE,
@@ -109,7 +109,10 @@ plot.sftym <- function(dir.data="data",
                                    12,
                                    fun="mean"),
                          xy=TRUE)
-  psimin=safety.margins.day$psimin
+  psimin=as.data.frame(aggregate(rast(safety.margins.day$psimin,crs="epsg:4326"),
+                                 5,
+                                 fun="mean"),
+                       xy=TRUE)
   rm(safety.margins.day)
   
   # Build and save graphs
@@ -159,18 +162,18 @@ plot.sftym <- function(dir.data="data",
           scale_fill_brewer(palette="RdYlBu")
         ggsave(HSM,
                filename = paste0(species.trait$sp.ind[i],"HSM.png"),
-               path="figs/",
+               path="figs2/",
                device="png",
                scale=2)
         
-        FSM <- tmin.simpl %>% 
+        FSM <- tmin.simpl %>%
           pivot_longer(cols=colnames(.)[c(-1,-2)],
                        names_to = "Species",
-                       values_to = "FSM") %>% 
-          filter(Species==species.trait$sp.ind[i]) %>% 
+                       values_to = "FSM") %>%
+          filter(Species==species.trait$sp.ind[i]) %>%
           mutate(FSM=cut(FSM,
                          breaks=c(-Inf, -15,-10, -5,0,5,10,15,20,25,30,35,Inf),
-                         labels=c("<-15", "-15<FSM<-10", "-10/-5","-5/0","0/5","5/10","10/15","15/20","20/25","25/30","30/35",">35"))) %>% 
+                         labels=c("<-15", "-15<FSM<-10", "-10/-5","-5/0","0/5","5/10","10/15","15/20","20/25","25/30","30/35",">35"))) %>%
           ggplot() +
           geom_tile(aes(x=x,y=y,fill=FSM))+
           geom_sf(data=spdistrib,
@@ -187,7 +190,7 @@ plot.sftym <- function(dir.data="data",
           scale_fill_brewer(palette="RdYlBu")
         ggsave(FSM,
                filename = paste0(species.trait$sp.ind[i],"FSM.png"),
-               path="figs/",
+               path="figs2/",
                device="png",
                scale=2)
       },

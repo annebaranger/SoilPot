@@ -40,7 +40,7 @@ europe_extent <- function(countries=c("Albania","Austria","Belgium","Bulgaria",
                                    "Republic of Serbia","Slovakia","Slovenia",
                                    "Sweden","Andorra","Liechtenstein","Monaco",
                                    "Malta","San Marino","Vatican")
-){
+                          ){
   library(rworldmap) # package to get countries polygon
   europe <- getMap(resolution="high")
   europe <- europe[europe@data$ADMIN.1%in%countries,] # select countries of interest
@@ -137,7 +137,7 @@ era_data <- function(API_User="124078",
 #' @note spatial extent is to be specified directly on the website when DLing
 #' @return a dataframe of TerraClimate data
 terraclimate_data <- function() {
-  terraclimate <- as.data.frame(rast("data/agg_terraclimate_soil_1958_CurrentYear_GLOBE.nc"),
+  terraclimate <- as.data.frame(rast("data/Terraclimate/agg_terraclimate_soil_1958_CurrentYear_GLOBE.nc"),
                              xy=TRUE)
   return(terraclimate)
 }
@@ -208,7 +208,7 @@ get_waisgdd <- function(dir.chelsa="data/CHELSA/",
   df.loc=cbind(df.loc,
                pr=pr_chelsa,
                pet=pet_chelsa,
-               sgdd_chelsa)
+               sgdd=sgdd_chelsa)
   colnames(df.loc)=c("x","y","pr","pet","sgdd")
   df.loc <- df.loc %>% 
     mutate(wai=(12*pet-pr)/pet)
@@ -353,13 +353,40 @@ get_textureERA5 <- function(dir.data,
 #' @return spatial dataframe (spatraster converted to dataframe) ofcropped soil 
 #' water content layers. Each layer is a date. 
 get_SWC <- function(dir.data,
-                    dir.file,
-                    europe){
+                    dir.file
+                    ){
   SWCtot <-rast(file.path(dir.data,dir.file))
-  europe <- vect(st_as_sf(europe))
-  SWCtot <- crop(SWCtot,europe,mask=TRUE)
+  #europe <- vect(st_as_sf(europe))
+  #SWCtot <- crop(SWCtot,europe,mask=TRUE)
   return(as.data.frame(SWCtot,xy=TRUE))
 }
+
+
+# nc.data <-   read_ncdf("data/swc-1950-2021.nc",proxy=FALSE)
+# sf_use_s2(FALSE)
+# nc.stars.crop <-  nc.data[europe]
+# plot(nc.data[,,,1:3])
+# write_stars(nc.stars.crop,dsn="data/test.tif",layer="swvl1")
+# # Input nc file
+# nc.file <- file.path(dir.data,dir.file)
+# # read nc data
+# nc.data <- read_ncdf(nc.file)
+# 
+# # Read mask coordinates
+# coordenades.poligon <- read_csv("coordenades_poligon.csv")
+# colnames(coordenades.poligon) <- c("lon","lat")
+# 
+# # Build sf polygon to crop data
+# europe <- st_as_sf(europe)
+# bb_eu <- st_bbox(europe)
+# 
+# # Crop data
+# nc.stars.crop <- st_crop(nc.data,europe,
+#                          crop = TRUE,
+#                          epsilon = sqrt(.Machine$double.eps),
+#                          as_points = all(st_dimension(europe) == 2, na.rm = TRUE))
+# 
+# write_stars(nc.data[europe],dsn="data/test.nc")
 
 #' Compute weighted soil volumetric water content
 #' 
@@ -410,16 +437,17 @@ weight_swc <- function(dir.data,
 
 #' Compute min and max soil volumetric water content over a timeserie
 #' 
-#' @description Using ERA5-land SWC and a given depth, the function weight the
-#' different horizons according to their thickness
-#' @note ERA5-land data needs to be downloaded prior to applying the function
+#' @description Using monthly (or daily but not used here) time series of weighted
+#' soil water content, the function compute the min and max of timeseries
+#' @note ERA5-land data needs to be downloaded and weighted prior to applying 
+#' the function
 #' @param SWC_t dataframe of timeserie of swc
 #' @param timepath month or day
 #' @param date_begin "YYYY-MM-DD" one unit timepath before the beginning of the
 #' time serie
 #' @return dataframe with min/max
 #' date_begin='1949-12-01'
-extr_swc <- function(SWC_t,timepath,date_begin) {
+extr_swc <- function(SWC_t,timepath,date_begin,europe) {
   SWC=setDT(as.data.frame(SWC_t,xy=TRUE)) #use data.table to deal with big db
   if (timepath=="month") {
     time=as.character(as.Date(date_begin) %m+% months(as.numeric(sub(".*_","",
@@ -444,14 +472,15 @@ extr_swc <- function(SWC_t,timepath,date_begin) {
               SWC_max=mean(tail(sort(Max),5))) %>%
     ungroup()
   SWC=rast(SWC[2:5],crs="epsg:4326")
-  
+  europe <- vect(st_as_sf(europe))
+  SWC <- crop(SWC,europe,mask=TRUE)
   return(as.data.frame(SWC,xy=TRUE))
 }
 
 
 #' Load min computed externally with python
 #' 
-#' @description Load and reshape data computed with python program
+#' @description Load and reshape SWC data computed with python program, per horizon
 #' @note Python code need to be run prior executing this function
 #' @param dir.data
 #' @param dir.var
@@ -460,7 +489,7 @@ extr_swc <- function(SWC_t,timepath,date_begin) {
 
 load_swc <- function(dir.data="data",
                      dir.file="ERA5-land/swcd-1950-2021-",
-                     vars=c("layer1","layer2","layer3")){
+                     vars=c("layer1","layer2","layer3","layer4")){
   rast.model=rast(paste0(dir.data,"/",dir.file,vars[1],".nc"))[[1]]
   rast.swc=rast(nrows=dim(rast.model)[1],
                 ncol=dim(rast.model)[2],
@@ -468,7 +497,7 @@ load_swc <- function(dir.data="data",
                 xmax=ext(rast.model)$xmax,
                 ymin=ext(rast.model)$ymin,
                 ymax=ext(rast.model)$ymax,
-                nlyrs=3)
+                nlyrs=4)
   for (i in 1:length(vars)){
     rast.min=as.matrix(read.table(paste0(dir.data,"/",dir.file,vars[i],"_min.csv"),
                                   header=FALSE,
@@ -499,9 +528,9 @@ load_swc <- function(dir.data="data",
 
 #' Compute psi min with weighted swc over horizons
 #' 
-#' @description function applies Campbell equation to compute minimum soil 
-#' potential over spatial extent selected earlier using swc weightedover soil 
-#' depth
+#' @description function applies CP and VG equation to compute minimum soil potential 
+#' over weighted horizons. Using daily or monthly data, but not taking into account 
+#' the different horizons
 #' @param texture spatial dataframe to be converted into SpatRaster, containing
 #' values of texture at 1x1km resolution
 #' @param SWC spatial dataframe to be converted into SpatRaster, containing min
@@ -531,25 +560,26 @@ compute_psiweighted <- function(texture,SWC){
 }
 
 
-#' Compute psi min weighted over horizons
+#' Compute psi min taking into account the different horizons, monthly timestep
 #' 
-#' @description function applies Campbell equation to compute minimum soil 
-#' potential over spatial extent selected earlier using swc per horizon and 
-#' associated parameters extracted from 3D soil database
+#' @description function applies VG equation to compute minimum soil 
+#' potential using swc per horizon and associated parameters extracted from 
+#' 3D soil database. SWC computed with monthly timestep
 #' @param SWCtot dataframe of SWCtot cropped to the accurate extent
 #' @param hor number of horizons to account for
 #' @param timepath month or day
 #' @param date_begin "YYYY-MM-DD" one unit timepath before the beginning of the
 #' time serie
-#' @return Psi_min dataframe, that contains values of Psi_min computed with the
-#' 2 different methods used for SWC (average/weighted)
+#' @return Psi_min dataframe, that contains values of Psi_min computed by weighting
+#' the different horizons
 
 compute_psihor <- function(SWCtot,
                            hor,
                            timepath,
                            begin_date,
                            dir.data="data",
-                           dir.file="EU_SoilHydroGrids_1km"){
+                           dir.file="EU_SoilHydroGrids_1km",
+                           europe){
   
   ## Compute SWC extr per horizons ##
 
@@ -562,12 +592,12 @@ compute_psihor <- function(SWCtot,
   rm(list=ls()[grepl("SWC_h",ls())])
   
   # Compute minimum/max per horizon
-  SWC_extr=lapply(SWC,function(x)extr_swc(x,timepath,begin_date))
+  SWC_extr=lapply(SWC,function(x)extr_swc(x,timepath,begin_date,europe))
   
   ## Compute SUREAU ##
   # necessary functions 
   kseriesum <- function(k1,k2) {return(1/(1/k1+1/k2))}
-  compute.B_GC <- function (La, Lv, rootRadius) {
+  compute.B_GC <- function (La, Lv, rootRadius=0.0004) {
     b <- 1 / sqrt(pi * Lv)
     return(La * 2 * pi / (log(b/rootRadius)))
   }
@@ -596,6 +626,7 @@ compute_psihor <- function(SWCtot,
   
   ## Compute psi and ksoil and ksoiltostem
   
+  # Gather spatialized PDF parameters with SWC min/max for each of the 7 horizons
   pars.files=list.files(file.path(dir.data,dir.file))
   mrc.files=pars.files[grepl("MRC_",pars.files)]
   hcc.files=pars.files[grepl("HCC_",pars.files)]
@@ -612,6 +643,9 @@ compute_psihor <- function(SWCtot,
     )
   }
   list=mget(ls()[grepl("psi_h",ls())])
+  
+  
+  # Compute psi and other relevant variables for each horizons
   psi_min=lapply(seq_along(list),function(i){
     psi_df=list[[i]]
     names(psi_df)=str_replace(names(psi_df), paste0("_sl",i), "")
@@ -660,86 +694,182 @@ compute_psihor <- function(SWCtot,
 
 #' Compute psi min weighted over horizons with daily timepath
 #' 
-#' @description function applies Campbell equation to compute minimum soil 
-#' potential over spatial extent selected earlier using swc per horizon and 
-#' associated parameters extracted from 3D soil database
+#' @description function applies VG equation to compute minimum soil 
+#' potential using swc per horizon and associated parameters extracted from 
+#' 3D soil database. SWC computed with daily timestep
 #' @param SWCmin dataframe of SWC min of each horizons
 #' @param hor number of horizons to account for
-#' @return Psi_min dataframe, that contains values of Psi_min computed with the
-#' 2 different methods used for SWC (average/weighted)
-
+#' @param europe Europe polygon
+#' @param dir.data
+#' @param dir.file directory of 3D soil database
+#' @return Psi_min dataframe, that contains values of Psi_min computed with SUREAU 
+#' method
 compute_psihorday <- function(SWCmin,
-                           hor,
-                           dir.data="data",
-                           dir.file="EU_SoilHydroGrids_1km"){
+                              europe,
+                              dir.data="data",
+                              dir.file="EU_SoilHydroGrids_1km",
+                              depth){
   
   ## Compute SUREAU ##
   # necessary functions 
   kseriesum <- function(k1,k2) {return(1/(1/k1+1/k2))}
-  compute.B_GC <- function (La, Lv, rootRadius) {
+  compute.B_GC <- function (La, Lv, rootRadius=0.0004) {
     b <- 1 / sqrt(pi * Lv)
     return(La * 2 * pi / (log(b/rootRadius)))
   }
   
   # compute root characteristics
   betaRootProfile =0.97 
-  ## check this
-  hor_corr=matrix(data=c(1,2,2,3,3,4,4,1,2,3,4,5,6,7,0,0.05,0.15,0.3,0.6,1,2),ncol=3)
-  hor_corr_inv=matrix(data=c(1,2,3,4,1,3,5,7),ncol=2)
-  depth <- hor_corr[,3][2:(hor_corr_inv[hor,2]+1)]
-  SoilVolume <- depth 
-  rootDistribution <-numeric(length(depth)) #Three soil layers
-  for (i in 1:(hor_corr_inv[hor,2]-1)){
-    rootDistribution[i]=1-betaRootProfile^(depth[i]*100)-sum(rootDistribution[1:(i-1)])
-  }
-  rootDistribution[hor_corr_inv[hor,2]] = 1-sum(rootDistribution[1:(hor_corr_inv[hor,2]-1)])
-  k_RootToStem   = 1 * rootDistribution
-  
   fRootToLeaf=1
   LAImax = 5
   RAI = LAImax*fRootToLeaf
   rootRadius=0.0004
-  La = RAI*rootDistribution / (2*pi*rootRadius)
-  Lv = La/(SoilVolume)
-  #compute.B_GC(La,Lv,rootRadius)
   
-  ## Compute psi and ksoil and ksoiltostem
+  # depth used
+  if (typeof(depth)=="character"){
+    rast.depth=rast("data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst")
+    crs(rast.depth) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
+    rast.depth <- terra::project(rast.depth,"epsg:4326",method="near")
+    rast.depth <- resample(rast.depth,
+                           crop(rast(file.path(dir.data,
+                                               dir.file,
+                                               "MRC_alp_sl2.tif")),
+                                vect(europe),
+                                mask=TRUE),
+                           method="near")
+    names(rast.depth)="depth"
+  } else {
+    # create a raster model
+    rast.depth=crop(rast(file.path(dir.data,
+                                   dir.file,
+                                   "MRC_alp_sl2.tif")),
+                    vect(europe),
+                    mask=TRUE)
+    rast.depth[[1]][rast.depth[[1]]>=0] <- depth
+    names(rast.depth)="depth"
+  }
+ 
+ 
+  ## Compute psi and ksoil and ksoiltostem ##
+  
+  # correspondance between horizons fril ERA5 and 3D hydrosoil
+  hor_corr=matrix(data=c(1,2,2,3,3,4,4,1,2,3,4,5,6,7,0,0.05,0.15,0.3,0.6,1,2),ncol=3)
+  hor_corr_inv=matrix(data=c(1,2,3,4,1,3,5,7),ncol=2)
+  
+  # "downscale" SWC 
   SWCmin=resample(rast(SWCmin,crs="epsg:4326"),
-                  rast(file.path(dir.data,
+                  crop(rast(file.path(dir.data,
                                  dir.file,
                                  "MRC_alp_sl2.tif")),
+                            vect(europe),
+                            mask=TRUE),
                   method="near")
+  
+  # Compute root density characteristics per horizons according to depth
+  rast.depth.samp <- rast.depth %>% 
+    as.data.frame(xy=TRUE,na.rm=FALSE) %>% 
+    #filter(depth!=0)%>% 
+    ## Compute rescaled density of roots per horizons
+    mutate(depth=as.numeric(depth),
+           depth=na_if(depth,0),
+           hor.1=case_when(depth<5~1,
+                           TRUE~(1-0.97^5)/(1-0.97^depth)),
+           hor.2=case_when(depth<=5~0,
+                           depth>5 & depth < 15 ~ (0.97^5-0.97^depth)/(1-0.97^depth),
+                           TRUE~(0.97^5-0.97^15)/(1-0.97^depth)),
+           hor.3=case_when(depth<=15~0,
+                           depth>15 & depth < 30 ~ (0.97^15-0.97^depth)/(1-0.97^depth),
+                           TRUE~(0.97^15-0.97^30)/(1-0.97^depth)),
+           hor.4=case_when(depth<=30~0,
+                           depth>30 & depth < 60 ~ (0.97^30-0.97^depth)/(1-0.97^depth),
+                           TRUE~(0.97^30-0.97^60)/(1-0.97^depth)),
+           hor.5=case_when(depth<=60~0,
+                           depth>60 & depth < 100 ~ (0.97^60-0.97^depth)/(1-0.97^depth),
+                           TRUE~(0.97^60-0.97^100)/(1-0.97^depth)),
+           hor.6=case_when(depth<=100~0,
+                           depth>100 & depth < 200 ~ (0.97^100-0.97^depth)/(1-0.97^depth),
+                           TRUE~(0.97^100-0.97^200)/(1-0.97^depth)),
+           hor.7=case_when(depth<=200~0,
+                           TRUE~(0.97^200-0.97^depth)/(1-0.97^depth))
+    ) %>%
+    # mutate(depth=as.numeric(depth),
+    #        hor.1=case_when(depth<5~depth,
+    #                        TRUE~5),
+    #        hor.2=case_when(depth<=5~0,
+    #                        depth>5 & depth < 15 ~ depth-5,
+    #                        TRUE~10),
+    #        hor.3=case_when(depth<=15~0,
+    #                        depth>15 & depth < 30 ~ depth-15,
+    #                        TRUE~15),
+    #        hor.4=case_when(depth<=30~0,
+    #                        depth>30 & depth < 60 ~ depth-30,
+    #                        TRUE~30),
+    #        hor.5=case_when(depth<=60~0,
+    #                        depth>60 & depth < 100 ~ depth-60,
+    #                        TRUE~40),
+    #        hor.6=case_when(depth<=100~0,
+    #                        depth>100 & depth < 200 ~ depth-100,
+    #                        TRUE~100),
+    #        hor.7=case_when(depth<=200~0,
+    #                        TRUE~depth-200)
+    # ) %>% 
+    
+    ## Compute  BCG per horizons
+    mutate(hor.1=case_when(depth<5~compute.B_GC(La = RAI*hor.1/(2*pi*rootRadius),
+                                                Lv = RAI*hor.1/(2*pi*rootRadius*depth)),
+                           TRUE~compute.B_GC(La = RAI*hor.1/(2*pi*rootRadius),
+                                             Lv = RAI*hor.1/(2*pi*rootRadius*5))),
+           hor.2=case_when(depth<=5~0,
+                           depth>5 & depth < 15 ~compute.B_GC(La = RAI*hor.2/(2*pi*rootRadius),
+                                                              Lv = RAI*hor.2/(2*pi*rootRadius*(depth-5))),
+                           TRUE~compute.B_GC(La = RAI*hor.2/(2*pi*rootRadius),
+                                             Lv = RAI*hor.2/(2*pi*rootRadius*10))),
+           hor.3=case_when(depth<=15~0,
+                           depth>15 & depth < 30 ~ compute.B_GC(La = RAI*hor.3/(2*pi*rootRadius),
+                                                                Lv = RAI*hor.3/(2*pi*rootRadius*(depth-15))),
+                           TRUE~compute.B_GC(La = RAI*hor.3/(2*pi*rootRadius),
+                                             Lv = RAI*hor.3/(2*pi*rootRadius*15))),
+           hor.4=case_when(depth<=30~0,
+                           depth>30 & depth < 60 ~ compute.B_GC(La = RAI*hor.4/(2*pi*rootRadius),
+                                                                Lv = RAI*hor.4/(2*pi*rootRadius*(depth-30))),
+                           TRUE~compute.B_GC(La = RAI*hor.4/(2*pi*rootRadius),
+                                             Lv = RAI*hor.4/(2*pi*rootRadius*30))),
+           hor.5=case_when(depth<=60~0,
+                           depth>60 & depth < 100 ~compute.B_GC(La = RAI*hor.5/(2*pi*rootRadius),
+                                                                Lv = RAI*hor.5/(2*pi*rootRadius*(depth-60))),
+                           TRUE~compute.B_GC(La = RAI*hor.5/(2*pi*rootRadius),
+                                             Lv = RAI*hor.5/(2*pi*rootRadius*40))),
+           hor.6=case_when(depth<=100~0,
+                           depth>100 & depth < 200 ~compute.B_GC(La = RAI*hor.6/(2*pi*rootRadius),
+                                                                 Lv = RAI*hor.6/(2*pi*rootRadius*(depth-100))),
+                           TRUE~compute.B_GC(La = RAI*hor.6/(2*pi*rootRadius),
+                                             Lv = RAI*hor.6/(2*pi*rootRadius*100))),
+           hor.7=case_when(depth<=200~0,
+                           TRUE~compute.B_GC(La = RAI*hor.7/(2*pi*rootRadius),
+                                             Lv = RAI*hor.7/(2*pi*rootRadius*(depth-200))))
+    )
+  rast.depth.samp=rast(rast.depth.samp,crs="epsg:4326")
   #rast(SWCmin,crs="epsg:4326")
   
-  names(SWCmin)=rep("SWC_min",hor)
+  # Gather spatialized PDF parameters with SWC min/max for each of the 7 horizons
+  names(SWCmin)=rep("SWC_min",4)
+  names(rast.depth.samp)=c("depth",rep("BGC",7))
   pars.files=list.files(file.path(dir.data,dir.file))
   mrc.files=pars.files[grepl("MRC_",pars.files)]
   hcc.files=pars.files[grepl("HCC_",pars.files)]
-  for (i in 1:hor_corr_inv[hor,2]){
-    assign(paste0("psi_h",i),
-           c(SWCmin[[hor_corr[i,1]]],
-             rast(file.path(dir.data,dir.file,mrc.files[endsWith(mrc.files,paste0(i,".tif"))])),
-             rast(file.path(dir.data,dir.file,hcc.files[endsWith(hcc.files,paste0(i,".tif"))]))
-           )
-    )
-    
-  }
-  # assign(paste0("psi_h",i),
-  #        c(SWCmin[[hor_corr[i,1]]],
-  #          resample(rast(file.path(dir.data,dir.file,mrc.files[endsWith(mrc.files,paste0(i,".tif"))])),
-  #                   SWCmin[[hor_corr[i,1]]],
-  #                   method="near"),
-  #          resample(rast(file.path(dir.data,dir.file,hcc.files[endsWith(hcc.files,paste0(i,".tif"))])),
-  #                   SWCmin[[hor_corr[i,1]]],
-  #                   method="near")
-  #        )
-  # )
-  
-  list=mget(ls()[grepl("psi_h",ls())])
-  psi_min=lapply(seq_along(list),function(i){
-    psi_df=list[[i]]
-    names(psi_df)=str_replace(names(psi_df), paste0("_sl",i), "")
-    psi_df=as.data.frame(psi_df,xy=TRUE) %>% 
+  for (i in 1:7){ # loop on the 7 horizons
+    psi=c(SWCmin[[hor_corr[i,1]]],
+          rast.depth.samp[[1]], # depth 
+          rast.depth.samp[[i+1]], # BCG of horizons
+          crop(rast(file.path(dir.data,dir.file,mrc.files[endsWith(mrc.files,paste0(i,".tif"))])),
+               vect(europe),
+               mask=TRUE),
+          crop(rast(file.path(dir.data,dir.file,hcc.files[endsWith(hcc.files,paste0(i,".tif"))])),
+               vect(europe),
+               mask=TRUE)
+             )
+    names(psi)=str_replace(names(psi), paste0("_sl",i), "") #make generic names
+    psi=as.data.frame(psi,xy=TRUE) %>% 
       mutate(
         REW_mrc=case_when((SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))<0~0.01,
                           (SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))>1~1,
@@ -760,25 +890,31 @@ compute_psihorday <- function(SWCmin,
         ksoilGC=(HCC_K0
                  *(REW_hcc^(HCC_L*10^(-4)))
                  *(1-(1-REW_hcc^(1/(HCC_m*10^(-4))))
-                   ^(HCC_m*10^(-4)))^2)*1000 *compute.B_GC(La,Lv,rootRadius)[i],
-        k_soiltostem=kseriesum(ksoilGC,k_RootToStem[i]),
+                   ^(HCC_m*10^(-4)))^2)*1000 *BGC,
+        #k_soiltostem=kseriesum(ksoilGC,k_RootToStem[i]),
         psi_w=ksoilGC*psi_min
       )
-    return(psi_df)
+    assign(paste0("psi_h",i),
+           psi)
+    rm(psi)
   }
-  )
   
-  plot_psi=psi_min[[1]][,1:2]
-  sum_psi=numeric(dim(psi_min[[1]])[1])
-  sum_k=numeric(dim(psi_min[[1]])[1])
-  for(i in 1:length(psi_min)){
-    plot_psi=cbind(plot_psi,psi_min[[i]][,c(3,16:18)])
-    names(plot_psi)=c(names(plot_psi)[1:(2+4*(i-1))],paste0(names(psi_min[[i]][,c(3,16:18)]),i))
-    sum_psi=sum_psi+psi_min[[i]]$psi_w
-    sum_k=sum_k+psi_min[[i]]$ksoilGC
+  
+  # Apply SUREAU wieghting method across horizons
+  psi_min=psi_h1[c("x","y")]
+  for (i in 1:7){
+    psi_min=psi_min %>% 
+      left_join(eval(parse(text=paste0("psi_h",i)))[c("x","y","ksoilGC","psi_w")],
+                by=c("x","y"))
+    colnames(psi_min)=c(colnames(psi_min)[1:(2+2*(i-1))],
+                        paste0("ksoilGC_",i),
+                        paste0("psi_w_",i))
   }
-  plot_psi$psi=sum_psi/sum_k 
-  return(plot_psi)
+  sum_psi=rowSums(psi_min[grepl("psi_w_",colnames(psi_min))],na.rm = TRUE)
+  sum_k=rowSums(psi_min[grepl("ksoilGC_",colnames(psi_min))],na.rm = TRUE)
+  psi_min$psi=sum_psi/sum_k 
+
+  return(psi_min)
 }
 
 
@@ -865,7 +1001,7 @@ compute.sm <- function(psimin,
     names(psimin)[names(psimin) == "hsm"] <- species.traits$sp.ind[i]
   }
   
-  # fros safety margin
+  # frost safety margin
   for (i in 1:dim(species.traits)[1]){
     if(!is.na(species.traits$LT50[i])){
       tmin$fsm=tmin$t.min-(species.traits$LT50[i])
@@ -876,6 +1012,461 @@ compute.sm <- function(psimin,
 }
 
 
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 7 - Compute frost safety margins ####
+#' @description From date of growing season, LT50 and Tmin time series, compute
+#' the safety margin as the difference between LT50 estimated at budburst and 
+#' averaged minimum temperature before budburst
+#' @note budburst date are from 
+#' https://www.eea.europa.eu/data-and-maps/data/annual-start-of-vegetation-growing
+#' @note other link for budburst
+#'  https://land.copernicus.eu/pan-european/biophysical-parameters/high-resolution-vegetation-phenology-and-productivity/vegetation-indices
+#' @authors Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+#' Compute frost index
+#' 
+#' @description Compute the averaged minimum temperature during the 30 days beofrdffCompute frost according to budburst date
+#' @param europe df of psimin computed over europe
+#' @param year_date beginning year of budburst timeseries
+#' @return dataframe of frost index
+#'
+
+get.frostindex <- function(europe,
+                           year_start=2000){
+  
+  europe=vect(europe)
+  
+  ### Load data of mean of minimum daily temperature of the coldest month
+  #rast.tasmoy <- crop(rast("data/CHELSA/CHELSA_bio6_1981-2010_V.2.1.tif"),europe,mask=TRUE)
+  
+  
+  ### Load 95th quantile of Tmin by month
+  rast.tasmin <- rast("data/CHELSA/CHELSA_EUR11_tasmin_month_quant_19952005.nc")
+  rast.tasmin=classify(rast.tasmin, cbind(6553500, NA))
+  rast.tasmin <- crop(rast.tasmin,europe,mask=TRUE)
+  
+  ### Load date of budburst from 2000 to 2016
+  rast.fdg=rast("data/eea_2000-2016/SOS_2000_2016_DOY.BIL")
+  # rast.fdg=aggregate(rast.fdg,
+  #                      10,
+  #                      fun="mean",
+  #                    na.rm=TRUE)
+  year=dim(rast.fdg)[3]
+  names(rast.fdg) <- paste0("fdg_",year_start:(year_start+year-1))
+  rast.fdg <- crop(terra::project(rast.fdg,rast.tasmin),europe,mask=TRUE)
+  
+
+  ### Compute mean date of budburst
+  rast.fdg.mean <- mean(rast.fdg,na.rm=TRUE)
+  
+  # #subset for france
+  # france.ext=ext(-5.4534286,9.8678344,41.2632185,51.268318)
+  # rast.fdg.mean.france=crop(rast.fdg.mean,france.ext)
+  # rast.tasmin.france=crop(rast.tasmin,france.ext)
+  
+  ### Rescale each year in accurate date of budburst 
+  rast.fdg.mean[rast.fdg.mean<0] <- 365+rast.fdg.mean
+  
+  
+  # /!\ decide what to do with negative values #
+  
+  # rast.fdg[[i]][rast.fdg[[i]]>180] <- 180
+  # for (i in 1:year){
+  #   print(i)
+  #   rast.fdg[[i]][rast.fdg[[i]]<0] <- 365+rast.fdg[[i]]
+  #   rast.fdg[[i]][rast.fdg[[i]]>180] <- 180
+  # }
+  
+  
+  
+  ### create a function for each species LT50 
+  year.month=c(31,28,31,30,31,30,31,31,30,31,30,31)
+  year.cumul=cumsum(year.month)
+  rast.cumul=rep(rast.fdg.mean,12)
+  rast.cumul.bis=rep(rast.fdg.mean,12)
+  rast.cumul[[1]]=ifel(rast.fdg.mean/year.cumul[1]>=1,
+                       yes=year.month[1],
+                       no= rast.fdg.mean)
+  rast.cumul.bis[[1]]=ifel((rast.fdg.mean-30)/year.cumul[1]>=1,
+                           yes=year.month[1],
+                           no= (rast.fdg.mean-30))
+  for (i in 2:12){
+    rast.cumul[[i]]=ifel(rast.fdg.mean/year.cumul[i]>=1,
+                         yes =year.month[i],
+                         no= trunc(rast.fdg.mean/year.cumul[i-1])*(rast.fdg.mean-year.cumul[i-1]))
+    rast.cumul.bis[[i]]=ifel((rast.fdg.mean-30)/year.cumul[i]>=1,
+                             yes =year.month[i],
+                             no= trunc((rast.fdg.mean-30)/year.cumul[i-1])*((rast.fdg.mean-30)-year.cumul[i-1]))
+  }
+  
+  rast.cumul=rast.cumul-rast.cumul.bis
+  rast.temp=sum(rast.cumul*(rast.tasmin/100))/30
+  
+  names(rast.temp)="tmin"
+  names(rast.fdg.mean)="fdg"
+  
+  return(list(rast.temp=as.data.frame(rast.temp,xy=TRUE),rast.fdg.mean=as.data.frame(rast.fdg.mean,xy=TRUE)))
+}
+
+
+#' Compute frost index
+#' 
+#' @description Compute the averaged minimum temperature during the 30 days beofrdffCompute frost according to budburst date
+#' @param europe df of psimin computed over europe
+#' @param year_date beginning year of budburst timeseries
+#' @return dataframe of frost index
+#'
+
+get.frostindex.bis <- function(europe,
+                           year_start=2000){
+  
+  europe=vect(europe)
+  
+  ### Load data of mean of minimum daily temperature of the coldest month
+  #rast.tasmoy <- crop(rast("data/CHELSA/CHELSA_bio6_1981-2010_V.2.1.tif"),europe,mask=TRUE)
+  
+  
+  ### Load 95th quantile of Tmin by month
+  rast.tasmin <- rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc")
+  rast.tasmin=classify(rast.tasmin, cbind(6553500, NA))
+  rast.tasmin <- crop(rast.tasmin,europe,mask=TRUE)
+  
+  ### Load date of budburst from 2000 to 2016
+  rast.fdg=rast("data/eea_2000-2016/SOS_2000_2016_DOY.BIL")
+  # rast.fdg=aggregate(rast.fdg,
+  #                      10,
+  #                      fun="mean",
+  #                    na.rm=TRUE)
+  year=dim(rast.fdg)[3]
+  names(rast.fdg) <- paste0("fdg_",year_start:(year_start+year-1))
+  rast.fdg <- crop(terra::project(rast.fdg,rast.tasmin),europe,mask=TRUE)
+  
+  
+  ### Compute mean date of budburst
+  rast.fdg.mean <- mean(rast.fdg,na.rm=TRUE)
+  
+  # #subset for france
+  # france.ext=ext(-5.4534286,9.8678344,41.2632185,51.268318)
+  # rast.fdg.mean.france=crop(rast.fdg.mean,france.ext)
+  # rast.tasmin.france=crop(rast.tasmin,france.ext)
+  
+  ### Rescale each year in accurate date of budburst 
+  rast.fdg.mean[rast.fdg.mean<0] <- 365+rast.fdg.mean
+  
+  
+  # /!\ decide what to do with negative values #
+  
+  # rast.fdg[[i]][rast.fdg[[i]]>180] <- 180
+  # for (i in 1:year){
+  #   print(i)
+  #   rast.fdg[[i]][rast.fdg[[i]]<0] <- 365+rast.fdg[[i]]
+  #   rast.fdg[[i]][rast.fdg[[i]]>180] <- 180
+  # }
+  
+  rm(rast.fdg)
+  
+  ### create a function for each species LT50 
+  year.month=c(31,28,31,30,31,30,31,31,30,31,30,31)
+  year.cumul=cumsum(year.month)
+  rast.cumul=rep(rast.fdg.mean,12)
+  rast.cumul.bis=rep(rast.fdg.mean,12)
+  rast.cumul[[1]]=ifel(rast.fdg.mean/year.cumul[1]>=1,
+                       yes=year.month[1],
+                       no= rast.fdg.mean)
+  rast.cumul.bis[[1]]=ifel((rast.fdg.mean-30)/year.cumul[1]>=1,
+                           yes=year.month[1],
+                           no= (rast.fdg.mean-30))
+  for (i in 2:12){
+    print(i)
+    rast.cumul[[i]]=ifel(rast.fdg.mean/year.cumul[i]>=1,
+                         yes =year.month[i],
+                         no= trunc(rast.fdg.mean/year.cumul[i-1])*(rast.fdg.mean-year.cumul[i-1]))
+    rast.cumul.bis[[i]]=ifel((rast.fdg.mean-30)/year.cumul[i]>=1,
+                             yes =year.month[i],
+                             no= trunc((rast.fdg.mean-30)/year.cumul[i-1])*((rast.fdg.mean-30)-year.cumul[i-1]))
+  }
+  
+  rast.cumul=rast.cumul-rast.cumul.bis
+  rast.temp=sum(rast.cumul*(rast.tasmin))/30
+  
+  rm(rast.cumul,rast.cumul.bis)
+  
+  names(rast.temp)="tmin"
+  names(rast.fdg.mean)="fdg"
+  
+  return(list(rast.temp=as.data.frame(rast.temp,xy=TRUE),rast.fdg.mean=as.data.frame(rast.fdg.mean,xy=TRUE)))
+}
+
+
+
+
+#' Compute frost safety margins
+#' 
+#' @description Compute frost safety margin for selected species
+#' @param rast.temp Forst index computed before
+#' @param dir.species directory of species file
+#' @return dataframe of frost safety margins for each species
+#'
+
+compute.fsm <- function(dir.species="data/Species traits/trait.select.csv",
+                        rast.temp,
+                        rast.fdg){
+  # Load rast.temp & rast.fdg and bind them
+  df.fsm=as.data.frame(c(rast(rast.temp,crs="epsg:4326"),rast(rast.fdg,crs="epsg:4326")),xy=TRUE)
+
+  # Load species selection
+  df.species=read.table(file=dir.species,
+                        header=TRUE,
+                        sep=";",
+                        dec=".") %>% 
+    separate(col = species.binomial,
+             into=c("genus","species"),
+             remove=FALSE) %>% 
+    mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)),
+           species.name=str_replace(species.binomial," ",".")) %>% 
+    filter(!is.na(LT50))
+  
+  # COmmpute fsm
+  for (i in 1:dim(df.species)[1]){
+    LT50=df.species$LT50[i]
+    df.fsm$LT50spring=-5+30*(5+LT50)/(2*df.fsm$fdg)
+    df.fsm$fsm_LT50spring=df.fsm$tmin-df.fsm$LT50spring
+    df.fsm$fsm_LT50moy=df.fsm$tmin-(LT50*0.4)
+    # rast.fsm=rast.temp-rast.LT50.moy
+    # rast.fsm2=rast.temp-(LT50*0.4)
+    colnames(df.fsm)[grepl("fsm_",colnames(df.fsm))] <- c(paste0("fsm.spring.",df.species$sp.ind[i]),
+                                                          paste0("fsm.moy.",df.species$sp.ind[i]))
+  }
+  return(df.fsm)
+}
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section X - Get LT50 traits ####
+#' @description Load and clean LT50 database
+#' @authors Maximilian Larter (INRAE - Biogeco) & Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+#' Get LT50 database
+#' 
+#' @description Load and format LT50 database
+#' @return 
+#' 
+
+get.LT50 <- function(){
+  ### Load LT50 database from litterature ###
+  ###########################################
+  df.LT50.lit <- read.csv2(file = "df_LT50_sp_checked.csv", header = T,na.strings = c("", "NA")) # made by code in "R/matchsp_get_tax.R"
+  df.LT50.lit$New_continent <- "Continent"
+  # remove NA lines (where temperature was reported as "below xx°")
+  df.LT50.lit %>% filter(!is.na(Temperature_of_resistance)) -> df.LT50.lit 
+  
+  ### cleaning data coding ###
+  ############################
+  df.LT50.lit %>%
+    mutate(across(.cols=c("Freezing_rate_.K.h.1.","Temperature_of_resistance","Duration_of_min_temp_exposure_.hours.","Longitude","Latitude"),
+                  ~as.numeric(.))) %>% 
+    mutate(Country = case_when(!is.na(Country) ~ Country,
+                               # Morin et al Tree Physiol 2007
+                               Reference == "Morin et al Tree Physiol 2007" & Species == "Quercus robur" ~ "Germany",
+                               Reference == "Morin et al Tree Physiol 2007" & Species == "Quercus ilex" ~ "France",
+                               Reference == "Morin et al Tree Physiol 2007" & Species == "Quercus pubescens" ~ "France",
+                               # Sakai et al Ecology 1981 correct country below
+                               Reference == "Sakai et al Ecology 1981" & Location %in% c("Canberra Botanical Garden", "Craigieburn", "Mount Ginini", "Snowy Mountains", "Tasmania") ~ "Australia",
+                               Reference == "Sakai et al Ecology 1981" & Location %in% c("Christchurch Botanical Garden", "Arthurs Pass", "Jacksons", "Porters Pass", "Otira", "Waimakariri") ~ "New Zealand",
+                               Reference == "Sakai et al Ecology 1981" & Location %in% c("Mount Fuji", "Hakodate", "Mount Tsukuba", "Sapporo, Hokkaido", "Shiojiri", "Tokyo", "Yamabe, Hokkaido") ~ "Japan",
+                               Reference == "Sakai et al Ecology 1981" & Species %in% c("Araucaria heterophylla", "Callitris endlicheri", "Diselma archeri",  "Microcachrys tetragona") ~ "Australia", 
+                               Reference == "Sakai et al Ecology 1981" & Species %in% c("Callitris oblonga", "Dacrycarpus dacrydioides", "Dacrydium cupressinum", "Halocarpus bidwillii", "Libocedrus bidwillii", "Phyllocladus alpinus", "Pinus pseudostrobus", "Podocarpus nivalis") ~ "New Zealand",
+                               # Bannister New Zealand J. of Bot. 1990 al grown in NZ
+                               Reference == "Bannister New Zealand J. of Bot. 1990" ~ "New Zealand",
+                               # Sakai Can J. Bot. 1983 "himalaya" species were sent from Bot garden in PNG or from field in Nepal
+                               Reference == "Sakai Can J. Bot. 1983" & Location == "Himalaya" & Species %in% c("Abies spectabilis", "Larix potaninii", "Tsuga dumosa", "Juniperus monosperma", "Juniperus squamata", "Picea smithiana") ~ "Nepal",
+                               Reference == "Sakai Can J. Bot. 1983" & Species %in% c("Picea orientalis") ~ "Japan",
+                               Reference == "Sakai Can J. Bot. 1983" & Species %in% c("Picea smithiana") ~ "Nepal",
+                               Reference == "Darrow et al New Zealand J. of Bot. 2001" ~ "New Zealand",
+                               Comment == "Reported from Oohata & Sakai 1982" ~ "Japan",
+                               Reference == "Read & Hill Aust. J. Bot. 1988" ~ "Australia",
+                               Reference == "Harrison et al Plant Physiol. 1978" ~ "USA",
+                               Reference == "Alberdi et al Phytochemistry 1989" ~ "Chile",
+                               Reference ==  "Bannister New Zealand J. of Bot. 2003" ~ "New Zealand",
+                               Reference ==  "Goldstein et al Oecologia 1985" ~ "Venezuela",
+                               TRUE ~ Country),
+           Organ = case_when(!is.na(Organ) ~ Organ,
+                             Comment == "Reported in Bannister New Zealand J. of Bot. 2007" ~ "Leaf",
+                             Reference == "Read & Hill Aust. J. Bot. 1988" ~ "Leaf",
+                             Reference == "Durham et al Physiol. Plant. 1991" ~ "Leaf"),
+           Freezing_rate_.K.h.1. = case_when(!is.na(Freezing_rate_.K.h.1.) ~ Freezing_rate_.K.h.1.,
+                                             Reference == "Darrow et al New Zealand J. of Bot. 2001" ~ 4,
+                                             Reference ==  "Goldstein et al Oecologia 1985" ~ 10,
+                                             TRUE ~ Freezing_rate_.K.h.1.),
+           Method = case_when(!is.na(Method) ~ Method,
+                              Reference == "Darrow et al New Zealand J. of Bot. 2001" ~ "Visual scoring",
+                              Reference == "Alberdi et al Phytochemistry 1989" ~ "Visual scoring",
+                              Reference ==  "Bannister New Zealand J. of Bot. 2003" ~ "Visual scoring",
+                              Reference ==  "Goldstein et al Oecologia 1985" ~ "TTC",
+                              TRUE ~ Method)
+    ) -> df.LT50.lit
+  
+  ### Load LT50 database from 2022 campaign ###
+  #############################################
+  df.LT50.2022 <- read.csv2("camp_LT50_DB.csv") # made by code in "Analysis new campaign data.Rmd" : output file
+  #clean rm species with bad fits:
+  df.LT50.2022 %>% filter(!Species %in% c("Abies balsamea", 
+                                          "Acer saccharum",
+                                          "Betula papyrifera",
+                                          "Larix laricina",
+                                          "Tsuga canadensis", 
+                                          "Pinus banksiana",
+                                          "Picea mariana")) -> df.LT50.2022
+  df.LT50.2022$Thawing_rate_.K.h.1. <- as.character(df.LT50.2022$Thawing_rate_.K.h.1.)
+  
+  ### merge together ###
+  ######################
+  full_join(df.LT50.lit, df.LT50.2022) -> df.LT50
+  df.LT50 <- df.LT50 %>% select(-Family, -Genus, -Phyllum)
+  
+  # country lists
+  S_A <- c("Argentina", "Brazil", "Chile", "South America", "Venezuela")
+  Asia <- c("China", "Iran", "Israel" , "Japan", "Korea", "Russia", "Taiwan", "Turkey", "Asia Minor", "Himalaya", "Nepal")
+  E_U <- c("Austria", "Croatia", "Czech Rep.", "Denmark", "England", "Finland", "France", "Germany", "Iceland", "Italy", "Poland", "Romania", "Serbia", "Slovakia", "Spain", "Sweden", "Swiss", "Switzerland", "Ukraine", "Europe")
+  N_A <- c("Canada", "Mexico", "Quebec", "USA")
+  Oce <- c("Australia", "New Guinea", "Papua New Guinea", "New Zealand")
+  Africa <- c("South Africa", "Canary Islands")
+  
+  df.LT50 %>% mutate(New_continent = case_when(Country %in% E_U  | Provenance %in% E_U ~ "E_U",
+                                               Country %in% Asia | Provenance %in% Asia  ~ "Asia",
+                                               Country %in% N_A | Provenance %in% N_A  ~ "N_A",
+                                               Country %in% S_A | Provenance %in% S_A   ~ "S_A",
+                                               Country %in% Africa | Provenance %in% Africa  ~ "Africa",
+                                               Country %in% Oce | Provenance %in% Oce ~ "Oceania",
+                                               is.na(Country) ~ Provenance,
+                                               TRUE ~ Provenance)) -> df.LT50
+  
+  
+  bud <- c("Lateral bud",  "Bud", "Bud base vascular tissue", "Leaf primordia", "Primordial shoot", "Floral primordial", "Procambium")
+  flowerbud <- c("Flower Bud", "Flower bud", "Female flower", "Male flower")
+  branch <- c("Cane", "Basal stem","Wood", "Twig", "Shoot", "Stem", "Upper-crown shoot", "Twig cambium", "Xylem", "Xylem parenchyma", "Shoot vascular tissue", "Pith", "Pith parenchyma", "Phloem", "Cambial meristem", "Cambium", "Cortex", "Branch", "branch")
+  leaf <- c("Needle", "Inner crown leaf", "Leaf", "Upper crown leaf")
+  root <- c("Root", "Root cambium")
+  df.LT50 <- df.LT50 %>% filter(Organ %in% c(bud, flowerbud, branch, leaf, root)) 
+  
+  # classify in organ type
+  df.LT50$OrganGroup <- NA
+  df.LT50$OrganGroup[df.LT50$Organ %in% bud] <- "bud"
+  df.LT50$OrganGroup[df.LT50$Organ %in% flowerbud] <- "flowerbud"
+  df.LT50$OrganGroup[df.LT50$Organ %in% branch] <- "branch"
+  df.LT50$OrganGroup[df.LT50$Organ %in% leaf] <- "leaf"
+  df.LT50$OrganGroup[df.LT50$Organ %in% root] <- "root"
+  
+  
+  names(df.LT50) <- gsub(names(df.LT50), pattern = " ", replacement = "_")
+  
+  ### filter for analysis ###
+  ###########################
+  
+  growthform.select <- c("Small tree","tree","Tree")
+  plantage.select <- c("Mature",NA)
+  organgroup.select <-c("branch","bud","flowerbud","leaf")
+  method.select <- c("EL", "Visual scoring")
+  
+  df.LT50 %>% 
+    filter(Growth_form %in% growthform.select &
+             Plant_age %in% plantage.select &
+             OrganGroup %in% organgroup.select &
+             Method %in% method.select) %>%
+    filter(!(Species %in% c("Abies balsamea",
+                            "Betula platyphylla",
+                            "Salix sachalinensis", 
+                            "Larix laricina", 
+                            "Pinus banksiana", 
+                            "Pinus strobus", 
+                            "Thuja occidentalis",
+                            "Pinus resinosa") &
+               Temperature_of_resistance == -196)) %>%
+    filter(!(Species %in% c("Juglans nigra") &
+               Organ == "Cortex")) %>% 
+    filter(Type == "LT50")-> df.LT50.select
+  
+  
+  df.LT50.select %>% group_by(Growth_form,Species,OrganGroup,Period) %>% 
+    summarise(LT50=mean(Temperature_of_resistance,na.rm=TRUE),
+              sdLT50=sd(Temperature_of_resistance,na.rm=TRUE),
+              n=n()) %>% 
+    ungroup()-> summary.LT50
+  
+  summary.LT50 %>% 
+    select(-n,-sdLT50) %>% 
+    pivot_wider(names_from = Period,
+                values_from = LT50) %>% 
+    filter(!is.na(Spring) &!is.na(Winter)) %>% 
+    ggplot(aes(Spring,Winter,color=Species,shape=OrganGroup))+ #
+    geom_point()+
+    geom_smooth(method="loess")+
+    theme_bw()+
+    # guides(color="none")+
+    geom_abline(slope=1)+
+    geom_smooth(method="loess")
+  
+  
+  df.LT50 %>% 
+    filter(Growth_form %in% growthform.select) %>% 
+    group_by(Species,OrganGroup,Period) %>% 
+    summarise(LT50=mean(Temperature_of_resistance,na.rm=TRUE),
+              sdLT50=sd(Temperature_of_resistance,na.rm=TRUE),
+              n=n()) %>% 
+    pivot_wider(names_from = Period,
+                values_from = LT50) %>% 
+    arrange(Spring,Winter)->smtest
+  
+  
+  
+}
+
+
+#' Get LT50/P50 database 
+#' 
+#' @description Load LT50/P50 for european species
+#' @param dir.data data directory
+#' @param dir.file directory of species file
+#' @return dataframe of LT50/P50 traits per species
+#' 
+
+get.traits <- function(dir.file.raw="data/Species traits/LT50P50.csv",
+                       dir.file.updated="data/Species traits/SpeciesP50LT50Europe.csv",
+                       dir.distribution="data/chorological_maps_dataset"){
+  # df.LT50.lit <- read.csv2(dir.file.raw) %>% 
+  #   filter(!is.na(LT50)) %>% 
+  #   filter(!is.na(P50tot))
+  df.traits=read.csv2(dir.file.updated) %>% 
+    filter(Continent=="Europe") %>% 
+    select(Species,LT50,P50tot) %>% 
+    rename(`P50`="P50tot",
+           `species.binomial`="Species") %>% 
+    mutate(file=NA) %>% 
+    separate(col = species.binomial,
+             into=c("genus","species"),
+             remove=FALSE) %>% 
+    mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)),
+           species.name=str_replace(species.binomial," ","_"),
+           across(.cols = c("P50","LT50"),
+                  ~ as.numeric(.))) 
+  for (i in 1:dim(df.traits)[1]){
+    species.files=list.files(file.path(dir.distribution,df.traits$species.binomial[i],"shapefiles"))
+    if(length(species.files[grepl(paste0(df.traits$species.name[i],"_plg_clip"),species.files)])>1){
+      df.traits$file[i]=paste0(df.traits$species.name[i],"_plg_clip")
+    } else if(length(species.files[grepl(paste0(df.traits$species.name[i],"_",df.traits$species[i],"_plg_clip"),species.files)])>1){
+      df.traits$file[i]=paste0(df.traits$species.name[i],"_",df.traits$species[i],"_plg_clip")
+    } else if(length(species.files[grepl(paste0(df.traits$species.name[i],"_plg"),species.files)])>1) {
+      df.traits$file[i]=paste0(df.traits$species.name[i],"_plg")
+    } else if(length(species.files[grepl(paste0(df.traits$species.name[i],"_",df.traits$species[i],"_plg"),species.files)])>1) {
+      df.traits$file[i]=paste0(df.traits$species.name[i],"_",df.traits$species[i],"_plg")
+    } else {
+      df.traits$file[i]=NA
+    }
+  }
+  
+  return(df.traits)
+}
 
 
 
@@ -994,3 +1585,15 @@ compute.sm <- function(psimin,
 # }
 # db.wai=cbind(df.loc[,1:2],
 #              apply(df.loc[,3:dim(df.loc)[2]],MARGIN = 1,mean))
+
+# list=mget(ls()[grepl("psi_h",ls())])
+
+
+#create a df for a year, with values of LT50 depending of budburst date
+
+# Create LT50 time series
+# LT50.dt=c(LT50+seq(0,day_budburst)*((-5-LT50)/day_budburst),
+#           rep(-5,day_hardenning-1-day_budburst-1),
+#           -5+seq(0,yday(as.Date(paste0(year.select,"-12-31")))-day_hardenning)*((LT50+5)/(yday(as.Date(paste0(year.select,"-12-31")))-day_hardenning)))
+
+
