@@ -298,6 +298,10 @@ tar_target(
     df.traits,
     get.traits()
   ),
+  tar_target(
+    list.LT50,
+    get.LT50()
+  ),
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 7 - Plot safety margins####

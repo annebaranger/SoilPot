@@ -13,7 +13,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning=FALSE)
-packages=c("targets","tidyr","dplyr","ggplot2","terra","stringr","sf")
+packages=c("targets","tidyr","dplyr","ggplot2","terra","stringr","sf","sp")
 # lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate","lme4"),require,character.only=TRUE)
 lapply(packages,require,character.only=TRUE)
 tar_load(df.traits)
@@ -140,6 +140,7 @@ rm(a,b,pars)
 
 ### Spatial computation
 To compute minimum soil water content, different parameters are to be taken into account:
+
 * the time series timestep in which we should look for minimum : months or days
 * the depth until which we should compute soil water content
 * how differences between horizons should be integrated in the final potential : weighted according to horizons depth, or horizons conductivity (use of SUREAU)
@@ -250,7 +251,7 @@ for (i in 1:dim(df.select)[1]){
         ## Build graphs
         print(psi.gather %>% 
           pivot_longer(cols = colnames(.)[c(-1,-2)],names_to = "Psi method") %>%
-          mutate(HSM=value-df.select$P50[i]) %>% 
+          mutate(HSM=value-df.select$P50[i]*1000) %>% 
           mutate(HSM=cut(HSM,
                          breaks=c(-Inf, -10000, -5000,-3000,0,500,1000,5000,Inf),
                          labels=c("<-10MPa","-10<HSM<-5MPa","-5<HSM<-3MPa",
@@ -480,6 +481,192 @@ for (i in 1:dim(df.select)[1]){
 ```
 
 ## Further improvements
+
+### Dependance of LT50 spring to LT50, date of budburst, date of dehardenning
+
+```{r LT50dependance}
+
+df.LT50.t=data.frame(LT50_winter=seq(-60,-20,1)) %>% 
+  crossing(date_dehardening=c(0,30,60)) %>% 
+  crossing(date_budburst=c(80,100,120)) %>% 
+  mutate(LT50_spring=-5+(30/2)*((5+LT50_winter)/(date_budburst-date_dehardening)),
+         date_budburst=as.factor(date_budburst))
+df.LT50.t %>% 
+  ggplot(aes(LT50_winter,LT50_spring,color=date_budburst))+
+  geom_point()+
+  facet_wrap(~date_dehardening)+
+  theme_bw()
+```
+
+### Maps of LT50 at spring over Europe, with a L50=-40
+
+```{r LT50fdg}
+tar_load(frost.index)
+rast.temp=frost.index$rast.temp
+rast.fdg=frost.index$rast.fdg.mean
+rm(frost.index)
+LT50=-40
+
+rast.fdg %>% 
+  mutate(LT50=-5+30*(5+LT50)/(2*fdg)) %>% 
+  mutate(LT50=cut(LT50,
+                 breaks=c(-Inf, -40,-30, -25,-20,-15,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0)))%>%
+  ggplot() +
+  geom_tile(aes(x=x,y=y,fill=LT50))+
+  coord_sf()+
+  theme_bw() +
+  theme(axis.title=element_blank(),
+        legend.key.size = unit(0.5,"cm"),
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=9))+
+  labs(fill=paste0("LT50 spring (°C), \nSpecies: fictive ",
+                   "\nLT50=-40"))+
+  scale_fill_brewer(palette="RdYlBu",direction=-1)
+
+
+rast.temp %>% 
+  mutate(fsm=cut(tmin,
+                 breaks=c(-Inf, -15,-10, -5,0,5,10,15,20,25,30,35,Inf),
+                 labels=c("<-15", "-15<FSM<-10","-10/-5","-5/0",
+                          "0/5","5/10","10/15","15/20","20/25",
+                          "25/30","30/35",">35")))%>%
+  ggplot() +
+  geom_tile(aes(x=x,y=y,fill=fsm))+
+  coord_sf()+
+  theme_bw() +
+  theme(axis.title=element_blank(),
+        legend.key.size = unit(0.5,"cm"),
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=9))+
+  scale_fill_brewer(palette="RdYlBu")
+```
+
+### Compute LT50 with a unique budburst date.
+
+```{r LT50sp}
+tar_load(europe)
+## Extract mean fdg by species and for all individuals
+dir.occ="data/EUForestsMauri/EUForestspecies.csv"
+dir.species="data/Species traits/trait.select.csv"
+date.dehardening=0
+europe=vect(europe)
+
+#Load Mauri occurence data
+db.tree.mauri=read.table(file=dir.occ,
+                         header=TRUE,
+                         sep=",",
+                         dec=".") %>%
+  #remove duplicated location_tree 
+  filter(!duplicated(paste(X,Y, SPECIES.NAME))) %>%
+  #create plot id
+  mutate(Pres = rowSums(cbind(NFI==1,FF==1,BS==1)),
+         Node = unclass(factor(paste(X, Y))))
+#filter targetted species
+# filter(SPECIES.NAME %in% as.character(df.species$species.binomial))
+  
+db.cont=db.tree.mauri %>% 
+  group_by(Node,SPECIES.NAME) %>%
+  summarise(n=n())%>%
+  spread(SPECIES.NAME, n) %>% 
+  ungroup() %>%
+  pivot_longer(colnames(.)[-1],
+               names_to = "species.binomial",
+               values_to = "presence") %>% 
+  filter(species.binomial %in% as.character(df.traits$species.binomial)) %>% 
+  left_join(db.tree.mauri[!duplicated(db.tree.mauri$Node), c("X","Y","COUNTRY","NFI","FF","BS","EEO","Node")],
+            by = "Node") %>% 
+  left_join(df.traits[,c(1,4,5,7,8)],
+            by="species.binomial" )
+#Change coordinates
+coordinates(db.cont) <- c("X",  "Y")
+proj4string(db.cont) <- CRS("+init=epsg:3035")
+db.cont <- as.data.frame(spTransform(db.cont, CRS("+proj=longlat +datum=WGS84")))
+
+#Extract safety margins
+db.cont <- cbind(db.cont,
+                 extract(rast(rast.fdg,crs="epsg:4326"),
+                         data.frame(x=db.cont$X,y=db.cont$Y),
+                         method="simple")[-1])
+df.fdg.sp <- db.cont %>%
+  filter(!is.na(presence)) %>% 
+  select(species.binomial,sp.ind,species.name,LT50,fdg) %>% 
+  mutate(fdg.mean=mean(fdg,na.rm=TRUE)) %>% 
+  group_by(species.binomial,sp.ind,species.name,LT50,fdg.mean) %>% 
+  summarise(fdg.sp.mean=mean(fdg,na.rm=TRUE),
+            fdg.sp.sd=sd(fdg,na.rm=TRUE)) %>% 
+  ungroup() %>% 
+  mutate(LT50.sp.spring=-5+(30/2)*((5+LT50)/(fdg.sp.mean-date.dehardening)),
+         LT50.all.spring=-5+(30/2)*((5+LT50)/(fdg.mean-date.dehardening)))
+
+df.fdg.sp %>% 
+  ggplot(aes(fdg.mean-fdg.sp.mean,species.binomial))+
+  geom_point()
+
+df.fdg.sp %>% 
+  ggplot(aes(LT50.all.spring-LT50.sp.spring,species.binomial))+
+  geom_point()
+```
+
+
+```{r FSMsp}
+## Compute tmin for one budburst date
+rast.tasmin <- rast("data/CHELSA/CHELSA_EUR11_tasmin_month_quant_19952005.nc")
+rast.tasmin=classify(rast.tasmin, cbind(6553500, NA))
+rast.tasmin <- crop(rast.tasmin,europe,mask=TRUE)
+
+for (sp in species.select){
+  LT50.all=df.fdg.sp[df.fdg.sp$species.binomial==sp,"LT50.all.spring"][[1]]
+  LT50.sp=df.fdg.sp[df.fdg.sp$species.binomial==sp,"LT50.sp.spring"][[1]]
+  fdg.all=df.fdg.sp[df.fdg.sp$species.binomial==sp,"fdg.mean"][[1]]
+  fdg.sp=df.fdg.sp[df.fdg.sp$species.binomial==sp,"fdg.sp.mean"][[1]]
+  traits=list(c(fdg.all,LT50.all),
+              c(fdg.sp,LT50.sp))
+  year.month=c(31,28,31,30,31,30,31,31,30,31,30,31)
+  rast.fsm=rep(rast.tasmin[[1]],length(traits))
+  for(i in 1:length(traits)){
+    year.cumul=cumsum(year.month)
+    month.a=findInterval(traits[[i]][1]-30,year.cumul)+1
+    month.b=findInterval(traits[[i]][1],year.cumul)+1
+    if(month.a!=month.b){
+      year.cumul[-c(month.a,month.b)]=0
+      year.cumul[month.b]=traits[[i]][1]-year.cumul[month.a]
+      year.cumul[month.a]=year.cumul[month.a]-(traits[[i]][1]-30)
+    } else {
+      year.cumul[-c(month.a,month.b)]=0
+      year.cumul[month.a]=30
+    }
+    rast.temp=sum(year.cumul*(rast.tasmin/100))/30
+    names(rast.temp)="tmin"
+    rast.fsm[[i]]=rast.temp-traits[[i]][2]
+  }
+  names(rast.fsm)=c("mean.all","mean.sp")
+  
+  print(
+    as.data.frame(rast.fsm,xy=TRUE) %>% 
+      pivot_longer(cols=c("mean.all","mean.sp"),
+                   values_to = "fsm") %>% 
+              mutate(fsm=cut(fsm,
+                             breaks=c(-Inf, -15,-10, -5,0,5,10,15,20,25,30,35,Inf),
+                             labels=c("<-15", "-15<FSM<-10","-10/-5","-5/0",
+                                      "0/5","5/10","10/15","15/20","20/25",
+                                      "25/30","30/35",">35")))%>%
+              ggplot() +
+              geom_tile(aes(x=x,y=y,fill=fsm))+
+              coord_sf()+
+              theme_bw() +
+              theme(axis.title=element_blank(),
+                    legend.key.size = unit(0.5,"cm"),
+                    legend.text = element_text(size=8),
+                    legend.title = element_text(size=9))+
+              scale_fill_brewer(palette="RdYlBu")+
+              facet_wrap(~name)
+  )
+        
+}
+
+```
+
+
 
 Compute thermal time dependency of LT50.
 

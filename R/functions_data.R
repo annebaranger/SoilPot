@@ -1067,6 +1067,7 @@ get.frostindex <- function(europe,
   
   ### Rescale each year in accurate date of budburst 
   rast.fdg.mean[rast.fdg.mean<0] <- 365+rast.fdg.mean
+  #rast.fdg.mean[rast.fdg.mean<0] <- 0
   
   
   # /!\ decide what to do with negative values #
@@ -1242,7 +1243,7 @@ compute.fsm <- function(dir.species="data/Species traits/trait.select.csv",
 }
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section X - Get LT50 traits ####
+#### Section 8 - Get LT50 traits ####
 #' @description Load and clean LT50 database
 #' @authors Maximilian Larter (INRAE - Biogeco) & Anne Baranger (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1253,7 +1254,7 @@ compute.fsm <- function(dir.species="data/Species traits/trait.select.csv",
 #' @return 
 #' 
 
-get.LT50 <- function(){
+get.LT50.old <- function(){
   ### Load LT50 database from litterature ###
   ###########################################
   df.LT50.lit <- read.csv2(file = "df_LT50_sp_checked.csv", header = T,na.strings = c("", "NA")) # made by code in "R/matchsp_get_tax.R"
@@ -1422,6 +1423,300 @@ get.LT50 <- function(){
   
 }
 
+#'Get LT50 database
+#'
+#'@description From Constance database and measures performed in Clermont campaign
+#'2022, we build a dataset with consistent measures
+#'@return Dataframe with LT50 per European species and sd associated when available
+
+get.LT50 <- function(){
+  ### Load LT50 database from litterature ###
+  ###########################################
+  df.LT50.lit <- read.csv2(file = "data/Species traits/df_LT50_sp_checked.csv", header = T,na.strings = c("", "NA")) # made by code in "R/matchsp_get_tax.R"
+  df.LT50.lit$New_continent <- "Continent"
+  # remove NA lines (where temperature was reported as "below xx°")
+  df.LT50.lit %>% filter(!is.na(Temperature_of_resistance)) -> df.LT50.lit 
+  
+  ### cleaning data coding ###
+  ############################
+  df.LT50.lit %>%
+    mutate(across(.cols=c("Freezing_rate_.K.h.1.","Temperature_of_resistance","Duration_of_min_temp_exposure_.hours.","Longitude","Latitude"),
+                  ~as.numeric(.))) %>% 
+    mutate(Country = case_when(!is.na(Country) ~ Country,
+                               # Morin et al Tree Physiol 2007
+                               Reference == "Morin et al Tree Physiol 2007" & Species == "Quercus robur" ~ "Germany",
+                               Reference == "Morin et al Tree Physiol 2007" & Species == "Quercus ilex" ~ "France",
+                               Reference == "Morin et al Tree Physiol 2007" & Species == "Quercus pubescens" ~ "France",
+                               # Sakai et al Ecology 1981 correct country below
+                               Reference == "Sakai et al Ecology 1981" & Location %in% c("Canberra Botanical Garden", "Craigieburn", "Mount Ginini", "Snowy Mountains", "Tasmania") ~ "Australia",
+                               Reference == "Sakai et al Ecology 1981" & Location %in% c("Christchurch Botanical Garden", "Arthurs Pass", "Jacksons", "Porters Pass", "Otira", "Waimakariri") ~ "New Zealand",
+                               Reference == "Sakai et al Ecology 1981" & Location %in% c("Mount Fuji", "Hakodate", "Mount Tsukuba", "Sapporo, Hokkaido", "Shiojiri", "Tokyo", "Yamabe, Hokkaido") ~ "Japan",
+                               Reference == "Sakai et al Ecology 1981" & Species %in% c("Araucaria heterophylla", "Callitris endlicheri", "Diselma archeri",  "Microcachrys tetragona") ~ "Australia", 
+                               Reference == "Sakai et al Ecology 1981" & Species %in% c("Callitris oblonga", "Dacrycarpus dacrydioides", "Dacrydium cupressinum", "Halocarpus bidwillii", "Libocedrus bidwillii", "Phyllocladus alpinus", "Pinus pseudostrobus", "Podocarpus nivalis") ~ "New Zealand",
+                               # Bannister New Zealand J. of Bot. 1990 al grown in NZ
+                               Reference == "Bannister New Zealand J. of Bot. 1990" ~ "New Zealand",
+                               # Sakai Can J. Bot. 1983 "himalaya" species were sent from Bot garden in PNG or from field in Nepal
+                               Reference == "Sakai Can J. Bot. 1983" & Location == "Himalaya" & Species %in% c("Abies spectabilis", "Larix potaninii", "Tsuga dumosa", "Juniperus monosperma", "Juniperus squamata", "Picea smithiana") ~ "Nepal",
+                               Reference == "Sakai Can J. Bot. 1983" & Species %in% c("Picea orientalis") ~ "Japan",
+                               Reference == "Sakai Can J. Bot. 1983" & Species %in% c("Picea smithiana") ~ "Nepal",
+                               Reference == "Darrow et al New Zealand J. of Bot. 2001" ~ "New Zealand",
+                               Comment == "Reported from Oohata & Sakai 1982" ~ "Japan",
+                               Reference == "Read & Hill Aust. J. Bot. 1988" ~ "Australia",
+                               Reference == "Harrison et al Plant Physiol. 1978" ~ "USA",
+                               Reference == "Alberdi et al Phytochemistry 1989" ~ "Chile",
+                               Reference ==  "Bannister New Zealand J. of Bot. 2003" ~ "New Zealand",
+                               Reference ==  "Goldstein et al Oecologia 1985" ~ "Venezuela",
+                               TRUE ~ Country),
+           Organ = case_when(!is.na(Organ) ~ Organ,
+                             Comment == "Reported in Bannister New Zealand J. of Bot. 2007" ~ "Leaf",
+                             Reference == "Read & Hill Aust. J. Bot. 1988" ~ "Leaf",
+                             Reference == "Durham et al Physiol. Plant. 1991" ~ "Leaf"),
+           Freezing_rate_.K.h.1. = case_when(!is.na(Freezing_rate_.K.h.1.) ~ Freezing_rate_.K.h.1.,
+                                             Reference == "Darrow et al New Zealand J. of Bot. 2001" ~ 4,
+                                             Reference ==  "Goldstein et al Oecologia 1985" ~ 10,
+                                             TRUE ~ Freezing_rate_.K.h.1.),
+           Method = case_when(!is.na(Method) ~ Method,
+                              Reference == "Darrow et al New Zealand J. of Bot. 2001" ~ "Visual scoring",
+                              Reference == "Alberdi et al Phytochemistry 1989" ~ "Visual scoring",
+                              Reference ==  "Bannister New Zealand J. of Bot. 2003" ~ "Visual scoring",
+                              Reference ==  "Goldstein et al Oecologia 1985" ~ "TTC",
+                              TRUE ~ Method)
+    ) -> df.LT50.lit
+  
+  ### Load LT50 database from 2022 campaign ###
+  #############################################
+  df.LT50.2022 <- read.csv2("data/Species traits/camp_LT50_DB.csv") # made by code in "Analysis new campaign data.Rmd" : output file
+  #clean rm species with bad fits:
+  df.LT50.2022 %>% filter(!Species %in% c("Abies balsamea", 
+                                          "Acer saccharum",
+                                          "Betula papyrifera",
+                                          "Larix laricina",
+                                          "Tsuga canadensis", 
+                                          "Pinus banksiana",
+                                          "Picea mariana")) -> df.LT50.2022
+  df.LT50.2022$Thawing_rate_.K.h.1. <- as.character(df.LT50.2022$Thawing_rate_.K.h.1.)
+  
+  ### merge together ###
+  ######################
+  full_join(df.LT50.lit, df.LT50.2022) -> df.LT50
+  df.LT50 <- df.LT50 %>% select(-Family, -Genus, -Phyllum)
+  
+  # country lists
+  S_A <- c("Argentina", "Brazil", "Chile", "South America", "Venezuela")
+  Asia <- c("China", "Iran", "Israel" , "Japan", "Korea", "Russia", "Taiwan", "Turkey", "Asia Minor", "Himalaya", "Nepal")
+  E_U <- c("Austria", "Croatia", "Czech Rep.", "Denmark", "England", "Finland", "France", "Germany", "Iceland", "Italy", "Poland", "Romania", "Serbia", "Slovakia", "Spain", "Sweden", "Swiss", "Switzerland", "Ukraine", "Europe")
+  N_A <- c("Canada", "Mexico", "Quebec", "USA")
+  Oce <- c("Australia", "New Guinea", "Papua New Guinea", "New Zealand")
+  Africa <- c("South Africa", "Canary Islands")
+  
+  df.LT50 %>% mutate(New_continent = case_when(Country %in% E_U  | Provenance %in% E_U ~ "E_U",
+                                               Country %in% Asia | Provenance %in% Asia  ~ "Asia",
+                                               Country %in% N_A | Provenance %in% N_A  ~ "N_A",
+                                               Country %in% S_A | Provenance %in% S_A   ~ "S_A",
+                                               Country %in% Africa | Provenance %in% Africa  ~ "Africa",
+                                               Country %in% Oce | Provenance %in% Oce ~ "Oceania",
+                                               is.na(Country) ~ Provenance,
+                                               TRUE ~ Provenance)) -> df.LT50
+  rm(S_A,Africa,Asia,E_U,N_A,Oce,Africa)
+  
+  bud <- c("Lateral bud",  "Bud", "Bud base vascular tissue", "Leaf primordia", "Primordial shoot", "Floral primordial", "Procambium")
+  flowerbud <- c("Flower Bud", "Flower bud", "Female flower", "Male flower")
+  branch <- c("Cane", "Basal stem","Wood", "Twig", "Shoot", "Stem", "Upper-crown shoot", "Twig cambium", "Xylem", "Xylem parenchyma", "Shoot vascular tissue", "Pith", "Pith parenchyma", "Phloem", "Cambial meristem", "Cambium", "Cortex", "Branch", "branch")
+  leaf <- c("Needle", "Inner crown leaf", "Leaf", "Upper crown leaf")
+  root <- c("Root", "Root cambium")
+  df.LT50 <- df.LT50 %>% filter(Organ %in% c(bud, flowerbud, branch, leaf, root)) 
+  
+  # classify in organ type
+  df.LT50$OrganGroup <- NA
+  df.LT50$OrganGroup[df.LT50$Organ %in% bud] <- "bud"
+  df.LT50$OrganGroup[df.LT50$Organ %in% flowerbud] <- "flowerbud"
+  df.LT50$OrganGroup[df.LT50$Organ %in% branch] <- "branch"
+  df.LT50$OrganGroup[df.LT50$Organ %in% leaf] <- "leaf"
+  df.LT50$OrganGroup[df.LT50$Organ %in% root] <- "root"
+  
+  rm(bud,flowerbud,branch,leaf,root)
+  
+  names(df.LT50) <- gsub(names(df.LT50), pattern = " ", replacement = "_")
+  
+  ### filter for analysis ###
+  ###########################
+  
+  growthform.select <- c("tree","Tree") #"Small tree",
+  plantage.select <- c("Mature",NA)
+  organgroup.select <-c("branch","bud","flowerbud","leaf") #
+  method.select <- c("EL", "Visual scoring") #
+  period <- c("Winter")
+  
+  df.LT50 %>% 
+    filter(Growth_form %in% growthform.select &
+             Period %in% period &
+             #Plant_age %in% plantage.select &
+             OrganGroup %in% organgroup.select &
+             Method %in% method.select 
+    ) %>%
+    filter(Temperature_of_resistance>(-100)) %>% 
+    filter(!(Species %in% c("Abies balsamea",
+                            "Betula platyphylla",
+                            "Salix sachalinensis", 
+                            "Larix laricina", 
+                            "Pinus banksiana", 
+                            "Pinus strobus", 
+                            "Thuja occidentalis",
+                            "Pinus resinosa") &
+               Temperature_of_resistance == -196)) %>%
+    filter(!(Species %in% c("Juglans nigra") &
+               Organ == "Cortex")) %>% 
+    filter(Type == "LT50")-> df.LT50.select
+  
+  df.filtered <- data.frame(matrix(ncol = dim(df.LT50.select)[2],
+                                   nrow = 0))
+  colnames(df.filtered) <- colnames(df.LT50.select)
+  for(sp in unique(df.LT50.select$Species)){
+    # Show which species we are comparing
+    print(sp)
+    df.sp <- df.LT50.select %>% 
+      filter(Species==sp)
+    
+    if(dim(df.sp)[1]>1&dim(df.sp)[1]<5){
+      tryCatch(
+        {
+          # Look how wide is the range
+          if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
+            # Check for plant age first
+            med.mat=median(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+            med.other=median(df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+            tryCatch({
+              if(abs(med.mat-med.other)>10){
+                df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
+                print("Some measures discarded")
+              }
+            },
+            error=function(e){print("One group not present")}
+            )
+            
+            # Check for method 
+            med.el=median(df.sp[df.sp$Method=="EL","Temperature_of_resistance"])
+            med.vs=median(df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
+            tryCatch(
+              {if(abs(med.el-med.vs)>10){
+                df.sp <- df.sp[df.sp$Method=="EL",]
+                print("Some measures discarded")
+              }},
+              error=function(e){print("One group not present")}
+            )
+            
+            # Check for organ group 
+            # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
+            med.br=median(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"])
+            med.other=median(df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
+            tryCatch(
+              {if(abs(med.br-med.other)>10){
+                df.sp <- df.sp[df.sp$OrganGroup=="branch",]
+                print("Some measures discarded")
+              }},
+              error=function(e){print("One group not present")}
+            )
+          }
+        },
+        error=function(e){print("Error for this species")}
+      )
+    } else if(dim(df.sp)[1]>5){
+      tryCatch(
+        {
+          # Look how wide is the range
+          if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
+            # Check for plant age first
+            tryCatch({
+              wilcox.age=wilcox.test(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"],
+                                     df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+              if(wilcox.age$p.value<0.05){
+                df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
+                print("Some measures discarded")
+              }
+            },
+            error=function(e){print("Test not performed")}
+            )
+            
+            # Check for method 
+            tryCatch({
+              wilcox.method=wilcox.test(df.sp[df.sp$Method=="EL","Temperature_of_resistance"],
+                                        df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
+              if(wilcox.method$p.value<0.05){
+                df.sp <- df.sp[df.sp$Method=="EL",]
+                print("Some measures discarded")
+              }},
+              error=function(e){print("Test not performed")}
+            )
+            
+            # Check for organ group 
+            # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
+            tryCatch({
+              wilcox.organ=wilcox.test(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"],
+                                       df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
+              if(wilcox.organ$p.value<0.05){
+                df.sp <- df.sp[df.sp$OrganGroup=="branch",]
+                print("Some measures discarded")
+              }},
+              error=function(e){print("Test not performed")}
+            )
+          }
+        },
+        error=function(e){print("Error for this species")}
+      )
+    } 
+    df.filtered=rbind(df.filtered,df.sp)
+  }
+  rm(wilcox.age,wilcox.method,wilcox.organ,med.br,med.el,med.mat,med.other,med.vs)
+  
+  ### Summarise per species ###
+  #############################
+  df.species.traits <- df.filtered %>% 
+    group_by(Species,Period,New_continent) %>% 
+    summarise(LT50.mean=mean(Temperature_of_resistance,na.rm=TRUE),
+              LT50.sd=sd(Temperature_of_resistance,na.rm=TRUE)) %>% 
+    filter(New_continent=="E_U") %>% 
+    ungroup()
+  
+  ## For raw data
+  df.species.traits.raw <- df.LT50.select %>% 
+    group_by(Species,Period,New_continent) %>% 
+    summarise(LT50.mean=mean(Temperature_of_resistance,na.rm=TRUE),
+              LT50.sd=sd(Temperature_of_resistance,na.rm=TRUE)) %>% 
+    filter(New_continent=="E_U") %>% 
+    ungroup()
+  
+  
+  ### Few plots ###
+  #################
+  # 
+  # # Plot difference between mean computed over raw dataset and with filtered dataset
+  # df.species.traits %>% 
+  #   filter(!is.na(LT50.sd)) %>% 
+  #   rename(`LT50.mean.filter`="LT50.mean",
+  #          `LT50.sd.filter`="LT50.sd") %>% 
+  #   left_join(df.species.traits.raw %>% 
+  #               filter(!is.na(LT50.sd)) %>% 
+  #               rename(`LT50.mean.raw`="LT50.mean",
+  #                      `LT50.sd.raw`="LT50.sd"),
+  #             by="Species") %>% 
+  #   ggplot(aes(LT50.mean.filter-LT50.mean.raw,Species))+
+  #   geom_point()
+  # 
+  # # Boxplots for species with several measures
+  # df.filtered %>% 
+  #   filter(New_continent=="E_U") %>% 
+  #   group_by(Species) %>% 
+  #   filter(n()>1) %>% 
+  #   ungroup() %>% 
+  #   ggplot(aes(Temperature_of_resistance,Species))+
+  #   geom_boxplot()
+  
+  return(list(df.LT50.raw=df.LT50.select,
+              df.LT50.cor=df.filtered,
+              df.LT50sp.raw=df.species.traits.raw,
+              df.LT50sp.cor=df.species.traits))
+  
+}
 
 #' Get LT50/P50 database 
 #' 

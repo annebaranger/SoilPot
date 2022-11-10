@@ -20,10 +20,10 @@ from netCDF4 import Dataset,MFDataset
 import matplotlib.pyplot as plt
 
 ### Nom du fichier netcf
-metfile = 'C:/Users/anne.baranger/Documents/Era5-land/data/ERA5-land/swcd-1950-2021-layer3.nc'
+metfile = 'C:/Users/anne.baranger/Documents/Era5-land/data/ERA5-land/swcd-1950-2021-layer4.nc'
 
 ### Nom du fichier de sortie
-filecsv = 'C:/Users/anne.baranger/Documents/Era5-land/data/ERA5-land/swcd-1950-2021-layer3_min.csv'
+filecsv = 'C:/Users/anne.baranger/Documents/Era5-land/data/ERA5-land/swcd-1950-2021-layer4_min.csv'
 
 def plotraster(raster):
     plt.imshow(raster)
@@ -60,7 +60,7 @@ dates = np.arange(np.datetime64(dstart), np.datetime64(dend), timedelta(hours=de
 year_list = dates.astype('datetime64[Y]').astype(int)+1970
 years=np.unique(year_list,return_index=True)
 
-varmet = netMet.variables['swvl3']
+varmet = netMet.variables['swvl4']
 
 #create yearly min raster
 YearMinRast = np.zeros((len(years[0]),varmet.shape[1],varmet.shape[2]))
