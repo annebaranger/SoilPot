@@ -15,4 +15,5 @@ rosm.cache/
 libs/
 drafts/
 figs/
+figs2/
 *.Rdata

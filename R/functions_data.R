@@ -1564,9 +1564,145 @@ get.LT50 <- function(){
                             "Thuja occidentalis",
                             "Pinus resinosa") &
                Temperature_of_resistance == -196)) %>%
+    filter(!((Species=="Larix decidua")& (Reference=="Charrier et al Tree Phys 2013"))) %>% # measure tha do not exist
+    filter(!(Reference=="Vitra et al New Physiol. 2017" & Date!="day 29")) %>% #remove measures coming from temporal dehardening series
     filter(!(Species %in% c("Juglans nigra") &
                Organ == "Cortex")) %>% 
-    filter(Type == "LT50")-> df.LT50.select
+    filter(Type == "LT50") %>% 
+    filter(New_continent=="E_U") -> df.LT50.select
+  
+  ### Test of filtering ###
+  #########################
+  
+  df.LT50.select %>% 
+    filter(Plant_age == "Mature" & 
+             Fit %in% c("sigmoid","Sigmoid") &
+             Method == "EL" &
+             OrganGroup == "branch") %>%     
+    # group_by(Reference,Species) %>% 
+    # slice(which.min(Temperature_of_resistance)) %>% 
+    ungroup()  -> df.LT50.select.strong
+  
+  sp.deleted <- setdiff(unique(df.LT50.select$Species),unique(df.LT50.select.strong$Species))
+  df.filtered <- df.LT50.select.strong
+  for (sp in sp.deleted){
+    print(sp)
+    df.sp <- df.LT50.select %>% 
+      filter(Species==sp)
+    if(dim(df.sp)[1]>1&dim(df.sp)[1]<5){
+      tryCatch(
+        {
+          # Look how wide is the range
+          if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
+            # Check for plant age first
+            med.mat=median(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+            med.other=median(df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+            tryCatch({
+              if(abs(med.mat-med.other)>10){
+                df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
+                print("Some measures discarded")
+              }
+            },
+            error=function(e){print("One group not present")}
+            )
+            
+            # Check for fit quality 
+            med.sigmoid=median(df.sp[df.sp$Fit=="Sigmoid","Temperature_of_resistance"])
+            med.other=median(df.sp[df.sp$Fit!="Sigmoid","Temperature_of_resistance"])
+            tryCatch({
+              if(abs(med.sigmoid-med.other)>10){
+                df.sp <- df.sp[df.sp$Fit=="Sigmoid",]
+                print("Some measures discarded")
+              }
+            },
+            error=function(e){print("One group not present")}
+            )
+            
+            # Check for method 
+            med.el=median(df.sp[df.sp$Method=="EL","Temperature_of_resistance"])
+            med.vs=median(df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
+            tryCatch(
+              {if(abs(med.el-med.vs)>10){
+                df.sp <- df.sp[df.sp$Method=="EL",]
+                print("Some measures discarded")
+              }},
+              error=function(e){print("One group not present")}
+            )
+            
+            # Check for organ group 
+            # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
+            med.br=median(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"])
+            med.other=median(df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
+            tryCatch(
+              {if(abs(med.br-med.other)>10){
+                df.sp <- df.sp[df.sp$OrganGroup=="branch",]
+                print("Some measures discarded")
+              }},
+              error=function(e){print("One group not present")}
+            )
+          }
+        },
+        error=function(e){print("Error for this species")}
+      )
+    } else if(dim(df.sp)[1]>5){
+      tryCatch(
+        {
+          # Look how wide is the range
+          if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
+            # Check for plant age first
+            tryCatch({
+              wilcox.age=wilcox.test(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"],
+                                     df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+              if(wilcox.age$p.value<0.05){
+                df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
+                print("Some measures discarded")
+              }
+            },
+            error=function(e){print("Test not performed")}
+            )
+            
+            # Check for fit quality 
+            tryCatch({
+              wilcox.fit=wilcox.test(df.sp[df.sp$Fit=="Sigmoid","Temperature_of_resistance"],
+                                     df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+              if(wilcox.fit$p.value<0.05){
+                df.sp <- df.sp[df.sp$Fit=="Sigmoid",]
+                print("Some measures discarded")
+              }
+            },
+            error=function(e){print("One group not present")}
+            )
+            
+            # Check for method 
+            tryCatch({
+              wilcox.method=wilcox.test(df.sp[df.sp$Method=="EL","Temperature_of_resistance"],
+                                        df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
+              if(wilcox.method$p.value<0.05){
+                df.sp <- df.sp[df.sp$Method=="EL",]
+                print("Some measures discarded")
+              }},
+              error=function(e){print("Test not performed")}
+            )
+            
+            # Check for organ group 
+            # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
+            tryCatch({
+              wilcox.organ=wilcox.test(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"],
+                                       df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
+              if(wilcox.organ$p.value<0.05){
+                df.sp <- df.sp[df.sp$OrganGroup=="branch",]
+                print("Some measures discarded")
+              }},
+              error=function(e){print("Test not performed")}
+            )
+          }
+        },
+        error=function(e){print("Error for this species")}
+      )
+    } 
+    df.filtered=rbind(df.filtered,df.sp)
+  }
+  
   
   df.filtered <- data.frame(matrix(ncol = dim(df.LT50.select)[2],
                                    nrow = 0))
@@ -1703,14 +1839,14 @@ get.LT50 <- function(){
   #   geom_point()
   # 
   # # Boxplots for species with several measures
-  # df.filtered %>% 
-  #   filter(New_continent=="E_U") %>% 
-  #   group_by(Species) %>% 
-  #   filter(n()>1) %>% 
-  #   ungroup() %>% 
-  #   ggplot(aes(Temperature_of_resistance,Species))+
-  #   geom_boxplot()
-  
+  df.filtered  %>%
+    filter(New_continent=="E_U") %>%
+    group_by(Species) %>%
+    filter(n()>1) %>%
+    ungroup() %>%
+    ggplot(aes(Temperature_of_resistance,Species))+
+    geom_boxplot()
+
   return(list(df.LT50.raw=df.LT50.select,
               df.LT50.cor=df.filtered,
               df.LT50sp.raw=df.species.traits.raw,

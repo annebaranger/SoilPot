@@ -296,6 +296,7 @@ Using mean estimation of budburst date assessed with remote sensing data (MODIS)
 Then we compared LT50 in spring with the 2 last indicators computed on the 30-day-period before budburst.
 
 The comparison of the density of the minimum of each indicators clearly shows a gap between the minimum of daily minima and the minimum of mean daily minima, with almost 24°C difference in their mean.
+
 ```{r CompareFrostIndex,fig.cap="Comparison of the 3 frost index",fig.width=7}
 rast.bio6=crop(rast("data/CHELSA/CHELSA_bio6_1981-2010_V.2.1.tif"),vect(europe),mask=TRUE)
 names(rast.bio6)="bio6"
@@ -386,7 +387,8 @@ as.data.frame(frost.fdg.gather,xy=TRUE) %>%
 
 ## Safety margins with LT50 winter
 
-```{r SafetyMarginsLT50winter,fig.cap="Safety margins of the 5 selected species, computed for the 3 frost index and LT50 of winter",fig.width=7}
+```{r SafetyMarginsLT50winter,fig.cap="Safety margins of the 5 selected species, computed for the 3 frost index and LT50 of winter"} 
+#,fig.width=12
 frost.gather=as.data.frame(frost.gather,xy=TRUE)
 
 for (i in 1:dim(df.select)[1]){
@@ -425,6 +427,7 @@ for (i in 1:dim(df.select)[1]){
                            "\nLT50=",round(df.select$LT50[i],digit=1)))+
           scale_fill_brewer(palette="RdYlBu")+
           facet_wrap(~Frost.index))
+
       },
       error=function(e){print("File not loaded")}
     )
@@ -436,7 +439,8 @@ for (i in 1:dim(df.select)[1]){
 
 ## Safety margins with LT50 spring
 
-```{r SafetyMarginsFrostQuant,fig.cap="Safety margins of the 5 selected species, computed for the 2 frost index and LT50 of spring",fig.width=7}
+```{r SafetyMarginsFrostQuant,fig.cap="Safety margins of the 5 selected species, computed for the 2 frost index and LT50 of spring"}
+#,fig.width=7
 frost.fdg.gather=as.data.frame(frost.fdg.gather,xy=TRUE)
 for (i in 1:dim(df.select)[1]){
   tryCatch(
@@ -667,6 +671,48 @@ for (sp in species.select){
 ```
 
 
+### LT50 spring for mean fdg per species, and frost index at each location
+
+```{r FSMsp2}
+for (i in 1:dim(df.select)[1]){
+  tryCatch(
+      {
+        spdistrib=read_sf(dsn=file.path("data",
+                                        "chorological_maps_dataset",
+                                        df.select$species.binomial[i],
+                                        "shapefiles"),
+                          layer=df.select$file[i])
+        spdistrib=st_crop(spdistrib,sf::st_bbox(europe))
+        
+        ## Build graphs
+        print(
+          as.data.frame(rast.temp,xy=TRUE) %>% 
+          mutate(fsm=cut(tmin-df.fdg.sp[df.fdg.sp$species.binomial==df.select$species.binomial[i],"LT50.sp.spring"][[1]],
+                             breaks=c(-Inf, -15,-10, -5,0,5,10,15,20,25,30,35,Inf),
+                             labels=c("<-15", "-15<FSM<-10","-10/-5","-5/0",
+                                      "0/5","5/10","10/15","15/20","20/25",
+                                      "25/30","30/35",">35"))) %>% 
+          ggplot() +
+          geom_tile(aes(x=x,y=y,fill=fsm))+
+          geom_sf(data=spdistrib,
+                  fill=alpha("grey",0.6),
+                  lwd = 0)+
+          coord_sf()+
+          theme_bw() +
+          theme(axis.title=element_blank(),
+                legend.key.size = unit(0.5,"cm"),
+                legend.text = element_text(size=8),
+                legend.title = element_text(size=9),
+                legend.position = "bottom")+
+          labs(fill=paste0("FSM (MPa), \nSpecies: ",df.select$species.binomial[i],
+                           "\nP50=",df.select$LT50[i]))+
+          scale_fill_brewer(palette="RdYlBu"))
+      },
+      error=function(e){print("File not loaded")}
+    )
+  }
+
+```
 
 Compute thermal time dependency of LT50.
 

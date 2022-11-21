@@ -111,15 +111,15 @@ psi_h1 %>%
 #test plot LT50_spring for different LT50_winter and burburst date
 
 df.LT50.t=data.frame(LT50_winter=seq(-60,-20,1)) %>% 
-  mutate(spring_80=-5+30*(5+LT50_winter)/(2*80),
-         spring_90=-5+30*(5+LT50_winter)/(2*90),
-         spring_100=-5+30*(5+LT50_winter)/(2*100),
-         spring_110=-5+30*(5+LT50_winter)/(2*110))
+  crossing(date_dehardening=c(0,30,60)) %>% 
+  crossing(date_budburst=c(80,100,120)) %>% 
+  mutate(LT50_spring=-5+(30/2)*((5+LT50_winter)/(date_budburst-date_dehardening)),
+         date_budburst=as.factor(date_budburst))
 df.LT50.t %>% 
-  pivot_longer(cols=matches("spring")) %>% 
-  ggplot(aes(LT50_winter,value,color=name))+
+  ggplot(aes(LT50_winter,LT50_spring,color=date_budburst))+
   geom_point()+
-  theme_bw()
+  facet_wrap(~date_dehardening)
+
        
 
 as.data.frame(rast.fdg.sd,xy=TRUE) %>% 
@@ -127,3 +127,4 @@ as.data.frame(rast.fdg.sd,xy=TRUE) %>%
                  breaks=c(0,10,20,30,60,Inf))) %>% 
   ggplot(aes(x=x,y=y,fill=std))+
   geom_tile()
+
