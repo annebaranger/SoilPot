@@ -211,7 +211,7 @@ get_waisgdd <- function(dir.chelsa="data/CHELSA/",
                sgdd=sgdd_chelsa)
   colnames(df.loc)=c("x","y","pr","pet","sgdd")
   df.loc <- df.loc %>% 
-    mutate(wai=(12*pet-pr)/pet)
+    mutate(wai=(pr-12*pet)/pet)
   return(df.loc)
 }
 
@@ -295,7 +295,9 @@ get_textureESDAC <- function(dir.data,dir.soil,europe){
                                        .data[[clay.tx]]<=18&.data[[sand.tx]]>=65~5)) %>% 
              left_join(pars[[x]],by=c("texture")))
   },simplify=FALSE,USE.NAMES=TRUE)
-  return(c(texture_raw,texture))
+  
+  return(list(texture_raw=texture_raw,
+              texture=texture))
 }
 
 #' Compute texture from ERA5 over a specified spatial extent
@@ -398,9 +400,7 @@ get_SWC <- function(dir.data,
 #' @param depth numeric indicating to which depth swc is to be considered
 #' @return dataframe with weighted swc over different horizons
 #'  
-weight_swc <- function(dir.data,
-                       dir.file,
-                       SWCtot,
+weight_swc <- function(SWCtot,
                        depth){
   SWCtot=rast(SWCtot,crs="epsg:4326")
   
@@ -539,7 +539,8 @@ load_swc <- function(dir.data="data",
 #' 2 different methods used for SWC (average/weighted)
 #' 
 #' Topsoils Coarse 0.025 0.403 0.0383 1.3774 0.2740 1.2500 60.000
-compute_psiweighted <- function(texture,SWC){
+compute_psiweighted <- function(texture,SWC,
+                                file.output){
   texture=rast(texture,crs="epsg:4326")
   SWC=rast(SWC,crs="epsg:4326")
   if(SWC@ptr$res[1]<texture@ptr$res[1]){
@@ -556,7 +557,9 @@ compute_psiweighted <- function(texture,SWC){
            psi_CB=psi_e*(teta_s/SWC_min)^(b),
            psi_VG=-((((teta_s-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>%
     mutate(psi_VG=case_when(SWC_min>teta_s~-0.1,TRUE~psi_VG))
-   return(psi_min)
+  write.csv(psi_min,file=file.output)
+  
+  return(psi_min)
 }
 
 
@@ -579,7 +582,8 @@ compute_psihor <- function(SWCtot,
                            begin_date,
                            dir.data="data",
                            dir.file="EU_SoilHydroGrids_1km",
-                           europe){
+                           europe,
+                           file.output){
   
   ## Compute SWC extr per horizons ##
 
@@ -674,6 +678,7 @@ compute_psihor <- function(SWCtot,
         k_soiltostem=kseriesum(ksoilGC,k_RootToStem[i]),
         psi_w=ksoilGC*psi_min
       )
+    
     return(psi_df)
   }
   )
@@ -688,6 +693,7 @@ compute_psihor <- function(SWCtot,
     sum_k=sum_k+psi_min[[i]]$ksoilGC
   }
   plot_psi$psi=sum_psi/sum_k 
+  write.csv(plot_psi,file.output)
   return(plot_psi)
 }
 
@@ -708,7 +714,8 @@ compute_psihorday <- function(SWCmin,
                               europe,
                               dir.data="data",
                               dir.file="EU_SoilHydroGrids_1km",
-                              depth){
+                              depth,
+                              file.output){
   
   ## Compute SUREAU ##
   # necessary functions 
@@ -913,6 +920,8 @@ compute_psihorday <- function(SWCmin,
   sum_psi=rowSums(psi_min[grepl("psi_w_",colnames(psi_min))],na.rm = TRUE)
   sum_k=rowSums(psi_min[grepl("ksoilGC_",colnames(psi_min))],na.rm = TRUE)
   psi_min$psi=sum_psi/sum_k 
+  
+  write.csv(psi_min,file.output)
 
   return(psi_min)
 }
@@ -966,54 +975,8 @@ campbell_par <- function(clay_ct,silt_ct,sand_ct){
 }
 
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 6 - Compute safety margins ####
-#' @description Functions used to explore parametric pedotransfer functions
-#' @authors Anne Baranger (INRAE - LESSEM)
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-#' Compute hydraulic and frost safety margins
-#' 
-#' @description Compute safety margin for selected species
-#' @param psi.min df of psimin computed over europe
-#' @param tmin df of min temperature over europe
-#' @param dir.data data directory
-#' @param dir.file directory of species file
-#' @return two dataframe for each safety margin, columns are sm of each species
-#' 
-compute.sm <- function(psimin,
-                       tmin,
-                       dir.data="data/Species traits/",
-                       dir.file="trait.select.csv"){
-  species.traits=read.table(file=paste0(dir.data,dir.file),
-                            header=TRUE,
-                            sep=";",
-                            dec=".") %>% 
-    separate(col = species.binomial,
-             into=c("genus","species"),
-             remove=FALSE) %>% 
-    mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)))
-  
-  # hydraulic safety margin
-  psimin <- psimin[,c("x","y","psi")]
-  for (i in 1:dim(species.traits)[1]){
-    psimin$hsm=psimin$psi-(species.traits$P50[i]*1000)
-    names(psimin)[names(psimin) == "hsm"] <- species.traits$sp.ind[i]
-  }
-  
-  # frost safety margin
-  for (i in 1:dim(species.traits)[1]){
-    if(!is.na(species.traits$LT50[i])){
-      tmin$fsm=tmin$t.min-(species.traits$LT50[i])
-      names(tmin)[names(tmin) == "fsm"] <- species.traits$sp.ind[i]
-    }
-  }
-  return(list(psimin=psimin,tmin=tmin))
-}
-
-
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 7 - Compute frost safety margins ####
+#### Section 6 - Compute frost safety margins ####
 #' @description From date of growing season, LT50 and Tmin time series, compute
 #' the safety margin as the difference between LT50 estimated at budburst and 
 #' averaged minimum temperature before budburst
@@ -1033,127 +996,34 @@ compute.sm <- function(psimin,
 #'
 
 get.frostindex <- function(europe,
+                           dir.clim, #="data/CHELSA/CHELSA_EUR11_tasmin_month_quant05_19802005.nc",
+                           dir.fdg, #="data/eea_2000-2016/SOS_2000_2016_DOY.BIL",
+                           output.index, #="output/budburst_tquant.csv",
+                           output.budburst, #="output/budburst_1.csv",
                            year_start=2000){
   
   europe=vect(europe)
   
-  ### Load data of mean of minimum daily temperature of the coldest month
-  #rast.tasmoy <- crop(rast("data/CHELSA/CHELSA_bio6_1981-2010_V.2.1.tif"),europe,mask=TRUE)
-  
-  
+
   ### Load 95th quantile of Tmin by month
-  rast.tasmin <- rast("data/CHELSA/CHELSA_EUR11_tasmin_month_quant_19952005.nc")
+  rast.tasmin <- rast(dir.clim)
   rast.tasmin=classify(rast.tasmin, cbind(6553500, NA))
   rast.tasmin <- crop(rast.tasmin,europe,mask=TRUE)
   
   ### Load date of budburst from 2000 to 2016
-  rast.fdg=rast("data/eea_2000-2016/SOS_2000_2016_DOY.BIL")
-  # rast.fdg=aggregate(rast.fdg,
-  #                      10,
-  #                      fun="mean",
-  #                    na.rm=TRUE)
+  rast.fdg=rast(dir.fdg)
   year=dim(rast.fdg)[3]
   names(rast.fdg) <- paste0("fdg_",year_start:(year_start+year-1))
-  rast.fdg <- crop(terra::project(rast.fdg,rast.tasmin),europe,mask=TRUE)
   
 
   ### Compute mean date of budburst
   rast.fdg.mean <- mean(rast.fdg,na.rm=TRUE)
-  
-  # #subset for france
-  # france.ext=ext(-5.4534286,9.8678344,41.2632185,51.268318)
-  # rast.fdg.mean.france=crop(rast.fdg.mean,france.ext)
-  # rast.tasmin.france=crop(rast.tasmin,france.ext)
+  rast.fdg.mean <- crop(terra::project(rast.fdg.mean,rast.tasmin),europe,mask=TRUE)
+
   
   ### Rescale each year in accurate date of budburst 
-  rast.fdg.mean[rast.fdg.mean<0] <- 365+rast.fdg.mean
-  #rast.fdg.mean[rast.fdg.mean<0] <- 0
-  
-  
-  # /!\ decide what to do with negative values #
-  
-  # rast.fdg[[i]][rast.fdg[[i]]>180] <- 180
-  # for (i in 1:year){
-  #   print(i)
-  #   rast.fdg[[i]][rast.fdg[[i]]<0] <- 365+rast.fdg[[i]]
-  #   rast.fdg[[i]][rast.fdg[[i]]>180] <- 180
-  # }
-  
-  
-  
-  ### create a function for each species LT50 
-  year.month=c(31,28,31,30,31,30,31,31,30,31,30,31)
-  year.cumul=cumsum(year.month)
-  rast.cumul=rep(rast.fdg.mean,12)
-  rast.cumul.bis=rep(rast.fdg.mean,12)
-  rast.cumul[[1]]=ifel(rast.fdg.mean/year.cumul[1]>=1,
-                       yes=year.month[1],
-                       no= rast.fdg.mean)
-  rast.cumul.bis[[1]]=ifel((rast.fdg.mean-30)/year.cumul[1]>=1,
-                           yes=year.month[1],
-                           no= (rast.fdg.mean-30))
-  for (i in 2:12){
-    rast.cumul[[i]]=ifel(rast.fdg.mean/year.cumul[i]>=1,
-                         yes =year.month[i],
-                         no= trunc(rast.fdg.mean/year.cumul[i-1])*(rast.fdg.mean-year.cumul[i-1]))
-    rast.cumul.bis[[i]]=ifel((rast.fdg.mean-30)/year.cumul[i]>=1,
-                             yes =year.month[i],
-                             no= trunc((rast.fdg.mean-30)/year.cumul[i-1])*((rast.fdg.mean-30)-year.cumul[i-1]))
-  }
-  
-  rast.cumul=rast.cumul-rast.cumul.bis
-  rast.temp=sum(rast.cumul*(rast.tasmin/100))/30
-  
-  names(rast.temp)="tmin"
-  names(rast.fdg.mean)="fdg"
-  
-  return(list(rast.temp=as.data.frame(rast.temp,xy=TRUE),rast.fdg.mean=as.data.frame(rast.fdg.mean,xy=TRUE)))
-}
-
-
-#' Compute frost index
-#' 
-#' @description Compute the averaged minimum temperature during the 30 days beofrdffCompute frost according to budburst date
-#' @param europe df of psimin computed over europe
-#' @param year_date beginning year of budburst timeseries
-#' @return dataframe of frost index
-#'
-
-get.frostindex.bis <- function(europe,
-                           year_start=2000){
-  
-  europe=vect(europe)
-  
-  ### Load data of mean of minimum daily temperature of the coldest month
-  #rast.tasmoy <- crop(rast("data/CHELSA/CHELSA_bio6_1981-2010_V.2.1.tif"),europe,mask=TRUE)
-  
-  
-  ### Load 95th quantile of Tmin by month
-  rast.tasmin <- rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc")
-  rast.tasmin=classify(rast.tasmin, cbind(6553500, NA))
-  rast.tasmin <- crop(rast.tasmin,europe,mask=TRUE)
-  
-  ### Load date of budburst from 2000 to 2016
-  rast.fdg=rast("data/eea_2000-2016/SOS_2000_2016_DOY.BIL")
-  # rast.fdg=aggregate(rast.fdg,
-  #                      10,
-  #                      fun="mean",
-  #                    na.rm=TRUE)
-  year=dim(rast.fdg)[3]
-  names(rast.fdg) <- paste0("fdg_",year_start:(year_start+year-1))
-  rast.fdg <- crop(terra::project(rast.fdg,rast.tasmin),europe,mask=TRUE)
-  
-  
-  ### Compute mean date of budburst
-  rast.fdg.mean <- mean(rast.fdg,na.rm=TRUE)
-  
-  # #subset for france
-  # france.ext=ext(-5.4534286,9.8678344,41.2632185,51.268318)
-  # rast.fdg.mean.france=crop(rast.fdg.mean,france.ext)
-  # rast.tasmin.france=crop(rast.tasmin,france.ext)
-  
-  ### Rescale each year in accurate date of budburst 
-  rast.fdg.mean[rast.fdg.mean<0] <- 365+rast.fdg.mean
+  #rast.fdg.mean[rast.fdg.mean<0] <- 365+rast.fdg.mean
+  rast.fdg.mean[rast.fdg.mean<0] <- 30
   
   
   # /!\ decide what to do with negative values #
@@ -1186,6 +1056,7 @@ get.frostindex.bis <- function(europe,
     rast.cumul.bis[[i]]=ifel((rast.fdg.mean-30)/year.cumul[i]>=1,
                              yes =year.month[i],
                              no= trunc((rast.fdg.mean-30)/year.cumul[i-1])*((rast.fdg.mean-30)-year.cumul[i-1]))
+    gc()
   }
   
   rast.cumul=rast.cumul-rast.cumul.bis
@@ -1196,232 +1067,78 @@ get.frostindex.bis <- function(europe,
   names(rast.temp)="tmin"
   names(rast.fdg.mean)="fdg"
   
+  write.csv(as.data.frame(rast.temp,xy=TRUE),output.index)
+  write.csv(as.data.frame(rast.fdg.mean,xy=TRUE),output.budburst)
   return(list(rast.temp=as.data.frame(rast.temp,xy=TRUE),rast.fdg.mean=as.data.frame(rast.fdg.mean,xy=TRUE)))
 }
 
 
 
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 7 - Compute safety margins ####
+#' @description Combination of both sft m
+#' @authors Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-#' Compute frost safety margins
+#' Compute hydraulic and frost safety margins
 #' 
-#' @description Compute frost safety margin for selected species
-#' @param rast.temp Forst index computed before
-#' @param dir.species directory of species file
-#' @return dataframe of frost safety margins for each species
-#'
-
-compute.fsm <- function(dir.species="data/Species traits/trait.select.csv",
+#' @description Compute safety margin for selected species
+#' @param df.traits df of traits of each species
+#' @param psimin df of psimin computed over europe
+#' @param rast.temp df of frost index at leaf out date over europe
+#' @param rast.fdg df of leaf out day
+#' @param europe europe extent polygons
+#' @return one dataframe, for each species one column for HSM, 2 types of FSM spring,
+#'  1 FSM winter, 1 LT50 estimates for spring
+compute.sfm <- function(df.traits,
                         rast.temp,
-                        rast.fdg){
+                        rast.fdg,
+                        psimin,
+                        europe){
+  #load index
+  rast.temp=rast(rast.temp,crs="epsg:4326")
+  rast.fdg=rast(rast.fdg,crs="epsg:4326")
+  frost.index.winter=min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm=FALSE)
+  frost.index.winter=classify(frost.index.winter, cbind(6553500, NA)) #set as NA default value
+  names(frost.index.winter)="tmin.winter"
+  frost.index.winter=resample(crop(frost.index.winter,
+                                   vect(europe),
+                                   mask=TRUE),
+                              rast.temp,
+                              method="near")
+  rast.psimin=resample(rast(psimin[,c("x","y","psi")],crs="epsg:4326"),
+                       rast.temp,
+                       method="near")
   # Load rast.temp & rast.fdg and bind them
-  df.fsm=as.data.frame(c(rast(rast.temp,crs="epsg:4326"),rast(rast.fdg,crs="epsg:4326")),xy=TRUE)
-
-  # Load species selection
-  df.species=read.table(file=dir.species,
-                        header=TRUE,
-                        sep=";",
-                        dec=".") %>% 
-    separate(col = species.binomial,
-             into=c("genus","species"),
-             remove=FALSE) %>% 
-    mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)),
-           species.name=str_replace(species.binomial," ",".")) %>% 
-    filter(!is.na(LT50))
+  df.sfm=as.data.frame(c(rast.temp,rast.fdg,frost.index.winter,rast.psimin),xy=TRUE)
+  
   
   # COmmpute fsm
-  for (i in 1:dim(df.species)[1]){
-    LT50=df.species$LT50[i]
-    df.fsm$LT50spring=-5+30*(5+LT50)/(2*df.fsm$fdg)
-    df.fsm$fsm_LT50spring=df.fsm$tmin-df.fsm$LT50spring
-    df.fsm$fsm_LT50moy=df.fsm$tmin-(LT50*0.4)
-    # rast.fsm=rast.temp-rast.LT50.moy
-    # rast.fsm2=rast.temp-(LT50*0.4)
-    colnames(df.fsm)[grepl("fsm_",colnames(df.fsm))] <- c(paste0("fsm.spring.",df.species$sp.ind[i]),
-                                                          paste0("fsm.moy.",df.species$sp.ind[i]))
+  for (i in 1:dim(df.traits)[1]){
+    LT50=df.traits$LT50.mean[i]
+    P50=df.traits$PX.mu[i]
+    df.sfm$LT50spring=-5+30*(5+LT50)/(2*df.sfm$fdg)
+    df.sfm$fsm_LT50spring=df.sfm$tmin-df.sfm$LT50spring
+    df.sfm$fsm_LT50moy=df.sfm$tmin-(LT50*0.4)
+    df.sfm$fsm_LT50winter=df.sfm$tmin.winter-LT50
+    df.sfm$hsm_=df.sfm$psi-P50*1000
+    colnames(df.sfm)[grepl("^LT50spring$",colnames(df.sfm))] <- paste0("LT50spring.",df.traits$sp.ind[i]) 
+    colnames(df.sfm)[grepl("fsm_",colnames(df.sfm))] <- c(paste0("fsm.spring.",df.traits$sp.ind[i]),
+                                                          paste0("fsm.moy.",df.traits$sp.ind[i]),
+                                                          paste0("fsm.winter",df.traits$sp.ind[i]))
+    colnames(df.sfm)[grepl("hsm_",colnames(df.sfm))] <- c(paste0("hsm.",df.traits$sp.ind[i]))
   }
-  return(df.fsm)
+  
+  write.csv(df.sfm,"output/df.sfm.csv")
+  return(df.sfm)
 }
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 8 - Get LT50 traits ####
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 8 - Get LT50 and P50 traits ####
 #' @description Load and clean LT50 database
 #' @authors Maximilian Larter (INRAE - Biogeco) & Anne Baranger (INRAE - LESSEM)
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-#' Get LT50 database
-#' 
-#' @description Load and format LT50 database
-#' @return 
-#' 
-
-get.LT50.old <- function(){
-  ### Load LT50 database from litterature ###
-  ###########################################
-  df.LT50.lit <- read.csv2(file = "df_LT50_sp_checked.csv", header = T,na.strings = c("", "NA")) # made by code in "R/matchsp_get_tax.R"
-  df.LT50.lit$New_continent <- "Continent"
-  # remove NA lines (where temperature was reported as "below xx°")
-  df.LT50.lit %>% filter(!is.na(Temperature_of_resistance)) -> df.LT50.lit 
-  
-  ### cleaning data coding ###
-  ############################
-  df.LT50.lit %>%
-    mutate(across(.cols=c("Freezing_rate_.K.h.1.","Temperature_of_resistance","Duration_of_min_temp_exposure_.hours.","Longitude","Latitude"),
-                  ~as.numeric(.))) %>% 
-    mutate(Country = case_when(!is.na(Country) ~ Country,
-                               # Morin et al Tree Physiol 2007
-                               Reference == "Morin et al Tree Physiol 2007" & Species == "Quercus robur" ~ "Germany",
-                               Reference == "Morin et al Tree Physiol 2007" & Species == "Quercus ilex" ~ "France",
-                               Reference == "Morin et al Tree Physiol 2007" & Species == "Quercus pubescens" ~ "France",
-                               # Sakai et al Ecology 1981 correct country below
-                               Reference == "Sakai et al Ecology 1981" & Location %in% c("Canberra Botanical Garden", "Craigieburn", "Mount Ginini", "Snowy Mountains", "Tasmania") ~ "Australia",
-                               Reference == "Sakai et al Ecology 1981" & Location %in% c("Christchurch Botanical Garden", "Arthurs Pass", "Jacksons", "Porters Pass", "Otira", "Waimakariri") ~ "New Zealand",
-                               Reference == "Sakai et al Ecology 1981" & Location %in% c("Mount Fuji", "Hakodate", "Mount Tsukuba", "Sapporo, Hokkaido", "Shiojiri", "Tokyo", "Yamabe, Hokkaido") ~ "Japan",
-                               Reference == "Sakai et al Ecology 1981" & Species %in% c("Araucaria heterophylla", "Callitris endlicheri", "Diselma archeri",  "Microcachrys tetragona") ~ "Australia", 
-                               Reference == "Sakai et al Ecology 1981" & Species %in% c("Callitris oblonga", "Dacrycarpus dacrydioides", "Dacrydium cupressinum", "Halocarpus bidwillii", "Libocedrus bidwillii", "Phyllocladus alpinus", "Pinus pseudostrobus", "Podocarpus nivalis") ~ "New Zealand",
-                               # Bannister New Zealand J. of Bot. 1990 al grown in NZ
-                               Reference == "Bannister New Zealand J. of Bot. 1990" ~ "New Zealand",
-                               # Sakai Can J. Bot. 1983 "himalaya" species were sent from Bot garden in PNG or from field in Nepal
-                               Reference == "Sakai Can J. Bot. 1983" & Location == "Himalaya" & Species %in% c("Abies spectabilis", "Larix potaninii", "Tsuga dumosa", "Juniperus monosperma", "Juniperus squamata", "Picea smithiana") ~ "Nepal",
-                               Reference == "Sakai Can J. Bot. 1983" & Species %in% c("Picea orientalis") ~ "Japan",
-                               Reference == "Sakai Can J. Bot. 1983" & Species %in% c("Picea smithiana") ~ "Nepal",
-                               Reference == "Darrow et al New Zealand J. of Bot. 2001" ~ "New Zealand",
-                               Comment == "Reported from Oohata & Sakai 1982" ~ "Japan",
-                               Reference == "Read & Hill Aust. J. Bot. 1988" ~ "Australia",
-                               Reference == "Harrison et al Plant Physiol. 1978" ~ "USA",
-                               Reference == "Alberdi et al Phytochemistry 1989" ~ "Chile",
-                               Reference ==  "Bannister New Zealand J. of Bot. 2003" ~ "New Zealand",
-                               Reference ==  "Goldstein et al Oecologia 1985" ~ "Venezuela",
-                               TRUE ~ Country),
-           Organ = case_when(!is.na(Organ) ~ Organ,
-                             Comment == "Reported in Bannister New Zealand J. of Bot. 2007" ~ "Leaf",
-                             Reference == "Read & Hill Aust. J. Bot. 1988" ~ "Leaf",
-                             Reference == "Durham et al Physiol. Plant. 1991" ~ "Leaf"),
-           Freezing_rate_.K.h.1. = case_when(!is.na(Freezing_rate_.K.h.1.) ~ Freezing_rate_.K.h.1.,
-                                             Reference == "Darrow et al New Zealand J. of Bot. 2001" ~ 4,
-                                             Reference ==  "Goldstein et al Oecologia 1985" ~ 10,
-                                             TRUE ~ Freezing_rate_.K.h.1.),
-           Method = case_when(!is.na(Method) ~ Method,
-                              Reference == "Darrow et al New Zealand J. of Bot. 2001" ~ "Visual scoring",
-                              Reference == "Alberdi et al Phytochemistry 1989" ~ "Visual scoring",
-                              Reference ==  "Bannister New Zealand J. of Bot. 2003" ~ "Visual scoring",
-                              Reference ==  "Goldstein et al Oecologia 1985" ~ "TTC",
-                              TRUE ~ Method)
-    ) -> df.LT50.lit
-  
-  ### Load LT50 database from 2022 campaign ###
-  #############################################
-  df.LT50.2022 <- read.csv2("camp_LT50_DB.csv") # made by code in "Analysis new campaign data.Rmd" : output file
-  #clean rm species with bad fits:
-  df.LT50.2022 %>% filter(!Species %in% c("Abies balsamea", 
-                                          "Acer saccharum",
-                                          "Betula papyrifera",
-                                          "Larix laricina",
-                                          "Tsuga canadensis", 
-                                          "Pinus banksiana",
-                                          "Picea mariana")) -> df.LT50.2022
-  df.LT50.2022$Thawing_rate_.K.h.1. <- as.character(df.LT50.2022$Thawing_rate_.K.h.1.)
-  
-  ### merge together ###
-  ######################
-  full_join(df.LT50.lit, df.LT50.2022) -> df.LT50
-  df.LT50 <- df.LT50 %>% select(-Family, -Genus, -Phyllum)
-  
-  # country lists
-  S_A <- c("Argentina", "Brazil", "Chile", "South America", "Venezuela")
-  Asia <- c("China", "Iran", "Israel" , "Japan", "Korea", "Russia", "Taiwan", "Turkey", "Asia Minor", "Himalaya", "Nepal")
-  E_U <- c("Austria", "Croatia", "Czech Rep.", "Denmark", "England", "Finland", "France", "Germany", "Iceland", "Italy", "Poland", "Romania", "Serbia", "Slovakia", "Spain", "Sweden", "Swiss", "Switzerland", "Ukraine", "Europe")
-  N_A <- c("Canada", "Mexico", "Quebec", "USA")
-  Oce <- c("Australia", "New Guinea", "Papua New Guinea", "New Zealand")
-  Africa <- c("South Africa", "Canary Islands")
-  
-  df.LT50 %>% mutate(New_continent = case_when(Country %in% E_U  | Provenance %in% E_U ~ "E_U",
-                                               Country %in% Asia | Provenance %in% Asia  ~ "Asia",
-                                               Country %in% N_A | Provenance %in% N_A  ~ "N_A",
-                                               Country %in% S_A | Provenance %in% S_A   ~ "S_A",
-                                               Country %in% Africa | Provenance %in% Africa  ~ "Africa",
-                                               Country %in% Oce | Provenance %in% Oce ~ "Oceania",
-                                               is.na(Country) ~ Provenance,
-                                               TRUE ~ Provenance)) -> df.LT50
-  
-  
-  bud <- c("Lateral bud",  "Bud", "Bud base vascular tissue", "Leaf primordia", "Primordial shoot", "Floral primordial", "Procambium")
-  flowerbud <- c("Flower Bud", "Flower bud", "Female flower", "Male flower")
-  branch <- c("Cane", "Basal stem","Wood", "Twig", "Shoot", "Stem", "Upper-crown shoot", "Twig cambium", "Xylem", "Xylem parenchyma", "Shoot vascular tissue", "Pith", "Pith parenchyma", "Phloem", "Cambial meristem", "Cambium", "Cortex", "Branch", "branch")
-  leaf <- c("Needle", "Inner crown leaf", "Leaf", "Upper crown leaf")
-  root <- c("Root", "Root cambium")
-  df.LT50 <- df.LT50 %>% filter(Organ %in% c(bud, flowerbud, branch, leaf, root)) 
-  
-  # classify in organ type
-  df.LT50$OrganGroup <- NA
-  df.LT50$OrganGroup[df.LT50$Organ %in% bud] <- "bud"
-  df.LT50$OrganGroup[df.LT50$Organ %in% flowerbud] <- "flowerbud"
-  df.LT50$OrganGroup[df.LT50$Organ %in% branch] <- "branch"
-  df.LT50$OrganGroup[df.LT50$Organ %in% leaf] <- "leaf"
-  df.LT50$OrganGroup[df.LT50$Organ %in% root] <- "root"
-  
-  
-  names(df.LT50) <- gsub(names(df.LT50), pattern = " ", replacement = "_")
-  
-  ### filter for analysis ###
-  ###########################
-  
-  growthform.select <- c("Small tree","tree","Tree")
-  plantage.select <- c("Mature",NA)
-  organgroup.select <-c("branch","bud","flowerbud","leaf")
-  method.select <- c("EL", "Visual scoring")
-  
-  df.LT50 %>% 
-    filter(Growth_form %in% growthform.select &
-             Plant_age %in% plantage.select &
-             OrganGroup %in% organgroup.select &
-             Method %in% method.select) %>%
-    filter(!(Species %in% c("Abies balsamea",
-                            "Betula platyphylla",
-                            "Salix sachalinensis", 
-                            "Larix laricina", 
-                            "Pinus banksiana", 
-                            "Pinus strobus", 
-                            "Thuja occidentalis",
-                            "Pinus resinosa") &
-               Temperature_of_resistance == -196)) %>%
-    filter(!(Species %in% c("Juglans nigra") &
-               Organ == "Cortex")) %>% 
-    filter(Type == "LT50")-> df.LT50.select
-  
-  
-  df.LT50.select %>% group_by(Growth_form,Species,OrganGroup,Period) %>% 
-    summarise(LT50=mean(Temperature_of_resistance,na.rm=TRUE),
-              sdLT50=sd(Temperature_of_resistance,na.rm=TRUE),
-              n=n()) %>% 
-    ungroup()-> summary.LT50
-  
-  summary.LT50 %>% 
-    select(-n,-sdLT50) %>% 
-    pivot_wider(names_from = Period,
-                values_from = LT50) %>% 
-    filter(!is.na(Spring) &!is.na(Winter)) %>% 
-    ggplot(aes(Spring,Winter,color=Species,shape=OrganGroup))+ #
-    geom_point()+
-    geom_smooth(method="loess")+
-    theme_bw()+
-    # guides(color="none")+
-    geom_abline(slope=1)+
-    geom_smooth(method="loess")
-  
-  
-  df.LT50 %>% 
-    filter(Growth_form %in% growthform.select) %>% 
-    group_by(Species,OrganGroup,Period) %>% 
-    summarise(LT50=mean(Temperature_of_resistance,na.rm=TRUE),
-              sdLT50=sd(Temperature_of_resistance,na.rm=TRUE),
-              n=n()) %>% 
-    pivot_wider(names_from = Period,
-                values_from = LT50) %>% 
-    arrange(Spring,Winter)->smtest
-  
-  
-  
-}
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 #'Get LT50 database
 #'
@@ -1517,7 +1234,7 @@ get.LT50 <- function(){
                                                Country %in% Oce | Provenance %in% Oce ~ "Oceania",
                                                is.na(Country) ~ Provenance,
                                                TRUE ~ Provenance)) -> df.LT50
-  rm(S_A,Africa,Asia,E_U,N_A,Oce,Africa)
+  rm(S_A,Africa,Asia,E_U,N_A,Oce)
   
   bud <- c("Lateral bud",  "Bud", "Bud base vascular tissue", "Leaf primordia", "Primordial shoot", "Floral primordial", "Procambium")
   flowerbud <- c("Flower Bud", "Flower bud", "Female flower", "Male flower")
@@ -1564,294 +1281,253 @@ get.LT50 <- function(){
                             "Thuja occidentalis",
                             "Pinus resinosa") &
                Temperature_of_resistance == -196)) %>%
-    filter(!((Species=="Larix decidua")& (Reference=="Charrier et al Tree Phys 2013"))) %>% # measure tha do not exist
+    filter(!((Species=="Larix decidua")& (Reference=="Charrier et al Tree Phys 2013"))) %>% # measure that do not exist
     filter(!(Reference=="Vitra et al New Physiol. 2017" & Date!="day 29")) %>% #remove measures coming from temporal dehardening series
     filter(!(Species %in% c("Juglans nigra") &
                Organ == "Cortex")) %>% 
     filter(Type == "LT50") %>% 
-    filter(New_continent=="E_U") -> df.LT50.select
+    filter(New_continent=="E_U") %>% 
+    mutate(data.quality=NA) -> df.LT50.select
   
   ### Test of filtering ###
   #########################
-  
+  unique(df.LT50.select$Thawing_rate_.K.h.1.)
   df.LT50.select %>% 
     filter(Plant_age == "Mature" & 
              Fit %in% c("sigmoid","Sigmoid") &
              Method == "EL" &
              OrganGroup == "branch") %>%     
-    # group_by(Reference,Species) %>% 
-    # slice(which.min(Temperature_of_resistance)) %>% 
+    group_by(Reference,Species) %>%
+    slice(which.min(Temperature_of_resistance)) %>%
     ungroup()  -> df.LT50.select.strong
   
-  sp.deleted <- setdiff(unique(df.LT50.select$Species),unique(df.LT50.select.strong$Species))
-  df.filtered <- df.LT50.select.strong
-  for (sp in sp.deleted){
-    print(sp)
-    df.sp <- df.LT50.select %>% 
-      filter(Species==sp)
-    if(dim(df.sp)[1]>1&dim(df.sp)[1]<5){
-      tryCatch(
-        {
-          # Look how wide is the range
-          if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
-            # Check for plant age first
-            med.mat=median(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
-            med.other=median(df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
-            tryCatch({
-              if(abs(med.mat-med.other)>10){
-                df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
-                print("Some measures discarded")
-              }
-            },
-            error=function(e){print("One group not present")}
-            )
-            
-            # Check for fit quality 
-            med.sigmoid=median(df.sp[df.sp$Fit=="Sigmoid","Temperature_of_resistance"])
-            med.other=median(df.sp[df.sp$Fit!="Sigmoid","Temperature_of_resistance"])
-            tryCatch({
-              if(abs(med.sigmoid-med.other)>10){
-                df.sp <- df.sp[df.sp$Fit=="Sigmoid",]
-                print("Some measures discarded")
-              }
-            },
-            error=function(e){print("One group not present")}
-            )
-            
-            # Check for method 
-            med.el=median(df.sp[df.sp$Method=="EL","Temperature_of_resistance"])
-            med.vs=median(df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
-            tryCatch(
-              {if(abs(med.el-med.vs)>10){
-                df.sp <- df.sp[df.sp$Method=="EL",]
-                print("Some measures discarded")
-              }},
-              error=function(e){print("One group not present")}
-            )
-            
-            # Check for organ group 
-            # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
-            med.br=median(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"])
-            med.other=median(df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
-            tryCatch(
-              {if(abs(med.br-med.other)>10){
-                df.sp <- df.sp[df.sp$OrganGroup=="branch",]
-                print("Some measures discarded")
-              }},
-              error=function(e){print("One group not present")}
-            )
-          }
-        },
-        error=function(e){print("Error for this species")}
-      )
-    } else if(dim(df.sp)[1]>5){
-      tryCatch(
-        {
-          # Look how wide is the range
-          if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
-            # Check for plant age first
-            tryCatch({
-              wilcox.age=wilcox.test(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"],
-                                     df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
-              if(wilcox.age$p.value<0.05){
-                df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
-                print("Some measures discarded")
-              }
-            },
-            error=function(e){print("Test not performed")}
-            )
-            
-            # Check for fit quality 
-            tryCatch({
-              wilcox.fit=wilcox.test(df.sp[df.sp$Fit=="Sigmoid","Temperature_of_resistance"],
-                                     df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
-              if(wilcox.fit$p.value<0.05){
-                df.sp <- df.sp[df.sp$Fit=="Sigmoid",]
-                print("Some measures discarded")
-              }
-            },
-            error=function(e){print("One group not present")}
-            )
-            
-            # Check for method 
-            tryCatch({
-              wilcox.method=wilcox.test(df.sp[df.sp$Method=="EL","Temperature_of_resistance"],
-                                        df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
-              if(wilcox.method$p.value<0.05){
-                df.sp <- df.sp[df.sp$Method=="EL",]
-                print("Some measures discarded")
-              }},
-              error=function(e){print("Test not performed")}
-            )
-            
-            # Check for organ group 
-            # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
-            tryCatch({
-              wilcox.organ=wilcox.test(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"],
-                                       df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
-              if(wilcox.organ$p.value<0.05){
-                df.sp <- df.sp[df.sp$OrganGroup=="branch",]
-                print("Some measures discarded")
-              }},
-              error=function(e){print("Test not performed")}
-            )
-          }
-        },
-        error=function(e){print("Error for this species")}
-      )
-    } 
-    df.filtered=rbind(df.filtered,df.sp)
-  }
   
-  
-  df.filtered <- data.frame(matrix(ncol = dim(df.LT50.select)[2],
-                                   nrow = 0))
+  thawing.rate <- c("2","3","5","7")
+  #sp.deleted <- setdiff(unique(df.LT50.select$Species),unique(df.LT50.select.strong$Species))
+  df.filtered <- as.data.frame(matrix(nrow = 0,
+                                      ncol=dim(df.LT50.select)[2]))
   colnames(df.filtered) <- colnames(df.LT50.select)
-  for(sp in unique(df.LT50.select$Species)){
-    # Show which species we are comparing
+  for (sp in unique(df.LT50.select$Species)){
+    rm(df.sp)
     print(sp)
-    df.sp <- df.LT50.select %>% 
-      filter(Species==sp)
-    
-    if(dim(df.sp)[1]>1&dim(df.sp)[1]<5){
-      tryCatch(
-        {
-          # Look how wide is the range
-          if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
-            # Check for plant age first
-            med.mat=median(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
-            med.other=median(df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
-            tryCatch({
-              if(abs(med.mat-med.other)>10){
-                df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
-                print("Some measures discarded")
+    print("step 1")
+    #### All constraints
+    df.sp <- df.LT50.select[df.LT50.select$Species==sp & df.LT50.select$Plant_age == "Mature" & 
+                              df.LT50.select$Thawing_rate_.K.h.1. %in% thawing.rate &
+                              df.LT50.select$Method == "EL" & 
+                              df.LT50.select$OrganGroup == "branch" &
+                              df.LT50.select$Fit %in% c("sigmoid","Sigmoid")
+                              ,] %>%     
+      group_by(Reference,Species) %>%
+      slice(which.min(Temperature_of_resistance)) %>%
+      ungroup() 
+    if (dim(df.sp)[1]>0){
+      df.sp$data.quality=1
+      df.filtered <- rbind(df.filtered,df.sp)
+    }else{
+      #### Release "sigmoid" constraint
+      print("step 2")
+      df.sp <- df.LT50.select[df.LT50.select$Species==sp & df.LT50.select$Plant_age == "Mature" & 
+                                df.LT50.select$Thawing_rate_.K.h.1. %in% thawing.rate &
+                                df.LT50.select$Method == "EL" & 
+                                df.LT50.select$OrganGroup == "branch" 
+                              ,] %>%     
+        group_by(Reference,Species) %>%
+        slice(which.min(Temperature_of_resistance)) %>%
+        ungroup() 
+      if (dim(df.sp)[1]>0){
+        df.sp$data.quality=2
+        df.filtered <- rbind(df.filtered,df.sp)
+      }else{
+        #### Release "branch" only constraint t "branch" "bud"
+          print("step 3")
+          df.sp <- df.LT50.select[df.LT50.select$Species==sp & df.LT50.select$Plant_age == "Mature" & 
+                                    df.LT50.select$Thawing_rate_.K.h.1. %in% thawing.rate &
+                                    df.LT50.select$Method == "EL" & 
+                                    df.LT50.select$OrganGroup %in% c("branch","bud")
+                                    ,] %>%     
+          group_by(Reference,Species) %>%
+          slice(which.min(Temperature_of_resistance)) %>%
+          ungroup() 
+        if (dim(df.sp)[1]>0){
+          df.sp$data.quality=3
+          df.filtered <- rbind(df.filtered,df.sp)
+        }else{
+          #### Release "method" constraint
+              print("step 4")
+              df.sp <- df.LT50.select[df.LT50.select$Species==sp & df.LT50.select$Plant_age == "Mature" &
+                                          df.LT50.select$Thawing_rate_.K.h.1. %in% thawing.rate &
+                                          df.LT50.select$OrganGroup %in% c("branch","bud")
+                                    ,]%>%     
+              group_by(Reference,Species) %>%
+              slice(which.min(Temperature_of_resistance)) %>%
+              ungroup() 
+            if (dim(df.sp)[1]>0){
+              df.sp$data.quality=4
+              df.filtered <- rbind(df.filtered,df.sp)
+            }else{
+              #### Release "thawing rate" constraint
+              print("step 5")
+              df.sp <- df.LT50.select[df.LT50.select$Species==sp & df.LT50.select$Plant_age == "Mature" &
+                                        df.LT50.select$OrganGroup %in% c("branch","bud")
+                                      ,]%>%     
+                group_by(Reference,Species) %>%
+                slice(which.min(Temperature_of_resistance)) %>%
+                ungroup() 
+              if (dim(df.sp)[1]>0){
+                df.sp$data.quality=5
+                df.filtered <- rbind(df.filtered,df.sp)
+              }else{
+              #### Release "age" constraint
+                print("step 6")
+                df.sp <- df.LT50.select[df.LT50.select$Species==sp & df.LT50.select$OrganGroup %in% c("branch","bud")
+                             ,] %>%     
+                group_by(Reference,Species) %>%
+                slice(which.min(Temperature_of_resistance)) %>%
+                ungroup() 
+              if (dim(df.sp)[1]>0){
+                df.sp$data.quality=6
+                df.filtered <- rbind(df.filtered,df.sp) 
+              }else{
+                print("step 7")
+                df.filtered <- rbind(df.filtered,
+                                     df.LT50.select[df.LT50.select$Species==sp
+                                                    ,]%>%     
+                                       group_by(Reference,Species) %>%
+                                       slice(which.min(Temperature_of_resistance)) %>%
+                                       ungroup() %>% 
+                                       mutate(data.quality=7))
               }
-            },
-            error=function(e){print("One group not present")}
-            )
-            
-            # Check for method 
-            med.el=median(df.sp[df.sp$Method=="EL","Temperature_of_resistance"])
-            med.vs=median(df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
-            tryCatch(
-              {if(abs(med.el-med.vs)>10){
-                df.sp <- df.sp[df.sp$Method=="EL",]
-                print("Some measures discarded")
-              }},
-              error=function(e){print("One group not present")}
-            )
-            
-            # Check for organ group 
-            # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
-            med.br=median(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"])
-            med.other=median(df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
-            tryCatch(
-              {if(abs(med.br-med.other)>10){
-                df.sp <- df.sp[df.sp$OrganGroup=="branch",]
-                print("Some measures discarded")
-              }},
-              error=function(e){print("One group not present")}
-            )
+            }
           }
-        },
-        error=function(e){print("Error for this species")}
-      )
-    } else if(dim(df.sp)[1]>5){
-      tryCatch(
-        {
-          # Look how wide is the range
-          if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
-            # Check for plant age first
-            tryCatch({
-              wilcox.age=wilcox.test(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"],
-                                     df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
-              if(wilcox.age$p.value<0.05){
-                df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
-                print("Some measures discarded")
-              }
-            },
-            error=function(e){print("Test not performed")}
-            )
-            
-            # Check for method 
-            tryCatch({
-              wilcox.method=wilcox.test(df.sp[df.sp$Method=="EL","Temperature_of_resistance"],
-                                        df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
-              if(wilcox.method$p.value<0.05){
-                df.sp <- df.sp[df.sp$Method=="EL",]
-                print("Some measures discarded")
-              }},
-              error=function(e){print("Test not performed")}
-            )
-            
-            # Check for organ group 
-            # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
-            tryCatch({
-              wilcox.organ=wilcox.test(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"],
-                                       df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
-              if(wilcox.organ$p.value<0.05){
-                df.sp <- df.sp[df.sp$OrganGroup=="branch",]
-                print("Some measures discarded")
-              }},
-              error=function(e){print("Test not performed")}
-            )
-          }
-        },
-        error=function(e){print("Error for this species")}
-      )
-    } 
-    df.filtered=rbind(df.filtered,df.sp)
-  }
-  rm(wilcox.age,wilcox.method,wilcox.organ,med.br,med.el,med.mat,med.other,med.vs)
-  
+      }
+    }
+  }}
+
+
   ### Summarise per species ###
   #############################
   df.species.traits <- df.filtered %>% 
-    group_by(Species,Period,New_continent) %>% 
+    filter(New_continent=="E_U") %>%
+    group_by(Species,Period,data.quality) %>% 
     summarise(LT50.mean=mean(Temperature_of_resistance,na.rm=TRUE),
               LT50.sd=sd(Temperature_of_resistance,na.rm=TRUE)) %>% 
-    filter(New_continent=="E_U") %>% 
-    ungroup()
+    ungroup() %>% 
+    arrange(LT50.mean) %>% 
+    mutate(rank_filt=row_number())
   
   ## For raw data
   df.species.traits.raw <- df.LT50.select %>% 
-    group_by(Species,Period,New_continent) %>% 
+    filter(New_continent=="E_U") %>%
+    group_by(Species,Period) %>% 
     summarise(LT50.mean=mean(Temperature_of_resistance,na.rm=TRUE),
               LT50.sd=sd(Temperature_of_resistance,na.rm=TRUE)) %>% 
-    filter(New_continent=="E_U") %>% 
-    ungroup()
+    ungroup() %>% 
+    arrange(LT50.mean) %>% 
+    mutate(rank=row_number()) %>% 
+    left_join(df.species.traits[,c("Species","rank_filt")],by="Species")
   
+
   
-  ### Few plots ###
+    
+ ### Few plots ###
   #################
-  # 
-  # # Plot difference between mean computed over raw dataset and with filtered dataset
-  # df.species.traits %>% 
-  #   filter(!is.na(LT50.sd)) %>% 
+  # ## Plot difference between mean computed over raw dataset and with filtered dataset
+  # df.species.traits %>%
+  #   filter(!is.na(LT50.sd)) %>%
   #   rename(`LT50.mean.filter`="LT50.mean",
-  #          `LT50.sd.filter`="LT50.sd") %>% 
-  #   left_join(df.species.traits.raw %>% 
-  #               filter(!is.na(LT50.sd)) %>% 
+  #          `LT50.sd.filter`="LT50.sd") %>%
+  #   left_join(df.species.traits.raw %>%
+  #               filter(!is.na(LT50.sd)) %>%
   #               rename(`LT50.mean.raw`="LT50.mean",
   #                      `LT50.sd.raw`="LT50.sd"),
-  #             by="Species") %>% 
+  #             by="Species") %>%
   #   ggplot(aes(LT50.mean.filter-LT50.mean.raw,Species))+
   #   geom_point()
   # 
-  # # Boxplots for species with several measures
-  df.filtered  %>%
-    filter(New_continent=="E_U") %>%
-    group_by(Species) %>%
-    filter(n()>1) %>%
-    ungroup() %>%
-    ggplot(aes(Temperature_of_resistance,Species))+
-    geom_boxplot()
+  # ## Boxplots for species with several measures
+  # list=df.filtered  %>%
+  #   mutate(data.quality=as.factor(data.quality)) %>% 
+  #   filter(New_continent=="E_U") %>%
+  #   # group_by(Species) %>%
+  #   # filter(n()>1) %>%
+  #   # ungroup() %>%
+  #   ggplot(aes(Temperature_of_resistance,Species))+
+  #   geom_line()+
+  #   geom_point(aes(shape=data.quality))+
+  #   theme_bw()+
+  #   theme(axis.title=element_blank() )
+  # ggsave(list,
+  #        filename = "species_list.pdf",
+  #        path="output/",
+  #        device="pdf",
+  #        height=12)
+  # 
+  # ## Plots with changes in species ranking before/after LT50 filtering
+  # df.species.traits.raw %>% 
+  #   filter(abs(rank-rank_filt)>5) %>% 
+  #   ggplot(aes(rank-rank_filt,Species))+
+  #   geom_point()
+  # 
+  # 
+  # df.species.traits.raw %>%
+  #   pivot_longer(cols = c("rank","rank_filt"),names_to = "rank.type",values_to = "rank") %>%
+  #   mutate(rank.type=as.factor(rank.type)) %>%
+  #   ggplot(aes(x = rank.type, y = rank, group = Species)) +
+  #   geom_line(aes(color = Species, alpha = 1), size = 2) +
+  #   geom_point(aes(color = Species, alpha = 1), size = 2) +
+  #   geom_point(color = "#FFFFFF", size = 1) +
+  #   scale_y_reverse(breaks = 1:nrow(df.species.traits.raw)) +
+  #   scale_x_discrete(breaks = 1:10) +
+  #   theme_bw()+
+  #   theme(legend.position = 'none',
+  #         axis.title = element_blank(),
+  #         axis.text.y = element_blank(),
+  #         axis.ticks.y= element_blank()) +
+  #   geom_text(data = df.species.traits.raw %>% arrange(rank),
+  #             aes(label = Species, x = .95) , hjust = .5,
+  #             color = "#888888", size = 3) +
+  #   labs(x = '', y = 'Rank', title = 'Changes in LT50 species ranking after filtering')
+  # 
+  # 
+  
+  
+  write.csv(df.species.traits,"output/df_LT50_filtered.csv",row.names = FALSE)
 
   return(list(df.LT50.raw=df.LT50.select,
               df.LT50.cor=df.filtered,
               df.LT50sp.raw=df.species.traits.raw,
               df.LT50sp.cor=df.species.traits))
   
+}
+
+
+#' Get P50 database 
+#' 
+#' @description Load P50 from Max database
+#' @return  Dataframe with P50 per European species 
+get.P50 <- function(){
+  # df.P50.lit <- read.csv2("data/Species traits/BdD_full_by_species.csv")
+  # df.P50.select <- df.P50.lit %>% 
+  #   select(colnames(df.P50.lit)[!grepl("LT",colnames(df.P50.lit))]) %>% 
+  #   select(-Dmean,-Psi_min_MD,-WD,-Plot_continent,-MHZ,-nplot,-ntree,-D99,-score,-X.gs90,-X.tlp,-densityMEANcor,-Exo,-genus,-GBIF_species,-class) %>% 
+  #   filter(New_continent=="E_U") %>% 
+  #   filter(!is.nan(P50tot))
+  df.p50.lit <- read.csv2("data/Species traits/2022_10_20_cleaned_xft.csv") %>% 
+    select(uniqueID,lat,long,XFT.database,Group,Family,Genus,Species,
+           Developmental.stage,Growth.form,P50,P50.SD,P12,P88,Curve,Equation,
+           psi.min.predawn..MPa.,psi..min.midday..MPa.) %>% 
+    mutate(species.binomial=paste(Genus,Species)) %>% 
+    filter(Curve=="S") %>%
+    filter(Growth.form=="T") %>% 
+    group_by(Group,Genus,Species,species.binomial) %>% 
+    summarise(P50.mu=mean(as.numeric(P50),na.rm=TRUE),
+              P50.sd=sd(as.numeric(P50),na.rm=TRUE),
+              P88.mu=mean(as.numeric(P88),na.rm=TRUE),
+              P88.sd=sd(as.numeric(P88),na.rm=TRUE)) %>% 
+    ungroup()
+  write.csv(df.p50.lit,"output/df_P50_filtered.csv",row.names = FALSE)
+  return(df.p50.lit)
 }
 
 #' Get LT50/P50 database 
@@ -1862,25 +1538,37 @@ get.LT50 <- function(){
 #' @return dataframe of LT50/P50 traits per species
 #' 
 
-get.traits <- function(dir.file.raw="data/Species traits/LT50P50.csv",
-                       dir.file.updated="data/Species traits/SpeciesP50LT50Europe.csv",
-                       dir.distribution="data/chorological_maps_dataset"){
-  # df.LT50.lit <- read.csv2(dir.file.raw) %>% 
-  #   filter(!is.na(LT50)) %>% 
-  #   filter(!is.na(P50tot))
-  df.traits=read.csv2(dir.file.updated) %>% 
-    filter(Continent=="Europe") %>% 
-    select(Species,LT50,P50tot) %>% 
-    rename(`P50`="P50tot",
-           `species.binomial`="Species") %>% 
-    mutate(file=NA) %>% 
+get.traits <- function(dir.distribution="data/chorological_maps_dataset",
+                       df.P50, #=df.P50
+                       df.LT50){ #=df.LT50$df.LT50sp.cor
+  # df.P50 <- read.csv("output/df_P50_filtered.csv") 
+  # df.LT50 <- read.csv("output/df_LT50_filtered.csv")
+  
+  df.traits.raw <- df.LT50 %>% 
+    left_join(df.P50,by=c("Species"="species.binomial"))
+  # df.traits.raw <- full_join(df.P50,df.LT50,by="Species")
+  # df.traits.missing <- df.traits.raw %>% 
+  #   filter(is.na(P50tot) | is.na(LT50.mean))
+  df.traits <- df.traits.raw %>% 
+    filter(!is.na(P50.mu)) %>% 
+    filter(!is.na(LT50.mean)) %>% 
+    select(Species,Group,P50.mu,P50.sd,P88.mu,P88.sd,LT50.mean,LT50.sd,data.quality) %>% #MATmean,MAPmean,Leaf_phenology,
+    unique() %>% 
+    rename(`species.binomial`="Species") %>% 
     separate(col = species.binomial,
              into=c("genus","species"),
              remove=FALSE) %>% 
     mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)),
-           species.name=str_replace(species.binomial," ","_"),
-           across(.cols = c("P50","LT50"),
-                  ~ as.numeric(.))) 
+           species.name=str_replace(species.binomial," ","_")) %>% 
+    relocate(c("species.name","sp.ind"),.after="species") %>% 
+    mutate(p.trait=case_when(Group=="gymnosperm"~"P50",
+                             Group=="angiosperm"&!is.na(P88.mu)~"P88",
+                             Group=="angiosperm"&is.na(P88.mu)~"P50"),
+           PX.mu=case_when(p.trait=="P88"~P88.mu,
+                           p.trait=="P50"~P50.mu),
+           PX.sd=case_when(p.trait=="P88"~P88.sd,
+                           p.trait=="P50"~P50.sd))
+  
   for (i in 1:dim(df.traits)[1]){
     species.files=list.files(file.path(dir.distribution,df.traits$species.binomial[i],"shapefiles"))
     if(length(species.files[grepl(paste0(df.traits$species.name[i],"_plg_clip"),species.files)])>1){
@@ -1894,8 +1582,8 @@ get.traits <- function(dir.file.raw="data/Species traits/LT50P50.csv",
     } else {
       df.traits$file[i]=NA
     }
-  }
-  
+  }  
+  write.csv(df.traits,"output/df_trait_filtered.csv",row.names = FALSE)
   return(df.traits)
 }
 
@@ -2027,4 +1715,122 @@ get.traits <- function(dir.file.raw="data/Species traits/LT50P50.csv",
 #           rep(-5,day_hardenning-1-day_budburst-1),
 #           -5+seq(0,yday(as.Date(paste0(year.select,"-12-31")))-day_hardenning)*((LT50+5)/(yday(as.Date(paste0(year.select,"-12-31")))-day_hardenning)))
 
-
+# Old filtering of LT50 data
+# for (sp in sp.deleted){
+#   print(sp)
+#   df.sp <- df.LT50.select %>% 
+#     filter(Species==sp)
+#   
+#   if(dim(df.sp)[1]>1&dim(df.sp)[1]<5){
+#     tryCatch(
+#       {
+#         # Look how wide is the range
+#         if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
+#           # Check for plant age first
+#           med.mat=median(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+#           med.other=median(df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+#           tryCatch({
+#             if(abs(med.mat-med.other)>10){
+#               df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
+#               print("Some measures discarded")
+#             }
+#           },
+#           error=function(e){print("One group not present")}
+#           )
+#           
+#           # Check for fit quality 
+#           med.sigmoid=median(df.sp[df.sp$Fit=="Sigmoid","Temperature_of_resistance"])
+#           med.other=median(df.sp[df.sp$Fit!="Sigmoid","Temperature_of_resistance"])
+#           tryCatch({
+#             if(abs(med.sigmoid-med.other)>10){
+#               df.sp <- df.sp[df.sp$Fit=="Sigmoid",]
+#               print("Some measures discarded")
+#             }
+#           },
+#           error=function(e){print("One group not present")}
+#           )
+#           
+#           # Check for method 
+#           med.el=median(df.sp[df.sp$Method=="EL","Temperature_of_resistance"])
+#           med.vs=median(df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
+#           tryCatch(
+#             {if(abs(med.el-med.vs)>10){
+#               df.sp <- df.sp[df.sp$Method=="EL",]
+#               print("Some measures discarded")
+#             }},
+#             error=function(e){print("One group not present")}
+#           )
+#           
+#           # Check for organ group 
+#           # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
+#           med.br=median(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"])
+#           med.other=median(df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
+#           tryCatch(
+#             {if(abs(med.br-med.other)>10){
+#               df.sp <- df.sp[df.sp$OrganGroup=="branch",]
+#               print("Some measures discarded")
+#             }},
+#             error=function(e){print("One group not present")}
+#           )
+#         }
+#       },
+#       error=function(e){print("Error for this species")}
+#     )
+#   } else if(dim(df.sp)[1]>5){
+#     tryCatch(
+#       {
+#         # Look how wide is the range
+#         if(max(df.sp$Temperature_of_resistance,na.rm=TRUE)-min(df.sp$Temperature_of_resistance,na.rm=TRUE)>10){
+#           # Check for plant age first
+#           tryCatch({
+#             wilcox.age=wilcox.test(df.sp[df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"],
+#                                    df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+#             if(wilcox.age$p.value<0.05){
+#               df.sp <- df.sp[df.sp$Plant_age %in% c("Mature",NA),]
+#               print("Some measures discarded")
+#             }
+#           },
+#           error=function(e){print("Test not performed")}
+#           )
+#           
+#           # Check for fit quality 
+#           tryCatch({
+#             wilcox.fit=wilcox.test(df.sp[df.sp$Fit=="Sigmoid","Temperature_of_resistance"],
+#                                    df.sp[! df.sp$Plant_age %in% c("Mature",NA),"Temperature_of_resistance"])
+#             if(wilcox.fit$p.value<0.05){
+#               df.sp <- df.sp[df.sp$Fit=="Sigmoid",]
+#               print("Some measures discarded")
+#             }
+#           },
+#           error=function(e){print("One group not present")}
+#           )
+#           
+#           # Check for method 
+#           tryCatch({
+#             wilcox.method=wilcox.test(df.sp[df.sp$Method=="EL","Temperature_of_resistance"],
+#                                       df.sp[df.sp$Method=="Visual scoring","Temperature_of_resistance"])
+#             if(wilcox.method$p.value<0.05){
+#               df.sp <- df.sp[df.sp$Method=="EL",]
+#               print("Some measures discarded")
+#             }},
+#             error=function(e){print("Test not performed")}
+#           )
+#           
+#           # Check for organ group 
+#           # performing t.test is not an option because groups are too small and therefore exclusion condition is not strong enough
+#           tryCatch({
+#             wilcox.organ=wilcox.test(df.sp[df.sp$OrganGroup=="branch","Temperature_of_resistance"],
+#                                      df.sp[!df.sp$OrganGroup=="branch","Temperature_of_resistance"])
+#             if(wilcox.organ$p.value<0.05){
+#               df.sp <- df.sp[df.sp$OrganGroup=="branch",]
+#               print("Some measures discarded")
+#             }},
+#             error=function(e){print("Test not performed")}
+#           )
+#         }
+#       },
+#       error=function(e){print("Error for this species")}
+#     )
+#   } 
+#   df.filtered=rbind(df.filtered,df.sp)
+# }

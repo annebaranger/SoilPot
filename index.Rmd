@@ -353,6 +353,23 @@ b=pars_t_VG %>%
   ggtitle("Parameters extracted from Wösten 1999")
 
 cowplot::plot_grid(a,b,ncol=2)
+
+
+pars_t_VG %>% 
+  crossing(theta=seq(0,1,0.001)) %>% 
+  mutate(psi_VG=-((((teta_s-teta_r)/(theta-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2),
+         psi_Campbell=psi_e*((teta_s/theta)^b)) %>% 
+  pivot_longer(cols=c("psi_VG","psi_Campbell"),names_to = "Method",values_to = "Potential") %>% 
+  ggplot(aes(theta,Potential,color=texture))+
+  geom_line(size=0.81)+
+  ylab("Psi_min (kPa)")+
+  xlab("theta")+
+  ylim(0,-15000)+
+  theme_bw()+
+  geom_vline(xintercept=c(0.1))+ 
+  geom_hline(yintercept = -1000)+
+  scale_color_brewer(palette="Spectral",direction=-1)+
+  facet_wrap(~Method)
 ```
 
 # Forest distribution
