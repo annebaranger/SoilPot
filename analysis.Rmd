@@ -16,11 +16,13 @@ knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning=FALSE)
 packages=c("targets","tidyr","dplyr","ggplot2","terra","stringr","sf","sp")
 # lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate","lme4"),require,character.only=TRUE)
 lapply(packages,require,character.only=TRUE)
-tar_load(df.traits)
+# tar_load(df.traits)
+df.traits <- read.csv
 species.select=c("Quercus ilex","Quercus robur","Betula pendula","Abies alba","Pinus sylvestris")
 df.select <- df.traits %>% 
   filter(species.binomial %in% species.select)
- 
+# correction of data
+df.select[df.select$sp.ind=="Bepe","LT50"] <- -23
 ```
 
 # Introduction
@@ -152,6 +154,106 @@ The integration of the real depth allows to correct extreme values in some areas
 
 The safety margins will therefore be calculated with the last method: daily time step and real depth.
 
+### Quality of soil depth data
+```{r SoilDepth}
+rast.depth=rast("data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst")
+names(rast.depth)="depth"
+rast.depth=classify(rast.depth, cbind(0, NA))
+as.data.frame(rast.depth,xy=TRUE) %>% 
+  mutate(depth=as.factor(depth)) %>% 
+  ggplot(aes(x=x,y=y,fill=depth))+
+  geom_tile()+
+  theme_bw() +
+  theme(axis.title=element_blank())+
+  labs(fill="Soil depth (cm)")+
+  scale_fill_brewer(palette="RdYlBu")+
+  coord_equal()
+```
+
+### Comparison of old method (horizon weighted with width) and new method (SUREAU)
+```{r psimincomparedweight, fig.cap="Map of minimum soil potential using soil horizons weighting with horizons width or SUREAU"}
+tar_load(psi_ESDACs_100)
+tar_load(psihormonth_100)
+psi_ESDACs_100 %>% 
+  select(x,y,psi_CB,psi_VG) %>% 
+  mutate(across(.cols=matches(c("psi")),
+                    ~ cut(.,
+                          breaks=c(-Inf, -50000,-25000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), 
+                          labels=c("<-50MPa","-50<Psi<-25MPa","-25<Psi<-10MPa","-10<Psi<-5MPa",
+                                   "-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa",
+                                   "-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))))  %>% 
+      #dplyr::select(matches(c("^x$","^y$","psi"))) %>%
+      relocate(y,.after=x) %>% 
+      pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+      ggplot()+
+        geom_tile(aes(x=x,y=y,fill=value)) +
+        theme_bw() +
+        theme(axis.title=element_blank(),
+              legend.key.size = unit(0.5,"cm"),
+              legend.position = "bottom")+
+        labs(fill="Potentiel (MPa)")+
+        facet_wrap(~name)+
+        scale_fill_brewer(palette="RdYlBu")+
+        coord_equal()
+
+as.data.frame(psi_ESDACs_100,xy=TRUE) %>% 
+  select(x,y,psi_CB,psi_VG) %>% 
+   pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+      filter(value>-10000000) %>% 
+      ggplot(aes(-value/1000,color=name))+
+        geom_density()+
+        theme_bw() +
+        theme(axis.title=element_blank(),
+              legend.key.size = unit(0.5,"cm"),
+              legend.position="bottom")+
+        labs(color="Potentiel (MPa)")+
+        #scale_color_brewer(palette="RdYlBu")+
+        scale_x_log10()+
+        geom_vline(xintercept = c(0.1,1,100))
+
+psihormonth_100=rast(psihormonth_100[,c("x","y","psi")],crs="epsg:4326")
+psi_ESDACs_100=project(rast(psi_ESDACs_100[,c("x","y","psi_VG")],crs="epsg:4326"),psihormonth_100,method="near")
+as.data.frame(c(psihormonth_100,psi_ESDACs_100),xy=TRUE) %>% 
+  mutate(across(.cols=matches(c("psi")),
+                    ~ cut(.,
+                          breaks=c(-Inf, -50000,-25000, -10000, -5000,-3000,-1000,-500,-300,-200,-100,Inf), 
+                          labels=c("<-50MPa","-50<Psi<-25MPa","-25<Psi<-10MPa","-10<Psi<-5MPa",
+                                   "-5<Psi<-3MPa","-3<Psi<-1MPa","-1<Psi<-0.5MPa",
+                                   "-0.5/-0.3","-0.3/-0.2","-0.2/-0.1","-0.1/0"))))  %>% 
+      #dplyr::select(matches(c("^x$","^y$","psi"))) %>%
+      relocate(y,.after=x) %>% 
+      rename(`psi_SUREAU`="psi",
+             `psi_width`="psi_VG") %>% 
+      pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+      ggplot()+
+        geom_tile(aes(x=x,y=y,fill=value)) +
+        theme_bw() +
+        theme(axis.title=element_blank(),
+              legend.key.size = unit(0.5,"cm"),
+              legend.position = "bottom")+
+        labs(fill="Potentiel (MPa)")+
+        facet_wrap(~name)+
+        scale_fill_brewer(palette="RdYlBu")+
+        coord_equal()
+
+as.data.frame(c(psihormonth_100,psi_ESDACs_100),xy=TRUE) %>% 
+      rename(`psi_SUREAU`="psi",
+             `psi_width`="psi_VG") %>% 
+      pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
+      filter(value>-10000000) %>% 
+      ggplot(aes(-value/1000,color=name))+
+        geom_density()+
+        theme_bw() +
+        theme(axis.title=element_blank(),
+              legend.key.size = unit(0.5,"cm"),
+              legend.position="bottom")+
+        labs(color="Potentiel (MPa)")+
+        #scale_color_brewer(palette="RdYlBu")+
+        scale_x_log10()+
+        geom_vline(xintercept = c(0.1,1,100))
+```
+
+### Comparison of the use of depth threshold/real depth, monthly/daily timestep
 ```{r psimincompare,fig.cap="Comparison of the 3 different methods to compute minimum soil potential",fig.width=7}
 tar_load(c(psihormonth_100,psihorday_100,psihorday_real))
 
@@ -234,7 +336,8 @@ Maps of hydraulic safety margins for few species compared to their actual distri
 We plotted the hydraulic safety margins for 5 species with distributions in different biomes, and compared the different safety margins according to the minimum potential calculation.
 It is difficult to conclude that the safety margins correspond to the southern distribution of some species, but it remains essential to test this hypothesis statistically.
 
-```{r HSM,fig.cap="Safety margins for 5 species, computed with the 3 different methods",fig.width=7}
+```{r HSM,fig.cap="Safety margins for 5 species, computed with the 3 different methods"}
+#,fig.width=7
 tar_load(europe)
 
 
@@ -278,7 +381,6 @@ for (i in 1:dim(df.select)[1]){
   }
 
 ```
-
 # Frost safety margins
 
 ## Frost index raw
@@ -297,12 +399,12 @@ Then we compared LT50 in spring with the 2 last indicators computed on the 30-da
 
 The comparison of the density of the minimum of each indicators clearly shows a gap between the minimum of daily minima and the minimum of mean daily minima, with almost 24°C difference in their mean.
 
-```{r CompareFrostIndex,fig.cap="Comparison of the 3 frost index",fig.width=7}
+```{r CompareFrostIndex,fig.cap="Comparison of the 3 frost index",fig.width=15}
 rast.bio6=crop(rast("data/CHELSA/CHELSA_bio6_1981-2010_V.2.1.tif"),vect(europe),mask=TRUE)
 names(rast.bio6)="bio6"
 rast.min=crop(min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm = FALSE),europe,mask=TRUE)
 names(rast.min)="min"
-rast.quant=crop(min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_quant_19952005.nc"),na.rm = FALSE),europe,mask=TRUE)
+rast.quant=crop(min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_quant05_19802005.nc"),na.rm = FALSE),europe,mask=TRUE)
 names(rast.quant)="quant"
 
 frost.gather=aggregate(c(rast.bio6,rast.min,rast.quant),
@@ -311,7 +413,7 @@ frost.gather=aggregate(c(rast.bio6,rast.min,rast.quant),
                            na.rm=TRUE)
 rm(rast.bio6,rast.min,rast.quant)
 as.data.frame(frost.gather,xy=TRUE) %>% 
-  mutate(quant=quant/100) %>% 
+  #mutate(quant=quant/100) %>% 
   pivot_longer(cols=colnames(.)[c(-1,-2)]) %>% 
   mutate(value=cut(value,
                    breaks=c(-Inf,-50,-40,-30,-20,-15,-10,-5,0,5,10, Inf),
@@ -330,7 +432,7 @@ as.data.frame(frost.gather,xy=TRUE) %>%
 
 ```{r CompareFrostIndexDensity,fig.cap="Density of the 3 frost index"}
 as.data.frame(frost.gather,xy=TRUE) %>% 
-  mutate(quant=quant/100) %>% 
+  #mutate(quant=quant/100) %>% 
   pivot_longer(cols = colnames(.)[c(-1,-2)],names_to = "Frost method") %>% 
   ggplot(aes(value,color=`Frost method`,fill=`Frost method`))+
   geom_density(alpha=0.4)+
@@ -425,7 +527,7 @@ for (i in 1:dim(df.select)[1]){
                 legend.position="bottom")+
           labs(fill=paste0("FSM (°C), \nSpecies: ",df.select$species.binomial[i],
                            "\nLT50=",round(df.select$LT50[i],digit=1)))+
-          scale_fill_brewer(palette="RdYlBu")+
+          scale_fill_brewer(palette="RdYlBu",direction=-1)+
           facet_wrap(~Frost.index))
 
       },
@@ -455,13 +557,12 @@ for (i in 1:dim(df.select)[1]){
         ## Build graphs
         print(
           frost.fdg.gather %>% 
-            mutate(fdg=-5+30*(5+df.select$LT50[i])/(2*fdg)) %>% 
+            mutate(fdg=-5+30*(5+df.select$LT50[i])/(2*fdg)) %>% # LT50 in spring
             pivot_longer(cols=c("quant","min")) %>% 
-            mutate(fsm=cut(fdg-value,
-                           breaks=c(-Inf, -15,-10, -5,0,5,10,15,20,25,30,35,Inf),
+            mutate(fsm=cut(value-fdg,
+                           breaks=c(-Inf, -15,-10, -5,0,5,10,15,Inf), #,20,25,30,35
                            labels=c("<-15", "-15<FSM<-10","-10/-5","-5/0",
-                                    "0/5","5/10","10/15","15/20","20/25",
-                                    "25/30","30/35",">35")))%>%
+                                    "0/5","5/10","10/15",">15")))%>% #,"20/25","25/30","30/35",">35"
             ggplot() +
             geom_tile(aes(x=x,y=y,fill=fsm))+
             geom_sf(data=spdistrib,
@@ -475,7 +576,7 @@ for (i in 1:dim(df.select)[1]){
                   legend.title = element_text(size=9))+
             labs(fill=paste0("FSM (°C), \nSpecies: ",df.select$species.binomial[i],
                              "\nLT50=",round(df.select$LT50[i],digit=1)))+
-            scale_fill_brewer(palette="RdYlBu")+
+            scale_fill_brewer(palette="RdYlBu",direction=-1)+
             facet_wrap(~name)
         )
       },

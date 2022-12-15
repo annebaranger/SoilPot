@@ -7,9 +7,10 @@ library(targets)
 
 #Options
 source("R/functions_data.R")
-source("R/functions_plot.R")
+source("R/functions_analyses.R")
 options(tidyverse.quiet = TRUE)
-tar_option_set(packages = c("stringr","ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","sf","lubridate","lme4")) #"KrigR","gdalUtils",
+tar_option_set(packages = c("stringr","ggplot2","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","sf","lubridate","lme4"),
+               error = "continue") #"KrigR","gdalUtils",
 
 #Targets
 list(
@@ -50,14 +51,14 @@ list(
   tar_target(
     textureESDAC,
     get_textureESDAC(dir.data="data",
-                 dir.soil="STU_EU_Layers",
-                 europe)
+                     dir.soil="STU_EU_Layers",
+                     europe)
   ),
 
 #' ERA5, pars from Wosten 1999, subsoil
   tar_target(
     textureERA5,
-    get_textureERA5(dir.data="data",
+    get_textureERA5(dir.data="data/ERA5-land",
                     dir.file="texture-2020.nc",
                     europe,
                     # pars from Wosten 1999, for SUBSOIL
@@ -74,7 +75,7 @@ list(
 #' ERA5, pars from Toth 2015, subsoil
   tar_target(
     textureERA5Toth,
-    get_textureERA5(dir.data="data",
+    get_textureERA5(dir.data="data/ERA5-land/",
                     dir.file="texture-2020.nc",
                     europe,
                     # pars from Toth 2015, for SUBSOIL
@@ -94,7 +95,7 @@ list(
     forestcover,
     forest_cover(dir.data="data",
                  dir.file="TCD_2018_100m_eu_03035_v020/DATA/TCD_2018_100m_eu_03035_V2_0.tif",
-                 textureESDAC$topsoil)
+                 textureESDAC$texture$topsoil)
   ),
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -114,9 +115,7 @@ tar_target(
 #'
   tar_target(
     SWC289,
-    extr_swc(weight_swc(dir.data="data",
-                        dir.file="swc-1950-2021.nc",
-                        SWCtot,
+    extr_swc(weight_swc(SWCtot,
                         depth=289),
              "month",
              "1949-12-01",
@@ -127,9 +126,7 @@ tar_target(
 #'
   tar_target(
     SWC100t,
-    weight_swc(dir.data="data",
-               dir.file="swc-1950-2021.nc",
-               SWCtot,
+    weight_swc(SWCtot,
                depth=100)
   ),
 #' @description SWC weighted until 100cm, extrema among months
@@ -146,9 +143,7 @@ tar_target(
 #'
   tar_target(
     SWC50,
-    extr_swc(weight_swc(dir.data="data",
-                        dir.file="swc-1950-2021.nc",
-                        SWCtot,
+    extr_swc(weight_swc(SWCtot,
                         depth=50),
              "month",
              "1949-12-01",
@@ -172,56 +167,64 @@ tar_target(
 #'
   tar_target(
     psi_ERA_50,
-    compute_psiweighted(textureERA5,SWC50)
+    compute_psiweighted(textureERA5,SWC50,
+                        file.output="output/psi_ERA_50.csv")
   ),
 #' @description ERA5 x d100
 #'
   tar_target(
     psi_ERA_100,
-    compute_psiweighted(textureERA5,SWC100)
+    compute_psiweighted(textureERA5,SWC100,
+                        file.output="output/psi_ERA_100.csv")
   ),
 #' @description ERA5 x d289
 #'
   tar_target(
     psi_ERA_289,
-    compute_psiweighted(textureERA5,SWC289)
+    compute_psiweighted(textureERA5,SWC289,
+                        file.output="output/psi_ERA_289.csv")
   ),
 #' @description ESDAC x topsoil x d50
-#'
+
   tar_target(
     psi_ESDACt_50,
-    compute_psiweighted(textureESDAC$topsoil,SWC50)
+    compute_psiweighted(textureESDAC$texture$topsoil,SWC50,
+                        file.output="output/psi_ESDACt_50.csv")
   ),
 #' @description ESDAC x topsoil x d100
 #'
   tar_target(
     psi_ESDACt_100,
-    compute_psiweighted(textureESDAC$topsoil,SWC100)
+    compute_psiweighted(textureESDAC$texture$topsoil,SWC100,
+                        file.output="output/psi_ESDACt_100.csv")
   ),
 #' @description ESDAC x subsoil x d50
 #'
   tar_target(
     psi_ESDACs_50,
-    compute_psiweighted(textureESDAC$subsoil,SWC50)
+    compute_psiweighted(textureESDAC$texture$subsoil,SWC50,
+                        file.output="output/psi_ESDACs_50.csv")
   ),
 #' @description ESDAC x subsoil x d100
 #'
   tar_target(
     psi_ESDACs_100,
-    compute_psiweighted(textureESDAC$subsoil,SWC100)
+    compute_psiweighted(textureESDAC$texture$subsoil,SWC100,
+                        file.output="output/psi_ESDACs_100.csv")
   ),
 #' @description ESDAC x subsoil x d289
 #'
   tar_target(
     psi_ESDACs_289,
-    compute_psiweighted(textureESDAC$subsoil,SWC289)
+    compute_psiweighted(textureESDAC$texture$subsoil,SWC289,
+                        file.output="output/psi_ESDACs_289.csv")
   ),
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 4 - Compute psi_min swc and param per horizon####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # With SWC min on monthly timestep (R code), using all horizons and SUREAU 
+  # With SWC min on monthly timestep (R code), using all horizons and SUREAU
   tar_target(
     psihormonth_100,
     compute_psihor(SWCtot,
@@ -230,7 +233,8 @@ tar_target(
                    "1949-12-01",
                    dir.data="data",
                    dir.file="EU_SoilHydroGrids_1km",
-                   europe)
+                   europe,
+                   file.output="output/psihormonth_100.csv")
   ),
   # With SWC min on daily timestep (Python code), using real depth and SUREAU
   tar_target(
@@ -239,7 +243,8 @@ tar_target(
                       europe,
                       dir.data="data",
                       dir.file="EU_SoilHydroGrids_1km",
-                      depth="real")
+                      depth="real",
+                      file.output="output/psihorday_real.csv")
   ),
   # With SWC min on daily timestep (Python code), until 100cm and SUREAU
   tar_target(
@@ -248,63 +253,64 @@ tar_target(
                       europe,
                       dir.data="data",
                       dir.file="EU_SoilHydroGrids_1km",
-                      depth=100)
+                      depth=100,
+                      file.output="output/psihorday_100.csv")
   ),
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 5 - Compute safety margins####
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # HSM (SWC month, param 3Dhydro, SUREAU) x FSM (CHELSA BOI6)
-  tar_target(
-    safety.margins,
-    compute.sm(psihormonth_100,
-               chelsabio6)
-  ),
-  # HSM (SWC day, param 3Dhydro, SUREAU, depth 100) x FSM (CHELSA BOI6)
-  tar_target(
-    safety.margins.day.100,
-    compute.sm(psihorday_100,
-               chelsabio6)
-  ),
-  # HSM (SWC day, param 3Dhydro, SUREAU, depth real) x FSM (CHELSA BOI6)
-  tar_target(
-    safety.margins.day.real,
-    compute.sm(psihorday_real,
-               chelsabio6)
-  ),
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 5 - Frost index####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # Frost index (CHELSA, FDG)
   tar_target(
-    frost.index,
+    frost.index.quant,
     get.frostindex(europe,
+                   dir.clim="data/CHELSA/CHELSA_EUR11_tasmin_month_quant05_19802005.nc",
+                   dir.fdg="data/eea_2000-2016/SOS_2000_2016_DOY.BIL",
+                   output.index="output/budburst_tquant.csv",
+                   output.budburst="output/budburst_1.csv",
                    year_start=2000)
   ),
   # Frost index (CHELSA, FDG)
-  # tar_target(
-  #   frost.index.bis,
-  #   get.frostindex.bis(europe,
-  #                  year_start=1995)
-  # ),
+  tar_target(
+    frost.index.min,
+    get.frostindex(europe,
+                     dir.clim="data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc",
+                     dir.fdg="data/eea_2000-2016/SOS_2000_2016_DOY.BIL",
+                     output.index="output/budburst_tmin.csv",
+                     output.budburst="output/budburst_2.csv",
+                    year_start=2000)
+  ),
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 6 - Safety margins ####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # Frost safety margins
   tar_target(
-    frost.safety.margins,
-    compute.fsm(dir.species="data/Species traits/trait.select.csv",
-                frost.index$rast.temp,
-                frost.index$rast.fdg.mean)
+    safety.margins,
+    compute.sfm(df.traits,
+                frost.index.quant$rast.temp,
+                frost.index.quant$rast.fdg.mean,
+                psihorday_real,
+                europe)
   ),
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 6 - Load traits ####
+#### Section 7 - Load traits ####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   tar_target(
-    df.traits,
-    get.traits()
-  ),
-  tar_target(
-    list.LT50,
+    df.LT50,
     get.LT50()
   ),
-
+  tar_target(
+    df.P50,
+    get.P50()
+  ),
+  tar_target(
+    df.traits,
+    get.traits(df.P50=df.P50,
+               df.LT50=df.LT50$df.LT50sp.cor)
+  ),
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 7 - Plot safety margins####
+#### Section _ - Plot safety margins####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # tar_target(
   #   plots.sftymargins,
@@ -313,24 +319,33 @@ tar_target(
   #              europe,
   #              safety.margins.day)
   # ),
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 9 - Load Mauri Data ####
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  tar_target(
+    df.mauri.sfm,
+    get.mauri(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
+              df.traits)
+  ),
 #%%%%%%%%%%%%%%%%%%
 #### Section Annexe
 #%%%%%%%%%%%%%%%%%%
 
 #' @description  Mask only forest plots
 #'
-  tar_target(
-    psiforest,
-    psi_forest(psi_ESDACs_289,
-               forestcover,
-               40)
-  ),
+  # tar_target(
+  #   psiforest,
+  #   psi_forest(psi_ESDACs_289,
+  #              forestcover,
+  #              40)
+  # ),
 #' @description timeseries
 #'
-  tar_target(
-    chronology_weighted,
-    chronology_swc(SWC=SWC100t)
-  ),
+  # tar_target(
+  #   chronology_weighted,
+  #   chronology_swc(SWC=SWC100t)
+  # ),
   # tar_target(
   #   HSMs,
   #   HSM_distribution(dir.data="data",
