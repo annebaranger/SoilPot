@@ -20,3 +20,5 @@ R/Fundiv/
 *.Rdata
 r_stat_funs.R
 plots/
+output/
+*.csv

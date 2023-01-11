@@ -16,8 +16,11 @@ parameters {
   real <lower=min(fsm),upper=max(fsm)> breakpoint; //point where regression changes
 }
 
-// Functions of estimated parameters.
-transformed parameters{
+
+// The model to be estimated.
+// presence are distributed according to Bernoulli law
+// logit used as link-function
+model {
   vector[N] fsm_app; // apparent fsm to catch if predictor is before or after breakpoint
   
   // fsm_app=fsm>breakpoint;
@@ -28,12 +31,7 @@ transformed parameters{
       fsm_app[i] = 1;
     }
   }
-}
-
-// The model to be estimated.
-// presence are distributed according to Bernoulli law
-// logit used as link-function
-model {
+  
   //priors
   b_fsm~normal(0,1);
   breakpoint~normal(prior_breakpoint,1);
