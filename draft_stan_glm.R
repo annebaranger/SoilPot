@@ -457,23 +457,270 @@ fit.fsm.marg <- stan(file = "glm_seg_hsm_marginalized.stan",
                       iter=1000,
                       chains=2)
 
-# Model with logistic curves fit, S species, FSM only
-data.list <- list(N=dim(db.pres)[1],
-                  S=nlevels(factor(db.pres$species.binomial)),
-                  presence=db.pres$presence,
-                  species=as.numeric(factor(db.pres$species.binomial)),
-                  fsm=as.numeric(db.pres$fsmwinter),
-                  hsm=as.numeric(db.pres$hsm),
+
+#%%%%%%%%%%%%%%%%%%
+#### Section 8 ####
+#'@description fit log regression with "stan" package 
+
+# Model with logistic curves fit, 1 species, both SM
+db.pres.1sp <- db.clim %>%
+  filter(species.binomial=="Betula pendula") %>%
+  mutate(presence=as.factor(presence))
+  sample_frac(0.05)
+hsm.mu=mean(db.pres.1sp$hsm,na.rm=TRUE)
+hsm.sd=sd(db.pres.1sp$hsm,na.rm=TRUE)
+fsm.mu=mean(db.pres.1sp$fsmwinter,na.rm=TRUE)
+fsm.sd=sd(db.pres.1sp$fsmwinter,na.rm=TRUE)
+db.pres.1sp <- db.pres.1sp %>% 
+  mutate(hsm=scale(hsm,scale=TRUE,center=TRUE)[, 1],
+         fsmwinter=scale(fsmwinter,scale=TRUE,center=TRUE)[, 1]) 
+
+data.list <- list(N=dim(db.pres.1sp)[1],
+                  presence=db.pres.1sp$presence,
+                  fsm=as.numeric(db.pres.1sp$fsmwinter),
+                  hsm=as.numeric(db.pres.1sp$hsm),
                   prior_t_fsm=-fsm.mu/fsm.sd,
                   prior_t_hsm=-hsm.mu/hsm.sd,
                   NULL)
-fit.2 <- stan(file = "glm_log_all.stan",
+fit.1.sp <- stan(file = "glm_log_1sp.stan",
             data=data.list,
             iter=1000,
             chains=2,
             include=FALSE,
-            pars="proba")
-sum.fit=summary(fit)$summary
+            pars=c("proba","K_vect"))
+sum.fit1sp=summary(fit)$summary
+data.frame(sm,t(sum.fit1sp[,1])) %>%
+  crossing(hsm=sm) %>% 
+  mutate(proba=K_int/((1 + exp(-r_fsm * (sm - t_fsm)))*(1 + exp(-r_hsm * (hsm - t_hsm))))) %>% 
+  filter(hsm %in% c(-5,-4,-3,-2,-1,0,1,2,3,4,5)) %>% 
+  ggplot(aes(sm,proba,color=hsm))+
+  geom_point()
+
+
+
+# Model with logistic curves fit, 2 species, both SM
+db.pres.2sp <- db.clim %>%
+  filter(species.binomial%in%c("Fagus sylvatica","Quercus ilex")) %>%
+  sample_frac(0.05)
+hsm.mu=mean(db.pres.2sp$hsm,na.rm=TRUE)
+hsm.sd=sd(db.pres.2sp$hsm,na.rm=TRUE)
+fsm.mu=mean(db.pres.2sp$fsmwinter,na.rm=TRUE)
+fsm.sd=sd(db.pres.2sp$fsmwinter,na.rm=TRUE)
+db.pres.2sp <- db.pres.2sp %>% 
+  mutate(hsm=scale(hsm,scale=TRUE,center=TRUE)[, 1],
+         fsmwinter=scale(fsmwinter,scale=TRUE,center=TRUE)[, 1]) 
+
+data.list <- list(N=dim(db.pres.2sp)[1],
+                  S=nlevels(as.factor(db.pres.2sp$species.binomial)),
+                  presence=db.pres.2sp$presence,
+                  species=as.numeric(as.factor(db.pres.2sp$species.binomial)),
+                  fsm=as.numeric(db.pres.2sp$fsmwinter),
+                  hsm=as.numeric(db.pres.2sp$hsm),
+                  prior_t_fsm=-fsm.mu/fsm.sd,
+                  prior_t_hsm=-hsm.mu/hsm.sd,
+                  NULL)
+fit.2sp <- stan(file = "glm_log_all.stan",
+                 data=data.list,
+                 iter=1000,
+                 chains=2,
+                 include=FALSE,
+                 pars=c("proba","K_vect"))
+
+
+# Model with logistic curves fit, 4 species, both SM
+db.pres.4sp <- db.clim %>%
+  filter(species.binomial%in%c("Fagus sylvatica","Pinus sylvestris","Fraxinus excelsior","Quercus ilex")) %>% #"
+  sample_frac(0.1)
+hsm.mu=mean(db.pres.4sp$hsm,na.rm=TRUE)
+hsm.sd=sd(db.pres.4sp$hsm,na.rm=TRUE)
+fsm.mu=mean(db.pres.4sp$fsmwinter,na.rm=TRUE)
+fsm.sd=sd(db.pres.4sp$fsmwinter,na.rm=TRUE)
+db.pres.4sp <- db.pres.4sp %>% 
+  mutate(hsm=scale(hsm,scale=TRUE,center=TRUE)[, 1],
+         fsmwinter=scale(fsmwinter,scale=TRUE,center=TRUE)[, 1]) 
+
+data.list <- list(N=dim(db.pres.4sp)[1],
+                  S=nlevels(as.factor(db.pres.4sp$species.binomial)),
+                  presence=db.pres.4sp$presence,
+                  species=as.numeric(as.factor(db.pres.4sp$species.binomial)),
+                  fsm=as.numeric(db.pres.4sp$fsmwinter),
+                  hsm=as.numeric(db.pres.4sp$hsm),
+                  prior_t_fsm=-fsm.mu/fsm.sd,
+                  prior_t_hsm=-hsm.mu/hsm.sd,
+                  NULL)
+fit.4sp <- stan(file = "glm_log_all.stan",
+                data=data.list,
+                iter=2000,
+                chains=2,
+                core=2,
+                include=FALSE,
+                pars=c("proba","K_vect"))
+
+#%%%%%%%%%%%%%%%%%%
+#### Section 9 ####
+#'@description Comparison of time of time to fit a model several species using
+#'logistic model and different types of scaling
+
+# scale all species together; no unskewing
+sp=c("Quercus robur","Fagus sylvatica",
+  "Betula pendula","Picea abies")
+set.seed(4554)
+db.pres <- db.clim %>%
+  filter(psi>(-10000)) %>% 
+  filter(species.binomial%in%sp) %>% 
+  sample_frac(0.03) 
+
+
+db.pres$hsm <- -log(max(db.pres$hsm+1)-db.pres$hsm)
+hsm.mu=mean(db.pres$hsm,na.rm=TRUE)
+hsm.sd=sd(db.pres$hsm,na.rm=TRUE)
+fsm.mu=mean(db.pres$fsmwinter,na.rm=TRUE)
+fsm.sd=sd(db.pres$fsmwinter,na.rm=TRUE)
+
+# scale and center al sp together 
+# db.pres <- db.pres %>% 
+#   mutate(hsm=(hsm-hsm.mu)/hsm.sd,
+#          fsm=(fsmwinter-fsm.mu)/fsm.sd)
+
+# scale, center, unskew by sp
+db.pres <- db.pres %>%
+  group_by(species.binomial) %>%
+  mutate(hsm=scale(hsm,center=TRUE,scale=TRUE),
+         fsm=scale(fsmwinter,center=TRUE,scale=TRUE))
+
+data.list <- list(N=dim(db.pres)[1],
+                  S=nlevels(as.factor(db.pres$species.binomial)),
+                  presence=db.pres$presence,
+                  species=as.numeric(as.factor(db.pres$species.binomial)),
+                  fsm=as.numeric(db.pres$fsm),
+                  hsm=as.numeric(db.pres$hsm),
+                  prior_t_fsm=-hsm.mu/hsm.sd,
+                  prior_t_hsm=-fsm.mu/fsm.sd,
+                  NULL)
+
+tic()
+fit <- stan(file = "glm_log_all.stan",
+            data=data.list,
+            iter=1000,
+            chains=2,
+            core=2,
+            include=FALSE,
+            pars=c("proba","K_vect"))
+toc()
+
+
+
+#%%%%%%%%%%%%%%%%%%
+#### Section 10 ####
+#'@description Comparison of time of time to fit a model on one species using
+#'logistic model and threshold model
+# scale all species together; no unskewing
+set.seed(4554)
+db.pres <- db.clim %>%
+  filter(psi>(-10000)) %>% 
+  filter(species.binomial=="Fagus sylvatica") %>% 
+  sample_frac(0.03) 
+
+hsm.mu=mean(db.pres$hsm,na.rm=TRUE)
+hsm.sd=sd(db.pres$hsm,na.rm=TRUE)
+fsm.mu=mean(db.pres$fsmwinter,na.rm=TRUE)
+fsm.sd=sd(db.pres$fsmwinter,na.rm=TRUE)
+
+db.pres <- db.pres %>%
+  mutate(hsm=scale(hsm,center=TRUE,scale=TRUE),
+         fsm=scale(fsmwinter,center=TRUE,scale=TRUE))
+
+data.list <- list(N=dim(db.pres)[1],
+                  presence=db.pres$presence,
+                  fsm=as.numeric(db.pres$fsm),
+                  hsm=as.numeric(db.pres$hsm),
+                  prior_t_fsm=-hsm.mu/hsm.sd,
+                  prior_t_hsm=-fsm.mu/fsm.sd,
+                  NULL)
+
+tic()
+fit <- stan(file = "glm_log_1sp.stan",
+            data=data.list,
+            iter=1000,
+            chains=2,
+            core=2,
+            include=FALSE,
+            pars=c("proba","K_vect"))
+toc()
+
+
+tic()
+fit.1 <- stan(file = "glm_seg_1sp.stan",
+            data=data.list,
+            iter=1000,
+            chains=2,
+            core=2,
+            include=FALSE,
+            pars=c("proba","K_vect"))
+toc()
+
+#%%%%%%%%%%%%%%%%%%
+#### Section 11 ####
+#'@description Workflow to fit log regression with "stan" package per species
+
+set.seed(4554)
+for (sp in unique(db.clim$species.binomial)){
+  print(sp)
+  db.pres <- db.clim %>%
+    filter(psi>(-10000)) %>% 
+    filter(species.binomial==sp) %>% 
+    sample_frac(0.70) %>% 
+    add_row(species.binomial="zero_like",
+            fsmwinter=0,
+            hsm=0)
+
+  # unskew
+  hsm.max=max(db.pres$hsm,na.rm = TRUE)
+  db.pres$hsmsave <- db.pres$hsm
+  db.pres$hsm <- -log(max(db.pres$hsm+1)-db.pres$hsm)
+  
+  # scale and center  
+  hsm.mu=mean(db.pres$hsm,na.rm=TRUE)
+  hsm.sd=sd(db.pres$hsm,na.rm=TRUE)
+  fsm.mu=mean(db.pres$fsmwinter,na.rm=TRUE)
+  fsm.sd=sd(db.pres$fsmwinter,na.rm=TRUE)
+  db.pres <- db.pres %>% 
+    mutate(hsm=(hsm-hsm.mu)/hsm.sd,
+           fsm=(fsmwinter-fsm.mu)/fsm.sd)
+  hsm.zero=db.pres[db.pres$species.binomial=="zero_like","hsm"][[1]]
+  fsm.zero=db.pres[db.pres$species.binomial=="zero_like","fsm"][[1]]
+  db.pres=db.pres[db.pres$species.binomial!="zero_like",]
+  # db.pres %>% ggplot(aes(hsm))+geom_density()+geom_vline(xintercept = hsm.zero)
+  
+  
+  data.list <- list(N=dim(db.pres)[1],
+                    presence=db.pres$presence,
+                    fsm=as.numeric(db.pres$fsm),
+                    hsm=as.numeric(db.pres$hsm),
+                    prior_t_fsm=fsm.zero,
+                    prior_t_hsm=hsm.zero,
+                    NULL)
+  fit <- stan(file = "glm_log_1sp.stan",
+              data=data.list,
+              iter=1000,
+              chains=2,
+              core=2,
+              include=FALSE,
+              pars=c("proba","K_vect"))
+  sum.fit1sp=summary(fit)$summary
+  save(fit,file=paste0("fit_mod/",sp,"_logfit.RData"))
+  
+  list.param=list(fsm.mu=fsm.mu,
+                  fsm.sd=fsm.sd,
+                  fsm.zero=fsm.zero,
+                  hsm.mu=hsm.mu,
+                  hsm.sd=hsm.sd,
+                  hsm.zero=hsm.zero,
+                  hsm.max=hsm.max)
+  save(list.param,file=paste0("fit_mod/",sp,"_param.RData"))
+}
+
+
 
 #%%%%%%%%%%%%%%%
 #### Annexe ####
@@ -500,9 +747,9 @@ db.prob %>%
 # proba per class but for 2 dimensions
 #Proba per class
 breaks.fsm <- seq(min(db.pres$fsmwinter),max(db.pres$fsmwinter),length.out=30)
-labels.fsm <- round((breaks[2:30]+breaks[1:29])/2,digit=1)
+labels.fsm <- round((breaks.fsm[2:30]+breaks.fsm[1:29])/2,digit=1)
 breaks.hsm <- seq(min(db.pres$hsm),max(db.pres$hsm),length.out=30)
-labels.hsm <- round((breaks[2:30]+breaks[1:29])/2,digit=1)
+labels.hsm <- round((breaks.hsm[2:30]+breaks.hsm[1:29])/2,digit=1)
 db.prob.2d<- db.pres %>% 
   mutate(fsmwinter=cut(fsmwinter,breaks=breaks.fsm,labels=labels.fsm),
          fsmwinter=as.numeric(as.character(fsmwinter)),
@@ -556,10 +803,69 @@ data.frame(sm=sm) %>%
   geom_line()+                        
   facet_grid(a~c+.,scales="free_y")
 
+# compare quantile of psi/temp with traits
+db.clim %>% 
+  filter(presence==1) %>% 
+  filter(psi>(-15000)) %>% 
+  mutate(psi=-log(max(psi+1)-psi)) %>% 
+  group_by(species.binomial) %>% 
+  summarise(psi05=quantile(psi,prob=0.05),
+            psi95=quantile(psi,prob=0.95),
+            t05=quantile(frost.winter,prob=0.05),
+            t95=quantile(frost.winter,prob=0.95)) %>% 
+  left_join(df.traits[,c("species.binomial","PX.mu","LT50.mean","Group")],by="species.binomial") %>% 
+  # pivot_longer(cols=c("psi05","psi95","t05","t95"),
+  #              names_to = "quantile",
+  #              values_to = "quant_val") %>%
+  pivot_longer(cols=c("psi05","t05"),
+               names_to = "start",
+               values_to = "start_val") %>%
+  pivot_longer(cols=c("psi95","t95"),
+               names_to = "end",
+               values_to = "end_val") %>% 
+  pivot_longer(cols = c("PX.mu","LT50.mean"),
+               names_to="trait",
+               values_to="trait_val") %>% 
+  filter(!(trait=="PX.mu"&(start=="t05"|end=="t95"))) %>% 
+  filter(!(trait=="LT50.mean"&(start=="psi05"|end=="psi95"))) %>% 
+  # filter(!(trait=="PX.mu"&quantile%in%c("t05","t95"))) %>%
+  # filter(!(trait=="LT50.mean"&quantile%in%c("psi05","psi95"))) %>%
+  ggplot()+
+  geom_point(aes(trait_val,start_val,color=Group))+
+  geom_point(aes(trait_val,end_val,color=Group))+
+  geom_segment(aes(x=trait_val,xend=trait_val,y=start_val,yend=end_val),alpha=0.3)+
+  facet_wrap(~trait,scales="free")
+  
 
-data.frame(sm,t(sum.fit1sp[,1])) %>%
-  crossing(hsm=sm) %>% 
-  mutate(proba=K_int/((1 + exp(-r_fsm * (sm - t_fsm)))*(1 + exp(-r_hsm * (hsm - t_hsm))))) %>% 
-  filter(hsm %in% c(-5,-4,-3,-2,-1,0,1,2,3,4,5)) %>% 
-  ggplot(aes(sm,proba,color=hsm))+
-  geom_point()
+
+# compare quantile of psi/temp with traits
+db.clim %>% 
+  filter(presence==1) %>% 
+  filter(psi>(-15000)) %>% 
+  # mutate(psi=-log(max(psi+1)-psi)) %>% 
+  group_by(species.binomial) %>% 
+  summarise(psi05=quantile(psi,prob=0.05),
+            psi95=quantile(psi,prob=0.95),
+            t05=quantile(frost.winter,prob=0.05),
+            t95=quantile(frost.winter,prob=0.95)) %>% 
+  left_join(df.traits[,c("species.binomial","PX.mu","LT50.mean","Group")],by="species.binomial") %>% 
+  # pivot_longer(cols=c("psi05","psi95","t05","t95"),
+  #              names_to = "quantile",
+  #              values_to = "quant_val") %>%
+  pivot_longer(cols=c("psi05","t05"),
+               names_to = "start",
+               values_to = "start_val") %>%
+  pivot_longer(cols=c("psi95","t95"),
+               names_to = "end",
+               values_to = "end_val") %>% 
+  pivot_longer(cols = c("PX.mu","LT50.mean"),
+               names_to="trait",
+               values_to="trait_val") %>% 
+  filter(!(trait=="PX.mu"&(start=="t05"|end=="t95"))) %>% 
+  filter(!(trait=="LT50.mean"&(start=="psi05"|end=="psi95"))) %>% 
+  # filter(!(trait=="PX.mu"&quantile%in%c("t05","t95"))) %>%
+  # filter(!(trait=="LT50.mean"&quantile%in%c("psi05","psi95"))) %>%
+  ggplot()+
+  geom_point(aes(trait_val,start_val-end_val,color=Group))+
+  facet_wrap(~trait,scales="free")
+

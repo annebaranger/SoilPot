@@ -19,8 +19,31 @@
 #' @authors Anne Baranger (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+get_waisgdd <- function(dir.chelsa="data/CHELSA/",
+                        df.loc){
+  annual_temp=extract(rast("data/CHELSA/CHELSA_bio1_1981-2010_V.2.1.tif"),
+                      df.loc)[2]
+  pr_chelsa=extract(rast("data/CHELSA/CHELSA_bio12_1981-2010_V.2.1.tif"),
+                    df.loc)[2]
+  pet_chelsa=extract(rast("data/CHELSA/CHELSA_pet_penman_mean_1981-2010_V.2.1.tif"),
+                     df.loc)[2]
+  sgdd_chelsa=extract(rast("data/CHELSA/CHELSA_gdd5_1981-2010_V.2.1.tif"),
+                      df.loc)[2]
+  df.loc=cbind(df.loc,
+               temp.mean=annual_temp,
+               pr=pr_chelsa,
+               pet=pet_chelsa,
+               sgdd=sgdd_chelsa)
+  colnames(df.loc)=c("x","y","temp.mean","pr","pet","sgdd")
+  df.loc <- df.loc %>% 
+    mutate(wai=(pr-12*pet)/pet)
+  return(df.loc)
+}
+
 get.mauri <- function(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
-                      df.traits){
+                      df.traits,
+                      psi_min,
+                      frost.index){
   #load species
   #df.traits=read.csv("output/df_trait_filtered.csv")
   
@@ -66,30 +89,10 @@ get.mauri <- function(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
   
   rm(rast.fdg)
   # function to get sgdd and wai
-  get_waisgdd <- function(dir.chelsa="data/CHELSA/",
-                          df.loc){
-    annual_temp=extract(rast("data/CHELSA/CHELSA_bio1_1981-2010_V.2.1.tif"),
-                        df.loc)[2]
-    pr_chelsa=extract(rast("data/CHELSA/CHELSA_bio12_1981-2010_V.2.1.tif"),
-                      df.loc)[2]
-    pet_chelsa=extract(rast("data/CHELSA/CHELSA_pet_penman_mean_1981-2010_V.2.1.tif"),
-                       df.loc)[2]
-    sgdd_chelsa=extract(rast("data/CHELSA/CHELSA_gdd5_1981-2010_V.2.1.tif"),
-                        df.loc)[2]
-    df.loc=cbind(df.loc,
-                 temp.mean=annual_temp,
-                 pr=pr_chelsa,
-                 pet=pet_chelsa,
-                 sgdd=sgdd_chelsa)
-    colnames(df.loc)=c("x","y","temp.mean","pr","pet","sgdd")
-    df.loc <- df.loc %>% 
-      mutate(wai=(pr-12*pet)/pet)
-    return(df.loc)
-  }
-  
+
   # get safety margins
-  psi_min=rast(fread("output/psihorday_real.csv")[,c("x","y","psi")],crs="epsg:4326")
-  frost.index.spring=rast(fread("output/budburst_tquant.csv")[,-1],crs="epsg:4326")
+  psi_min=rast(fread(psi_min)[,c("x","y","psi")],crs="epsg:4326")
+  frost.index.spring=rast(fread(frost.index)[,-1],crs="epsg:4326")
   names(frost.index.spring)="frost.spring"
   frost.index.winter=min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm=FALSE)
   frost.index.winter=classify(frost.index.winter, cbind(6553500, NA)) #set as NA default value

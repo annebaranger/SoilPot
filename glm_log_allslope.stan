@@ -14,7 +14,8 @@ data {
 parameters {
   real <lower=0> K_int;
   vector <lower=0,upper=1> [S] K_sp; // plateau of the second segment, or threshold value
-  real <lower=0.1> r_fsm;
+  real <lower=0.1> r_fsm_int;
+  vector <lower=0.1> [S]r_fsm_sp ; // slope of the first segment, associated to predictor, before threshold
   real<lower=0.1> r_hsm;
   real <lower=min(fsm),upper=max(fsm)> t_fsm; //point where regression changes
   real <lower=min(hsm),upper=max(hsm)> t_hsm; //point where regression changes
@@ -24,8 +25,8 @@ transformed parameters {
   vector <lower=0,upper=1> [N] proba;
   proba = K_sp[species] ./
                 (
-                  (1 + exp(-r_fsm * (fsm - t_fsm))).*
-                  (1 + exp(-r_hsm * (hsm - t_hsm)))
+                  (1 + exp(-r_fsm_sp[species] .* (fsm - t_fsm))) //.*
+                  + ( exp(-r_hsm * (hsm - t_hsm)))
                   );
 }
 // The model to be estimated.
@@ -35,6 +36,7 @@ model {
   //priors
   K_int~normal(0.5,1);
   K_sp~normal(K_int,2);
+  r_fsm_sp~normal(r_fsm_int,2);
   t_fsm~normal(prior_t_fsm,2);
   t_hsm~normal(prior_t_hsm,2);
 

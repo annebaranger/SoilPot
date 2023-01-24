@@ -131,7 +131,7 @@ era_data <- function(API_User="124078",
 
 #' Load data from TerraClimate
 #'  
-#' @description function used to load TerraClimate data into target envt
+#' @description load TerraClimate data, soil water content from 1958 to 2021
 #' @note terraclimate data can be downloaded directly from website 
 #' https://www.climatologylab.org
 #' @note spatial extent is to be specified directly on the website when DLing
@@ -211,7 +211,7 @@ get_waisgdd <- function(dir.chelsa="data/CHELSA/",
                sgdd=sgdd_chelsa)
   colnames(df.loc)=c("x","y","pr","pet","sgdd")
   df.loc <- df.loc %>% 
-    mutate(wai=(pr-12*pet)/pet)
+    mutate(wai=(pr-12*pet)/pet) 
   return(df.loc)
 }
 
@@ -239,25 +239,28 @@ get_textureESDAC <- function(dir.data,dir.soil,europe){
   rast_model <- terra::vect(europe)
   
   # Clay 
-  clay <- c(rast(file.path(dir.data,dir.soil,"STU_EU_T_CLAY.rst")),rast(file.path(dir.data,dir.soil,"STU_EU_S_CLAY.rst")))
+  clay <- c(rast(file.path(dir.data,dir.soil,"STU_EU_T_CLAY.rst")), #load topsoil
+            rast(file.path(dir.data,dir.soil,"STU_EU_S_CLAY.rst"))) # bind subsoil
   crs(clay) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
   names(clay) <- c("topsoil","subsoil")
-  clay <- terra::mask(project(clay,"epsg:4326"),rast_model)
+  clay <- terra::mask(project(clay,"epsg:4326"),rast_model) # project laea to wgs
 
     # Sand 
-  sand <- c(rast(file.path(dir.data,dir.soil,"STU_EU_T_SAND.rst")),rast(file.path(dir.data,dir.soil,"STU_EU_S_SAND.rst")))
+  sand <- c(rast(file.path(dir.data,dir.soil,"STU_EU_T_SAND.rst")),
+            rast(file.path(dir.data,dir.soil,"STU_EU_S_SAND.rst")))
   crs(sand) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
   names(sand) <- c("topsoil","subsoil")
   sand <- terra::mask(project(sand,"epsg:4326"),rast_model)
 
   # Organic content
-  oc <- c(rast(file.path(dir.data,dir.soil,"STU_EU_T_OC.rst")),rast(file.path(dir.data,dir.soil,"STU_EU_S_OC.rst")))
+  oc <- c(rast(file.path(dir.data,dir.soil,"STU_EU_T_OC.rst")),
+          rast(file.path(dir.data,dir.soil,"STU_EU_S_OC.rst")))
   crs(oc) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
   names(oc) <- c("topsoil","subsoil")
   oc <- terra::mask(project(oc,"epsg:4326"),rast_model)
   
   # Texture
-  texture_raw <- c(clay,sand,oc)
+  texture_raw <- c(clay,sand,oc) #bind all contents
   names(texture_raw) <- paste0(names(texture_raw),".",c("clay","clay","sand","sand","oc","oc"))
   texture_raw <- as.data.frame(texture_raw,xy=TRUE)
   
@@ -270,7 +273,7 @@ get_textureESDAC <- function(dir.data,dir.soil,europe){
                         alpha=c(0.0130,0.0383,0.0314,0.0083,0.0367,0.0265),
                         n=c(1.2039,1.3774,1.1804,1.2539,1.1012,1.1033),
                         m=c(0.1694,0.2740,0.1528,0.2025,0.0919,0.0936)),
-         subsoil=data.frame(texture=c(6,5,4,3,2,1),
+            subsoil=data.frame(texture=c(6,5,4,3,2,1),
                         psi_e=c(-0.790569415,-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
                         b=c(2.6411388301,2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
                         teta_r=c(0.010,0.0250,0.0100,0.0100,0.0100,0.0100),
@@ -347,55 +350,26 @@ get_textureERA5 <- function(dir.data,
 
 #' Soil volumetric content pre-treatment
 #' 
-#' @description crop era5land SWC to the good extent
+#' @description load swc timeserie once
 #' @note ERA5-land data needs to be downloaded prior to applying the function
 #' @param dir.data directory of data of the project
-#' @param texture spatial dataframe of soil textures in the area considered
-#' @param europe SpatialPolygonsDataFrame of the spatial extent 
-#' @return spatial dataframe (spatraster converted to dataframe) ofcropped soil 
+#' @param dir.file
+#' @return spatial dataframe (spatraster converted to dataframe) of cropped soil 
 #' water content layers. Each layer is a date. 
 get_SWC <- function(dir.data,
                     dir.file
                     ){
   SWCtot <-rast(file.path(dir.data,dir.file))
-  #europe <- vect(st_as_sf(europe))
-  #SWCtot <- crop(SWCtot,europe,mask=TRUE)
   return(as.data.frame(SWCtot,xy=TRUE))
 }
 
 
-# nc.data <-   read_ncdf("data/swc-1950-2021.nc",proxy=FALSE)
-# sf_use_s2(FALSE)
-# nc.stars.crop <-  nc.data[europe]
-# plot(nc.data[,,,1:3])
-# write_stars(nc.stars.crop,dsn="data/test.tif",layer="swvl1")
-# # Input nc file
-# nc.file <- file.path(dir.data,dir.file)
-# # read nc data
-# nc.data <- read_ncdf(nc.file)
-# 
-# # Read mask coordinates
-# coordenades.poligon <- read_csv("coordenades_poligon.csv")
-# colnames(coordenades.poligon) <- c("lon","lat")
-# 
-# # Build sf polygon to crop data
-# europe <- st_as_sf(europe)
-# bb_eu <- st_bbox(europe)
-# 
-# # Crop data
-# nc.stars.crop <- st_crop(nc.data,europe,
-#                          crop = TRUE,
-#                          epsilon = sqrt(.Machine$double.eps),
-#                          as_points = all(st_dimension(europe) == 2, na.rm = TRUE))
-# 
-# write_stars(nc.data[europe],dsn="data/test.nc")
 
 #' Compute weighted soil volumetric water content
 #' 
 #' @description Using ERA5-land SWC and a given depth, the function weight the
 #' different horizons according to their thickness
 #' @note ERA5-land data needs to be downloaded prior to applying the function
-#' @param dir.data directory of data of the project
 #' @param SWCtot dataframe of SWCtot cropped to the accurate extent
 #' @param depth numeric indicating to which depth swc is to be considered
 #' @return dataframe with weighted swc over different horizons
@@ -1096,8 +1070,8 @@ compute.sfm <- function(df.traits,
                         psimin,
                         europe){
   #load index
-  rast.temp=rast(rast.temp,crs="epsg:4326")
-  rast.fdg=rast(rast.fdg,crs="epsg:4326")
+  rast.temp=rast(fread(rast.temp)[,-1],crs="epsg:4326")
+  rast.fdg=rast(fread(rast.fdg)[,-1],crs="epsg:4326")
   frost.index.winter=min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm=FALSE)
   frost.index.winter=classify(frost.index.winter, cbind(6553500, NA)) #set as NA default value
   names(frost.index.winter)="tmin.winter"
@@ -1308,7 +1282,6 @@ get.LT50 <- function(){
                                       ncol=dim(df.LT50.select)[2]))
   colnames(df.filtered) <- colnames(df.LT50.select)
   for (sp in unique(df.LT50.select$Species)){
-    rm(df.sp)
     print(sp)
     print("step 1")
     #### All constraints
@@ -1402,7 +1375,8 @@ get.LT50 <- function(){
           }
       }
     }
-  }}
+    }
+    rm(df.sp)}
 
 
   ### Summarise per species ###

@@ -26,13 +26,6 @@ transformed parameters {
                   (1 + exp(-r_fsm * (fsm - t_fsm))).*
                   (1 + exp(-r_hsm * (hsm - t_hsm)))
                   );
-  // for (i in 1:N) {
-  //   proba[i]= K_int / 
-  //               (
-  //                 (1 + exp(-r_fsm * (fsm[i] - t_fsm)))*
-  //                 (1 + exp(-r_hsm * (hsm[i] - t_hsm)))
-  //                 );
-  // }
 }
 // The model to be estimated.
 // presence are distributed according to Bernoulli law
@@ -51,7 +44,7 @@ model {
 // generated quantities {
 //   int presence_pred [N];
 //   for (i in 1:N){
-//     presence_pred[i] = bernoulli_rng(K_sp[species[i]] /(
+//     presence_pred[i] = bernoulli_rng(K_int /(
 //                           (1 + exp(-r_fsm * (fsm[i] - t_fsm)))*
 //                           (1+exp(-r_hsm * (hsm[i] - t_hsm)))
 //                           ));
