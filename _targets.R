@@ -2,7 +2,7 @@
 
 #library
 library(targets)
-#lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate","lme4"),require,character.only=TRUE)
+# lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate","lme4"),require,character.only=TRUE)
 
 
 #Options
@@ -221,113 +221,103 @@ tar_target(
   ),
 
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 4 - Compute psi_min swc and param per horizon####
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # With SWC min on monthly timestep (R code), using all horizons and SUREAU
-  tar_target(
-    psihormonth_100,
-    compute_psihor(SWCtot,
-                   3,
-                   "month",
-                   "1949-12-01",
-                   dir.data="data",
-                   dir.file="EU_SoilHydroGrids_1km",
-                   europe,
-                   file.output="output/psihormonth_100.csv")
-  ),
-  # With SWC min on daily timestep (Python code), using real depth and SUREAU
-  tar_target(
-    psihorday_real,
-    compute_psihorday(SWC_day,
-                      europe,
-                      dir.data="data",
-                      dir.file="EU_SoilHydroGrids_1km",
-                      depth="real",
-                      file.output="output/psihorday_real.csv")
-  ),
-  # With SWC min on daily timestep (Python code), until 100cm and SUREAU
-  tar_target(
-    psihorday_100,
-    compute_psihorday(SWC_day,
-                      europe,
-                      dir.data="data",
-                      dir.file="EU_SoilHydroGrids_1km",
-                      depth=100,
-                      file.output="output/psihorday_100.csv")
-  ),
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 5 - Frost index####
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # Frost index (CHELSA, FDG)
-  tar_target(
-    frost.index.quant,
-    get.frostindex(europe,
-                   dir.clim="data/CHELSA/CHELSA_EUR11_tasmin_month_quant05_19802005.nc",
-                   dir.fdg="data/eea_2000-2016/SOS_2000_2016_DOY.BIL",
-                   output.index="output/budburst_tquant.csv",
-                   output.budburst="output/budburst_1.csv",
-                   year_start=2000)
-  ),
-  # Frost index (CHELSA, FDG)
-  tar_target(
-    frost.index.min,
-    get.frostindex(europe,
-                     dir.clim="data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc",
-                     dir.fdg="data/eea_2000-2016/SOS_2000_2016_DOY.BIL",
-                     output.index="output/budburst_tmin.csv",
-                     output.budburst="output/budburst_2.csv",
-                    year_start=2000)
-  ),
-
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 6 - Safety margins ####
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # Frost safety margins
-  tar_target(
-    safety.margins,
-    compute.sfm(df.traits,
-                frost.index.quant$rast.temp,
-                frost.index.quant$rast.fdg.mean,
-                psihorday_real,
-                europe)
-  ),
-
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 7 - Load traits ####
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  tar_target(
-    df.LT50,
-    get.LT50()
-  ),
-  tar_target(
-    df.P50,
-    get.P50()
-  ),
-  tar_target(
-    df.traits,
-    get.traits(df.P50=df.P50,
-               df.LT50=df.LT50$df.LT50sp.cor)
-  ),
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section _ - Plot safety margins####
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # tar_target(
-  #   plots.sftymargins,
-  #   plot.sftym(dir.data="data",
-  #              dir.p50="Species traits/trait.select.csv",
-  #              europe,
-  #              safety.margins.day)
-  # ),
-
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#### Section 9 - Load Mauri Data ####
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  tar_target(
-    df.mauri.sfm,
-    get.mauri(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
-              df.traits)
-  ),
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#' #### Section 4 - Compute psi_min swc and param per horizon####
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#'   # With SWC min on monthly timestep (R code), using all horizons and SUREAU
+#'   tar_target(
+#'     psihormonth_100,
+#'     compute_psihor(SWCtot,
+#'                    3,
+#'                    "month",
+#'                    "1949-12-01",
+#'                    dir.data="data",
+#'                    dir.file="EU_SoilHydroGrids_1km",
+#'                    europe,
+#'                    file.output="output/psihormonth_100.csv")
+#'   ),
+#'   # With SWC min on daily timestep (Python code), using real depth and SUREAU
+#'   tar_target(
+#'     psihorday_real,
+#'     compute_psihorday(SWC_day,
+#'                       europe,
+#'                       dir.data="data",
+#'                       dir.file="EU_SoilHydroGrids_1km",
+#'                       depth="real",
+#'                       file.output="output/psihorday_real.csv")
+#'   ),
+#'   # With SWC min on daily timestep (Python code), until 100cm and SUREAU
+#'   tar_target(
+#'     psihorday_100,
+#'     compute_psihorday(SWC_day,
+#'                       europe,
+#'                       dir.data="data",
+#'                       dir.file="EU_SoilHydroGrids_1km",
+#'                       depth=100,
+#'                       file.output="output/psihorday_100.csv")
+#'   ),
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#' #### Section 5 - Frost index####
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#'   # Frost index (CHELSA, FDG)
+#'   tar_target(
+#'     frost.index.quant,
+#'     get.frostindex(europe,
+#'                    dir.clim="data/CHELSA/CHELSA_EUR11_tasmin_month_quant05_19802005.nc",
+#'                    dir.fdg="data/eea_2000-2016/SOS_2000_2016_DOY.BIL",
+#'                    output.index="output/budburst_tquant.csv",
+#'                    output.budburst="output/budburst_1.csv",
+#'                    year_start=2000)
+#'   ),
+#'   # Frost index (CHELSA, FDG)
+#'   tar_target(
+#'     frost.index.min,
+#'     get.frostindex(europe,
+#'                      dir.clim="data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc",
+#'                      dir.fdg="data/eea_2000-2016/SOS_2000_2016_DOY.BIL",
+#'                      output.index="output/budburst_tmin.csv",
+#'                      output.budburst="output/budburst_2.csv",
+#'                     year_start=2000)
+#'   ),
+#' 
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#' #### Section 6 - Safety margins ####
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#'   # Frost safety margins
+#'   tar_target(
+#'     safety.margins,
+#'     compute.sfm(df.traits,
+#'                 frost.index.quant$rast.temp,
+#'                 frost.index.quant$rast.fdg.mean,
+#'                 psihorday_real,
+#'                 europe)
+#'   ),
+#' 
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#' #### Section 7 - Load traits ####
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#'   tar_target(
+#'     df.LT50,
+#'     get.LT50()
+#'   ),
+#'   tar_target(
+#'     df.P50,
+#'     get.P50()
+#'   ),
+#'   tar_target(
+#'     df.traits,
+#'     get.traits(df.P50=df.P50,
+#'                df.LT50=df.LT50$df.LT50sp.cor)
+#'   ),
+#' 
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#' #### Section 9 - Load Mauri Data ####
+#' #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#'   tar_target(
+#'     df.mauri.sfm,
+#'     get.mauri(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
+#'               df.traits)
+#'   ),
 #%%%%%%%%%%%%%%%%%%
 #### Section Annexe
 #%%%%%%%%%%%%%%%%%%
