@@ -51,10 +51,12 @@ df.traits=read.csv("output/df_trait_filtered.csv") %>%
 #### Section 2.1 ####
 #'@description computing prevalence data
 #' example for betula pendula
-
+library(sf)
 df.traits$prevalence <- NA
 for (sp in unique(df.traits$species.binomial)){
   if (!is.na(df.traits[df.traits$species.binomial==sp,"file"])){
+    db.pres <- db.clim %>% 
+      filter(species.binomial==sp)
     file.sp=df.traits[df.traits$species.binomial==sp,"file"]
     spdistrib=read_sf(dsn=file.path("data",
                                     "chorological_maps_dataset",
@@ -618,7 +620,7 @@ db.pres <- db.clim %>%
   sample_frac(0.03) 
 
 
-db.pres$hsm <- -log(max(db.pres$hsm+1)-db.pres$hsm)
+# db.pres$hsm <- -log(max(db.pres$hsm+1)-db.pres$hsm)
 hsm.mu=mean(db.pres$hsm,na.rm=TRUE)
 hsm.sd=sd(db.pres$hsm,na.rm=TRUE)
 fsm.mu=mean(db.pres$fsmwinter,na.rm=TRUE)
@@ -711,15 +713,22 @@ toc()
 #'@description Workflow to fit log regression with "stan" package per species
 
 set.seed(4554)
-for (sp in unique(db.clim$species.binomial)){
+# species selection for tests
+species.select = c("Betula pendula",
+       "Pinus sylvestris",
+       "Fagus sylvatica",
+       "Fraxinus excelsior")
+for (sp in species.select){ #unique(db.clim$species.binomial)
   print(sp)
   db.pres <- db.clim %>%
-    filter(psi>(-10000)) %>% 
+    filter(psi>(-10000)) %>% #remove very low value of psi
     filter(species.binomial==sp) %>% 
-    sample_frac(0.70) %>% 
-    add_row(species.binomial="zero_like",
-            fsmwinter=0,
-            hsm=0)
+    mutate(hsm=hsm/1000,
+           fsm=fsmwinter) %>% 
+    sample_frac(0.05)  
+    # add_row(species.binomial="zero_like",
+    #         fsmwinter=0,
+    #         hsm=0)
 
   # unskew
   # hsm.max=max(db.pres$hsm,na.rm = TRUE)
@@ -731,12 +740,12 @@ for (sp in unique(db.clim$species.binomial)){
   hsm.sd=sd(db.pres$hsm,na.rm=TRUE)
   fsm.mu=mean(db.pres$fsmwinter,na.rm=TRUE)
   fsm.sd=sd(db.pres$fsmwinter,na.rm=TRUE)
-  db.pres <- db.pres %>% 
+  db.pres.sc <- db.pres %>% 
     mutate(hsm=(hsm-hsm.mu)/hsm.sd,
            fsm=(fsmwinter-fsm.mu)/fsm.sd)
-  hsm.zero=db.pres[db.pres$species.binomial=="zero_like","hsm"][[1]]
-  fsm.zero=db.pres[db.pres$species.binomial=="zero_like","fsm"][[1]]
-  db.pres=db.pres[db.pres$species.binomial!="zero_like",]
+  # hsm.zero=db.pres[db.pres$species.binomial=="zero_like","hsm"][[1]]
+  # fsm.zero=db.pres[db.pres$species.binomial=="zero_like","fsm"][[1]]
+  # db.pres=db.pres[db.pres$species.binomial!="zero_like",]
   # db.pres %>% ggplot(aes(hsm))+geom_density()+geom_vline(xintercept = hsm.zero)
   
   
@@ -744,30 +753,105 @@ for (sp in unique(db.clim$species.binomial)){
                     presence=db.pres$presence,
                     fsm=as.numeric(db.pres$fsm),
                     hsm=as.numeric(db.pres$hsm),
-                    prior_t_fsm=fsm.zero,
-                    prior_t_hsm=hsm.zero,
+                    prior_K=df.traits[df.traits$species.binomial==sp,
+                                     "prevalence"],
+                    NULL)
+  data.list.sc <- list(N=dim(db.pres.sc)[1],
+                    presence=db.pres.sc$presence,
+                    fsm=as.numeric(db.pres.sc$fsm),
+                    hsm=as.numeric(db.pres.sc$hsm),
                     prior_K=df.traits[df.traits$species.binomial==sp,
                                       "prevalence"],
                     NULL)
-  fit <- stan(file = "glm_log_1sp.stan",
+  # model I 
+  fitI <- stan(file = "glm_log_1sp_I.stan",
               data=data.list,
               iter=1000,
               chains=2,
               core=2,
               include=FALSE,
               pars=c("proba","K_vect"))
-  sum.fit1sp=summary(fit)$summary
-  save(fit,file=paste0("fit_mod/",sp,"_logfit.RData"))
+  save(fitI,file=paste0("fit_mod3/",sp,"_fitI.RData"))
+  #model I scaled
+  fitI.sc <- stan(file = "glm_log_1sp_I.stan",
+               data=data.list.sc,
+               iter=1000,
+               chains=2,
+               core=2,
+               include=FALSE,
+               pars=c("proba","K_vect"))
+  save(fitI.sc,file=paste0("fit_mod3/",sp,"_fitIsc.RData"))
+  # model II
+  fitI <- stan(file = "glm_log_1sp_II.stan",
+               data=data.list,
+               iter=1000,
+               chains=2,
+               core=2,
+               include=FALSE,
+               pars=c("proba","K_vect"))
+  save(fitI,file=paste0("fit_mod3/",sp,"_fitII.RData"))
+  # model III
+  fitI <- stan(file = "glm_log_1sp_III.stan",
+               data=data.list,
+               iter=1000,
+               chains=2,
+               core=2,
+               include=FALSE,
+               pars=c("proba","K_vect"))
+  save(fitI,file=paste0("fit_mod3/",sp,"_fitIII.RData"))
+  # model IV
+  fitI <- stan(file = "glm_log_1sp_IV.stan",
+               data=data.list,
+               iter=1000,
+               chains=2,
+               core=2,
+               include=FALSE,
+               pars=c("proba","K_vect"))
+  save(fitI,file=paste0("fit_mod3/",sp,"_fitIV.RData"))
   
   list.param=list(fsm.mu=fsm.mu,
                   fsm.sd=fsm.sd,
-                  fsm.zero=fsm.zero,
                   hsm.mu=hsm.mu,
                   hsm.sd=hsm.sd,
-                  hsm.zero=hsm.zero,
-                  hsm.max=hsm.max)
-  save(list.param,file=paste0("fit_mod/",sp,"_param.RData"))
+                  NULL)
+  save(list.param,file=paste0("fit_mod3/",sp,"_param.RData"))
 }
+
+#%%%%%%%%%%%%%%%%%%
+#### Section 11.bis ####
+#'@description Workflow to fit log regression with "stan" package per species
+
+set.seed(4554)
+for (sp in unique(db.clim$species.binomial)){
+  print(sp)
+  db.pres <- db.clim %>%
+    filter(psi>(-10000)) %>% #remove very low value of psi
+    filter(species.binomial==sp) %>% 
+    mutate(hsm=hsm/1000,
+           fsm=fsmwinter) %>% 
+    sample_frac(0.6)  
+
+  data.list <- list(N=dim(db.pres)[1],
+                    presence=db.pres$presence,
+                    fsm=as.numeric(db.pres$fsm),
+                    hsm=as.numeric(db.pres$hsm),
+                    prior_K=df.traits[df.traits$species.binomial==sp,
+                                      "prevalence"],
+                    NULL)
+  # model III
+  fit <- stan(file = "glm_log_1sp_III.stan",
+               data=data.list,
+               iter=1000,
+               chains=2,
+               core=2,
+               include=FALSE,
+               pars=c("proba","K_vect"))
+  save(fit,file=paste0("fit_mod4/",sp,"_fitIII.RData"))
+
+}
+
+
+
 
 #%%%%%%%%%%%%%%%
 #### Section 12 ####
@@ -868,10 +952,707 @@ df.output %>%
   facet_wrap(~hsm.type,scales="free")
 
 
+#%%%%%%%%%%%%%%%
+#### Section 13 ####
+#'@description format outputs from models fits coomparison for several species
+#'
 
+for (sp in species.list){
+  print(sp)
+  load(paste0(folder,sp,"_","fitIII.RData"))
+  print(as.data.frame(summary(fit)$summary))
   
+}
+
+folder="fit_mod4/"
+mod.files=list.files(folder)[grepl(pattern = "fitI", x = list.files(folder))]
+species.list=unique(str_split_i(mod.files,"_",1))
+model.list=unique(str_split_i(mod.files,"_",2))
+df.output=df.traits %>% 
+  filter(species.binomial %in% species.list) %>% 
+  select(species.binomial,Group,p.trait,PX.mu,PX.sd,LT50.mean,LT50.sd,prevalence) %>% 
+  mutate(K_int=NA,
+         r_fsm=NA,
+         r_hsm=NA,
+         t_hsm=NA,
+         t_fsm=NA,
+         hsm.mu=NA,
+         hsm.sd=NA,
+         fsm.mu=NA,
+         fsm.sd=NA,
+         Rhat=NA,
+         lp__=NA) %>% 
+  crossing(mod=model.list)
+
+
+for (sp in species.list){
+  print(sp)
+  # load(paste0("fit_mod3/",sp,"_param.RData"))
+  # for (par in c("hsm.mu","hsm.sd","fsm.mu","fsm.sd")){
+  #   print(par)
+  #   df.output[df.output$species.binomial==sp,par]=list.param[par][[1]]
+  # }
+  for(mod in model.list){
+    if (mod=="fitIsc.RData"){
+      load(paste0(folder,sp,"_",mod))
+      summary.fit=as.data.frame(summary(fitI.sc)$summary)
+      for (par in c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","lp__")){
+        print(par)
+        df.output[df.output$species.binomial==sp
+                  & df.output$mod==mod,par]=summary.fit[par,"mean"]
+      }
+      df.output[df.output$species.binomial==sp
+                &df.output$mod==mod,"Rhat"] = max(summary.fit[,"Rhat"])
+    } else {
+      load(paste0(folder,sp,"_",mod))
+      summary.fit=as.data.frame(summary(fit)$summary)#fit
+      for (par in c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","lp__")){
+        print(par)
+        df.output[df.output$species.binomial==sp
+                  & df.output$mod==mod,par]=summary.fit[par,"mean"]
+      }
+      df.output[df.output$species.binomial==sp
+                &df.output$mod==mod,"Rhat"] = max(summary.fit[,"Rhat"])
+    }
+  }
+}
+
+df.output.sub <- df.output %>% 
+  filter(mod=="fitIsc.RData") %>% 
+  mutate(r_hsm_app=r_hsm/hsm.sd,
+         r_fsm_app=r_fsm/fsm.sd,
+         t_hsm_app=hsm.mu+t_hsm*hsm.sd,
+         t_fsm_app=fsm.mu+t_fsm*fsm.sd) %>% 
+  mutate(r_hsm=r_hsm_app,
+         r_fsm=r_fsm_app,
+         t_hsm=t_hsm_app,
+         t_fsm=t_fsm_app) %>% 
+  select(-c("r_hsm_app","r_fsm_app","t_hsm_app","t_fsm_app"))
+
+df.output <- df.output %>% 
+  filter(!mod=="fitIsc.RData") %>% 
+  bind_rows(df.output.sub) %>% 
+  mutate(bic=2*5-2*lp__)
+
+
+df.output %>% 
+  filter(Rhat<1.1) %>% 
+  ggplot(aes(r_hsm,r_fsm,size=-log(Rhat),color=species.binomial,shape=mod))+
+  geom_point()+
+  scale_y_log10()
+
+
+
+df.output %>% 
+  filter(Rhat<1.1) %>% 
+  ggplot(aes(t_fsm,t_hsm,color=species.binomial,shape=mod))+
+  geom_point(size=5)
+
+df.output %>% 
+  filter(Rhat<1.1) %>% 
+  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod) %>% 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("t_fsm","t_hsm"),names_to="threshold",values_to="threshold_val") %>% 
+  filter((traits=="PX.mu"&threshold=="t_hsm")|
+           (traits=="LT50.mean"&threshold=="t_fsm")) %>% 
+  ggplot(aes(traits_val,threshold_val,color=species.binomial,label=species.binomial,shape=mod))+
+  geom_point(size=3)+
+  geom_text(hjust=0,vjust=0)+
+  geom_abline(slope=-1)+
+  facet_wrap(traits~threshold,scales="free")
+
+df.output %>% 
+  select(species.binomial,PX.mu,LT50.mean,r_hsm,r_fsm,mod) %>% 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("r_fsm","r_hsm"),names_to="slope",values_to="slope_val") %>% 
+  filter((traits=="PX.mu"&slope=="r_hsm")|
+           (traits=="LT50.mean"&slope=="r_fsm")) %>% 
+  filter(slope_val<20) %>% 
+  ggplot(aes(traits_val,slope_val,color=species.binomial,label=species.binomial,shape=mod))+
+  geom_point(size=3)+
+  geom_text(hjust=0,vjust=0)+
+  facet_wrap(traits~slope,scales="free")
+
+
+hsm.95=quantile(db.clim$hsm,prob=0.95)[[1]]/1000
+hsm.05=quantile(db.clim$hsm,prob=0.05)[[1]]/1000
+fsm.95=quantile(db.clim$fsmwinter,prob=0.95)[[1]]
+fsm.05=quantile(db.clim$fsmwinter,prob=0.05)[[1]]
+df.output %>% 
+  crossing(hsm=seq(hsm.05,
+                   hsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(fsm.type=c("low","indif","high"),
+                      fsm=c(fsm.05,0,fsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(hsm,pred,color=mod))+
+  geom_line(size=1)+
+  geom_hline(aes(yintercept=prevalence))+
+  facet_wrap(fsm.type~species.binomial,scales="free", nrow = 3)
+
+df.output %>% 
+  crossing(fsm=seq(fsm.05,
+                   fsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(hsm.type=c("low","indif","high"),
+                      hsm=c(hsm.05,0,hsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(fsm,pred,color=mod))+
+  geom_line(size=1)+
+  geom_hline(aes(yintercept=prevalence))+
+  facet_wrap(hsm.type~species.binomial,scales="free", nrow = 3)
+
+df.output %>% 
+  crossing(hsm=seq(hsm.05,
+                   hsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(fsm.type=c("low","indif","high"),
+                      fsm=c(fsm.05,0,fsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(hsm,pred,color=species.binomial))+
+  geom_line(size=1)+
+  geom_hline(aes(yintercept=prevalence,color=species.binomial))+
+  facet_wrap(fsm.type~mod, nrow = 3)
+
+
+df.output %>% 
+  filter(Rhat<1.1) %>% 
+  crossing(hsm=seq(hsm.05,
+                   hsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(fsm.type=c("low","indif","high"),
+                      fsm=c(fsm.05,0,fsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(hsm,pred,color=fsm.type))+
+  geom_line(size=1)+
+  geom_hline(aes(yintercept=prevalence))+
+  facet_wrap(~species.binomial,scales="free", nrow = 3)
+df.output %>% 
+  filter(Rhat<1.1) %>% 
+  crossing(fsm=seq(fsm.05,
+                   fsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(hsm.type=c("low","indif","high"),
+                      hsm=c(hsm.05,0,hsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(fsm,pred,color=hsm.type))+
+  geom_line(size=1)+
+  geom_hline(aes(yintercept=prevalence))+
+  facet_wrap(~species.binomial,scales="free", nrow = 3)
 
 #%%%%%%%%%%%%%%%
+#### Section 14 ####
+#'@description dig into non converging species
+#'
+#####
+sp = "Betula pendula"
+# sp = "Pinus nigra"
+# sp = "Picea abies"
+# sp = "Quercus ilex"
+set.seed(4554)
+print(sp)
+db.pres <- db.clim %>%
+  filter(psi>(-10000)) %>% #remove very low value of psi
+  filter(species.binomial==sp) %>% 
+  mutate(hsm=hsm/1000,
+         fsm=fsmwinter) %>% 
+  sample_frac(0.6)  
+
+data.list <- list(N=dim(db.pres)[1],
+                  presence=db.pres$presence,
+                  fsm=as.numeric(db.pres$fsm),
+                  hsm=as.numeric(db.pres$hsm),
+                  prior_K=df.traits[df.traits$species.binomial==sp,
+                                    "prevalence"],
+                  NULL)
+# model III
+fit.bepeIII <- stan(file = "glm_log_1sp_III.stan",
+            data=data.list,
+            iter=1000,
+            chains=2,
+            core=2,
+            include=FALSE,
+            pars=c("proba","K_vect"))
+fit.bepeIV <- stan(file = "glm_log_1sp_IV.stan",
+            data=data.list,
+            iter=1000,
+            chains=2,
+            core=2,
+            include=FALSE,
+            pars=c("proba","K_vect"))
+
+#####
+sp = "Picea abies"
+set.seed(4554)
+print(sp)
+db.pres <- db.clim %>%
+  filter(psi>(-10000)) %>% #remove very low value of psi
+  filter(species.binomial==sp) %>% 
+  mutate(hsm=hsm/1000,
+         fsm=fsmwinter) %>% 
+  sample_frac(0.6)  
+
+data.list <- list(N=dim(db.pres)[1],
+                  presence=db.pres$presence,
+                  fsm=as.numeric(db.pres$fsm),
+                  hsm=as.numeric(db.pres$hsm),
+                  prior_K=df.traits[df.traits$species.binomial==sp,
+                                    "prevalence"],
+                  NULL)
+# model III
+fit.piabIII <- stan(file = "glm_log_1sp_III.stan",
+            data=data.list,
+            iter=1000,
+            chains=2,
+            core=2,
+            include=FALSE,
+            pars=c("proba","K_vect"))
+fit.piabIV <- stan(file = "glm_log_1sp_IV.stan",
+               data=data.list,
+               iter=1000,
+               chains=2,
+               core=2,
+               include=FALSE,
+               pars=c("proba","K_vect"))
+
+##### 
+sp = "Pinus nigra"
+set.seed(4554)
+print(sp)
+db.pres <- db.clim %>%
+  filter(psi>(-10000)) %>% #remove very low value of psi
+  filter(species.binomial==sp) %>% 
+  mutate(hsm=hsm/1000,
+         fsm=fsmwinter) %>% 
+  sample_frac(0.6)  
+
+data.list <- list(N=dim(db.pres)[1],
+                  presence=db.pres$presence,
+                  fsm=as.numeric(db.pres$fsm),
+                  hsm=as.numeric(db.pres$hsm),
+                  prior_K=df.traits[df.traits$species.binomial==sp,
+                                    "prevalence"],
+                  NULL)
+# model III
+fit.piniIII <- stan(file = "glm_log_1sp_III.stan",
+                    data=data.list,
+                    iter=1000,
+                    chains=2,
+                    core=2,
+                    include=FALSE,
+                    pars=c("proba","K_vect"))
+fit.piniIV <- stan(file = "glm_log_1sp_IV.stan",
+                   data=data.list,
+                   iter=1000,
+                   chains=2,
+                   core=2,
+                   include=FALSE,
+                   pars=c("proba","K_vect"))
+
+#####
+sp = "Quercus ilex"
+set.seed(4554)
+print(sp)
+db.pres <- db.clim %>%
+  filter(psi>(-10000)) %>% #remove very low value of psi
+  filter(species.binomial==sp) %>% 
+  mutate(hsm=hsm/1000,
+         fsm=fsmwinter) %>% 
+  sample_frac(0.6)  
+
+data.list <- list(N=dim(db.pres)[1],
+                  presence=db.pres$presence,
+                  fsm=as.numeric(db.pres$fsm),
+                  hsm=as.numeric(db.pres$hsm),
+                  prior_K=df.traits[df.traits$species.binomial==sp,
+                                    "prevalence"],
+                  NULL)
+# model III
+fit.quilIII <- stan(file = "glm_log_1sp_III.stan",
+                    data=data.list,
+                    iter=1000,
+                    chains=2,
+                    core=2,
+                    include=FALSE,
+                    pars=c("proba","K_vect"))
+fit.quilIV <- stan(file = "glm_log_1sp_IV.stan",
+                   data=data.list,
+                   iter=1000,
+                   chains=2,
+                   core=2,
+                   include=FALSE,
+                   pars=c("proba","K_vect"))
+
+
+
+#%%%%%%%%%%%%%%%
+
+#%%%%%%%%%%%%%%%
+#### Section 15 ####
+#'@description fit 4 models for each species and select the best
+#'
+species.list=unique(db.clim$species.binomial)
+# c("Abies alba",
+#   "Betula pendula",
+#   "Pinus sylvestris",
+#   "Picea abies",
+#   "Fagus sylvatica",
+#   "Fraxinus excelsior",
+#   "Pinus nigra",
+#   "Quercus ilex")
+df.output=df.traits %>% 
+  filter(species.binomial %in% species.list) %>% 
+  select(species.binomial,Group,p.trait,PX.mu,PX.sd,LT50.mean,LT50.sd,prevalence) %>% 
+  mutate(K_int=NA,
+         r_fsm=NA,
+         r_hsm=NA,
+         t_hsm=NA,
+         t_fsm=NA,
+         Rhat=NA,
+         lp__=NA) %>% 
+  crossing(mod=c("2sm","hsm","fsm","none"))
+set.seed(4554)
+for (sp in species.list){
+  print(sp)
+  db.pres <- db.clim %>%
+    filter(psi>(-10000)) %>% #remove very low value of psi
+    filter(species.binomial==sp) %>% 
+    mutate(hsm=hsm/1000,
+           fsm=fsmwinter) %>% 
+    sample_frac(0.5)  
+  
+  
+  ### 2 var
+  print("2sm")
+  data.list <- list(N=dim(db.pres)[1],
+                    presence=db.pres$presence,
+                    fsm=as.numeric(db.pres$fsm),
+                    hsm=as.numeric(db.pres$hsm),
+                    prior_K=df.traits[df.traits$species.binomial==sp,
+                                      "prevalence"],
+                    NULL)
+  fit.2var <- stan(file = "glm_log_1sp_III.stan",
+              data=data.list,
+              iter=1000,
+              chains=2,
+              core=2,
+              include=FALSE,
+              pars=c("proba","K_vect"))
+  save(fit.2var,file=paste0("fit_mod5/",sp,"_fitIII.RData"))
+  summary=summary(fit.2var)$summary
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="2sm",
+            c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","Rhat","lp__")]=
+    list(summary["K_int","mean"],
+      summary["r_fsm","mean"],
+      summary["r_hsm","mean"],
+      summary["t_hsm","mean"],
+      summary["t_fsm","mean"],
+      max(summary[,"Rhat"]),
+      summary["lp__","mean"]
+    )
+  
+  # HSM
+  print("hsm")
+  data.list <- list(N=dim(db.pres)[1],
+                    presence=db.pres$presence,
+                    hsm=as.numeric(db.pres$hsm),
+                    prior_K=df.traits[df.traits$species.binomial==sp,
+                                      "prevalence"],
+                    NULL)
+  fit.hsm <- stan(file = "glm_log_1sp_III_1varh.stan",
+                   data=data.list,
+                   iter=1000,
+                   chains=2,
+                   core=2,
+                   include=FALSE,
+                   pars=c("proba","K_vect"))
+  save(fit.hsm,file=paste0("fit_mod5/",sp,"_fitIII_hsm.RData"))
+  summary=summary(fit.hsm)$summary
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="hsm",
+            c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","Rhat","lp__")]=
+    list(summary["K_int","mean"],
+         0,
+         summary["r_hsm","mean"],
+         summary["t_hsm","mean"],
+         0,
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"]
+    )
+  
+  # FSM
+  print("fsm")
+  data.list <- list(N=dim(db.pres)[1],
+                    presence=db.pres$presence,
+                    fsm=as.numeric(db.pres$fsm),
+                    prior_K=df.traits[df.traits$species.binomial==sp,
+                                      "prevalence"],
+                    NULL)
+  fit.fsm <- stan(file = "glm_log_1sp_III_1var.stan",
+                  data=data.list,
+                  iter=1000,
+                  chains=2,
+                  core=2,
+                  include=FALSE,
+                  pars=c("proba","K_vect"))
+  save(fit.fsm,file=paste0("fit_mod5/",sp,"_fitIII_fsm.RData"))
+  summary=summary(fit.fsm)$summary
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="fsm",
+            c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","Rhat","lp__")]=
+    list(summary["K_int","mean"],
+         summary["r_fsm","mean"],
+         0,
+         0,
+         summary["t_fsm","mean"],
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"]
+    )
+  
+  # None
+  print("none")
+  data.list <- list(N=dim(db.pres)[1],
+                    presence=db.pres$presence,
+                    prior_K=df.traits[df.traits$species.binomial==sp,
+                                      "prevalence"],
+                    NULL)
+  fit.none <- stan(file = "glm_log_1sp_III_0var.stan",
+                  data=data.list,
+                  iter=1000,
+                  chains=2,
+                  core=2,
+                  include=FALSE,
+                  pars=c("proba","K_vect"))
+  save(fit.none,file=paste0("fit_mod5/",sp,"_fitIII_none.RData"))
+  summary=summary(fit.none)$summary
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="none",
+            c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","Rhat","lp__")]=
+    list(summary["K_int","mean"],
+         0,
+         0,
+         0,
+         0,
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"]
+    )
+  
+}
+
+
+
+df.output <- df.output %>% 
+  mutate(nb.par=case_when(mod=="2sm"~5,
+                          mod=="hsm"|mod=="fsm"~3,
+                          mod=="none"~1),
+         bic=2*nb.par-2*lp__)
+save(df.output,file="fit_mod5/df.output.csv")
+df.mod.select <- df.output %>% 
+  filter(Rhat<1.2) %>% 
+  group_by(species.binomial) %>% 
+  slice(which.min(bic)) %>% 
+  ungroup()
+
+
+df.mod.select %>% 
+  ggplot(aes(r_hsm,r_fsm,size=-log(Rhat),color=species.binomial,shape=mod))+
+  geom_point()+
+  scale_x_log10()
+
+
+
+df.mod.select %>% 
+  ggplot(aes(t_fsm,t_hsm,color=species.binomial,shape=mod))+
+  geom_point(size=5)
+
+df.mod.select %>% 
+  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod) %>% 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("t_fsm","t_hsm"),names_to="threshold",values_to="threshold_val") %>% 
+  filter((traits=="PX.mu"&threshold=="t_hsm")|
+           (traits=="LT50.mean"&threshold=="t_fsm")) %>% 
+  ggplot(aes(traits_val,threshold_val,color=species.binomial,label=species.binomial,shape=mod))+
+  geom_point(size=3)+
+  geom_text(hjust=0,vjust=0)+
+  geom_abline(slope=-1)+
+  facet_wrap(traits~threshold,scales="free")
+
+df.mod.select %>% 
+  select(species.binomial,PX.mu,LT50.mean,r_hsm,r_fsm,mod) %>% 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("r_fsm","r_hsm"),names_to="slope",values_to="slope_val") %>% 
+  filter((traits=="PX.mu"&slope=="r_hsm")|
+           (traits=="LT50.mean"&slope=="r_fsm")) %>% 
+  filter(slope_val<20) %>% 
+  ggplot(aes(traits_val,slope_val,color=species.binomial,label=species.binomial,shape=mod))+
+  geom_point(size=3)+
+  geom_text(hjust=0,vjust=0)+
+  facet_wrap(traits~slope,scales="free")
+
+
+hsm.95=quantile(db.clim$hsm,prob=0.95)[[1]]/1000
+hsm.05=quantile(db.clim$hsm,prob=0.05)[[1]]/1000
+fsm.95=quantile(db.clim$fsmwinter,prob=0.95)[[1]]
+fsm.05=quantile(db.clim$fsmwinter,prob=0.05)[[1]]
+df.mod.select %>% 
+  crossing(hsm=seq(hsm.05,
+                   hsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(fsm.type=c("low","indif","high"),
+                      fsm=c(fsm.05,0,fsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(hsm,pred,color=mod))+
+  geom_line(size=1)+
+  geom_hline(aes(yintercept=prevalence))+
+  facet_wrap(fsm.type~species.binomial,scales="free", nrow = 3)
+
+df.mod.select %>% 
+  crossing(fsm=seq(fsm.05,
+                   fsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(hsm.type=c("low","indif","high"),
+                      hsm=c(hsm.05,0,hsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(fsm,pred,color=mod))+
+  geom_line(size=1)+
+  geom_hline(aes(yintercept=prevalence))+
+  facet_wrap(hsm.type~species.binomial,scales="free", nrow = 3)
+
+
+
+df.mod.select %>% 
+  filter(Rhat<1.1) %>% 
+  crossing(hsm=seq(hsm.05,
+                   hsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(fsm.type=c("low","indif","high"),
+                      fsm=c(fsm.05,0,fsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(hsm,pred,color=fsm.type))+
+  geom_line(size=1)+
+  geom_hline(aes(yintercept=prevalence))+
+  facet_wrap(~species.binomial,scales="free", nrow = 3)
+df.mod.select %>% 
+  filter(Rhat<1.1) %>% 
+  crossing(fsm=seq(fsm.05,
+                   fsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(hsm.type=c("low","indif","high"),
+                      hsm=c(hsm.05,0,hsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(fsm,pred,color=hsm.type))+
+  geom_line(size=1)+
+  geom_hline(aes(yintercept=prevalence))+
+  facet_wrap(~species.binomial,scales="free", nrow = 3)
+
+# graph pour voir valeur des paramètre en fonction des modèles
+# ID: voir a quel point le choix du modèlee donne une tendance ou non dans les paramètres
+df.mod.select %>% 
+  pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm"),
+               names_to = "parameter",
+               values_to = "val") %>% 
+  filter(val!=0) %>% 
+  ggplot(aes(mod,val))+
+  geom_boxplot()+
+  facet_wrap(~parameter,scales="free")
+
+
+# compare mod selection to niche caracteristics of species
+# ID : species with extreme niches are explained by only one sm.
+df.niche <- db.clim %>% 
+  filter(presence==1) %>% 
+  group_by(species.binomial) %>% 
+  summarise(lat.mean=mean(y),
+            lat.sd=sd(y),
+            long.mean=mean(x),
+            long.sd=sd(x))
+df.mod.select %>% 
+  left_join(df.niche,by="species.binomial") %>% 
+  filter(!species.binomial%in%c("Picea abies","Pinus cembra","Quercus ilex","Acer monspessulanum")) %>% 
+  pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm"),
+               names_to = "parameter",
+               values_to = "val") %>% 
+  filter(!(mod=="hsm"&parameter%in%c("r_fsm","t_fsm"))) %>% 
+  filter(!(mod=="fsm"&parameter%in%c("r_hsm","t_hsm"))) %>% 
+  pivot_longer(cols=c("prevalence","lat.mean","lat.sd","long.mean","long.sd"),
+               names_to="predictor",
+               values_to = "val_pred") %>% 
+  ggplot(aes(val_pred,val,color=mod))+
+  geom_point()+
+  facet_wrap(predictor~parameter,scales="free")
+
+df.shadetol=read.csv2("data/Species traits/data_Niinemets&Valladares_2006.csv")
+
+
+df.mod.select %>% 
+  left_join(df.shadetol,by=c("species.binomial"="Species")) %>% 
+  mutate(across(c(shade_tolerance.mean,drought_tolerance.mean,waterlogging_tolerance.mean),
+                as.numeric)) %>% 
+  pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm"),
+               names_to = "parameter",
+               values_to = "val") %>% 
+  pivot_longer(cols=c("shade_tolerance.mean","drought_tolerance.mean","waterlogging_tolerance.mean"),
+               names_to="predictor",
+               values_to = "val_pred") %>% 
+  ggplot(aes(val_pred,val,color=Group))+
+  geom_point()+
+  facet_wrap(predictor~parameter,scales="free",nrow=3)
+
+for (par in c("K_int","r_fsm","r_hsm","t_hsm","t_fsm")){
+  print(par)
+  df.lm <- df.mod.select %>% 
+    filter(!species.binomial%in%c("Picea abies","Pinus cembra","Quercus ilex","Acer monspessulanum")) %>% 
+    left_join(df.shadetol,by=c("species.binomial"="Species")) %>% 
+    mutate(across(c(shade_tolerance.mean,drought_tolerance.mean,waterlogging_tolerance.mean),
+                  as.numeric)) %>% 
+    filter(!is.na(shade_tolerance.mean))
+  par.list=df.lm[,par][[1]]
+  tol.lm=lm(par.list~shade_tolerance.mean+drought_tolerance.mean+waterlogging_tolerance.mean+mod,
+            data=df.lm)
+  print(summary(tol.lm))
+  df.lm <- df.mod.select %>% 
+    filter(!species.binomial%in%c("Picea abies","Pinus cembra","Quercus ilex","Acer monspessulanum")) %>% 
+    left_join(df.niche,by="species.binomial") 
+  par.list=df.lm[,par][[1]]
+  niche.lm=lm(par.list~prevalence+lat.mean+lat.sd+long.mean+long.sd+mod,
+              data=df.lm)
+  print(summary(niche.lm))
+}
+
+## compute indicators of performance
+
+# distributional overlap
+
+df.overlap <- db.clim %>% 
+  group_by(node) %>% 
+  mutate(nb.sp=sum(presence==1)) %>% 
+  ungroup() %>% 
+  filter(presence==1) %>% 
+  group_by(species.binomial) %>% 
+  summarise(overlap=mean(nb.sp))
+
+df.mod.select %>% 
+  left_join(df.overlap,by=c("species.binomial")) %>% 
+  pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm"),
+               names_to = "parameter",
+               values_to = "val") %>% 
+  filter(!(mod=="hsm"&parameter%in%c("r_fsm","t_fsm"))) %>% 
+  filter(!(mod=="fsm"&parameter%in%c("r_hsm","t_hsm"))) %>% 
+  ggplot(aes(overlap,val,color=mod))+
+  geom_point()+
+  geom_smooth(method="gam",aes(color=NULL))+
+  facet_wrap(~parameter,scales="free",nrow=3)
+
 #### Annexe ####
 #'@description check figure
 #'
