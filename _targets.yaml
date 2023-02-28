@@ -16,3 +16,6 @@ safetymargin:
 occurence_dataset:
   script: script_abspres.R
   store: target_occ
+analysis:
+  script: script_analysis.R
+  store: target_analysis

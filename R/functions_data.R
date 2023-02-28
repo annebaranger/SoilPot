@@ -1541,7 +1541,8 @@ get.traits <- function(dir.distribution="data/chorological_maps_dataset",
            PX.mu=case_when(p.trait=="P88"~P88.mu,
                            p.trait=="P50"~P50.mu),
            PX.sd=case_when(p.trait=="P88"~P88.sd,
-                           p.trait=="P50"~P50.sd))
+                           p.trait=="P50"~P50.sd)) %>% 
+    filter(!(species.binomial=="Pinus contorta"&Group=="angiosperm"))
   
   for (i in 1:dim(df.traits)[1]){
     species.files=list.files(file.path(dir.distribution,df.traits$species.binomial[i],"shapefiles"))

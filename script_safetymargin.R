@@ -59,9 +59,9 @@ list(
     get.traits(df.P50=df.P50,
                df.LT50=df.LT50$df.LT50sp.cor)
   ),
-  tar_render(
-    report,
-    "Report_jan.Rmd"
-  ),
+  # tar_render(
+  #   report,
+  #   "Report_jan.Rmd"
+  # ),
  NULL
 )

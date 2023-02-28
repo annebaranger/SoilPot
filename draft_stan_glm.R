@@ -1149,7 +1149,7 @@ df.output %>%
 #### Section 14 ####
 #'@description dig into non converging species
 #'
-#####
+#_####
 sp = "Betula pendula"
 # sp = "Pinus nigra"
 # sp = "Picea abies"
@@ -1186,7 +1186,7 @@ fit.bepeIV <- stan(file = "glm_log_1sp_IV.stan",
             include=FALSE,
             pars=c("proba","K_vect"))
 
-#####
+#_####
 sp = "Picea abies"
 set.seed(4554)
 print(sp)
@@ -1220,7 +1220,7 @@ fit.piabIV <- stan(file = "glm_log_1sp_IV.stan",
                include=FALSE,
                pars=c("proba","K_vect"))
 
-##### 
+#_#### 
 sp = "Pinus nigra"
 set.seed(4554)
 print(sp)
@@ -1254,7 +1254,7 @@ fit.piniIV <- stan(file = "glm_log_1sp_IV.stan",
                    include=FALSE,
                    pars=c("proba","K_vect"))
 
-#####
+#_####
 sp = "Quercus ilex"
 set.seed(4554)
 print(sp)
@@ -1296,6 +1296,9 @@ fit.quilIV <- stan(file = "glm_log_1sp_IV.stan",
 #### Section 15 ####
 #'@description fit 4 models for each species and select the best
 #'
+
+#_ Fit model ----
+
 species.list=unique(db.clim$species.binomial)
 # c("Abies alba",
 #   "Betula pendula",
@@ -1323,11 +1326,9 @@ for (sp in species.list){
     filter(psi>(-10000)) %>% #remove very low value of psi
     filter(species.binomial==sp) %>% 
     mutate(hsm=hsm/1000,
-           fsm=fsmwinter) %>% 
-    sample_frac(0.5)  
+           fsm=fsmwinter) 
   
-  
-  ### 2 var
+  # 2 var
   print("2sm")
   data.list <- list(N=dim(db.pres)[1],
                     presence=db.pres$presence,
@@ -1339,11 +1340,11 @@ for (sp in species.list){
   fit.2var <- stan(file = "glm_log_1sp_III.stan",
               data=data.list,
               iter=1000,
-              chains=2,
-              core=2,
+              chains=3,
+              core=3,
               include=FALSE,
               pars=c("proba","K_vect"))
-  save(fit.2var,file=paste0("fit_mod5/",sp,"_fitIII.RData"))
+  save(fit.2var,file=paste0("fit_mod6/",sp,"_fitIII.RData"))
   summary=summary(fit.2var)$summary
   df.output[df.output$species.binomial==sp
             & df.output$mod=="2sm",
@@ -1368,11 +1369,11 @@ for (sp in species.list){
   fit.hsm <- stan(file = "glm_log_1sp_III_1varh.stan",
                    data=data.list,
                    iter=1000,
-                   chains=2,
-                   core=2,
+                   chains=3,
+                   core=3,
                    include=FALSE,
                    pars=c("proba","K_vect"))
-  save(fit.hsm,file=paste0("fit_mod5/",sp,"_fitIII_hsm.RData"))
+  save(fit.hsm,file=paste0("fit_mod6/",sp,"_fitIII_hsm.RData"))
   summary=summary(fit.hsm)$summary
   df.output[df.output$species.binomial==sp
             & df.output$mod=="hsm",
@@ -1397,11 +1398,11 @@ for (sp in species.list){
   fit.fsm <- stan(file = "glm_log_1sp_III_1var.stan",
                   data=data.list,
                   iter=1000,
-                  chains=2,
-                  core=2,
+                  chains=3,
+                  core=3,
                   include=FALSE,
                   pars=c("proba","K_vect"))
-  save(fit.fsm,file=paste0("fit_mod5/",sp,"_fitIII_fsm.RData"))
+  save(fit.fsm,file=paste0("fit_mod6/",sp,"_fitIII_fsm.RData"))
   summary=summary(fit.fsm)$summary
   df.output[df.output$species.binomial==sp
             & df.output$mod=="fsm",
@@ -1425,11 +1426,11 @@ for (sp in species.list){
   fit.none <- stan(file = "glm_log_1sp_III_0var.stan",
                   data=data.list,
                   iter=1000,
-                  chains=2,
-                  core=2,
+                  chains=3,
+                  core=3,
                   include=FALSE,
                   pars=c("proba","K_vect"))
-  save(fit.none,file=paste0("fit_mod5/",sp,"_fitIII_none.RData"))
+  save(fit.none,file=paste0("fit_mod6/",sp,"_fitIII_none.RData"))
   summary=summary(fit.none)$summary
   df.output[df.output$species.binomial==sp
             & df.output$mod=="none",
@@ -1445,44 +1446,173 @@ for (sp in species.list){
   
 }
 
+#_ Format output ----
 
+#' Compute divergence
+df.output$divergence=NA
 
+for (sp in species.list){
+  print(sp)
+  
+  ### 2 var
+  print("2sm")
+  load(file=paste0("fit_mod6/",sp,"_fitIII.RData"))
+  par_mod=get_sampler_params(fit.2var)
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="2sm",
+            "divergence"]=
+    mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+  
+  # HSM
+  print("hsm")
+  load(file=paste0("fit_mod6/",sp,"_fitIII_hsm.RData"))
+  par_mod=get_sampler_params(fit.hsm)
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="hsm",
+            "divergence"]=
+    mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+  
+  
+  # FSM
+  print("fsm")
+  load(file=paste0("fit_mod6/",sp,"_fitIII_fsm.RData"))
+  par_mod=get_sampler_params(fit.fsm)
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="fsm",
+            "divergence"]=
+    mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+  
+  # None
+  print("none")
+  load(file=paste0("fit_mod6/",sp,"_fitIII_none.RData"))
+  par_mod=get_sampler_params(fit.none)
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="none",
+            "divergence"]=
+    mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+  
+}
+
+#' Compute BIC
 df.output <- df.output %>% 
   mutate(nb.par=case_when(mod=="2sm"~5,
                           mod=="hsm"|mod=="fsm"~3,
                           mod=="none"~1),
          bic=2*nb.par-2*lp__)
-save(df.output,file="fit_mod5/df.output.csv")
+save(df.output,file="fit_mod6/df.output.csv")
+
+#' Model selection
 df.mod.select <- df.output %>% 
   filter(Rhat<1.2) %>% 
+  filter(divergence <0.1) %>% 
   group_by(species.binomial) %>% 
   slice(which.min(bic)) %>% 
   ungroup()
 
+#' Index of inflexion
+hsm.95=5.5#quantile(db.clim$hsm,prob=0.95)[[1]]/1000
+hsm.05=-2.5#quantile(db.clim$hsm,prob=0.05)[[1]]/1000
+fsm.95=quantile(db.clim$fsmwinter,prob=0.95)[[1]]
+fsm.05=quantile(db.clim$fsmwinter,prob=0.05)[[1]]
+df.mod.select <- df.mod.select %>% 
+  mutate(inflex_fsm=100*((16*exp(-r_fsm*(fsm.95-t_fsm)))/(2+2*exp(-r_fsm*(fsm.95-t_fsm)))^2),#+
+           #(K_int*r_fsm*exp(-r_fsm*(fsm.05-t_fsm)))/(1+exp(-r_fsm*(fsm.05-t_fsm)))^2,
+         #K_int*r_fsm/4,
+         inflex_hsm=100*((16*exp(-r_hsm*(hsm.95-t_hsm)))/(2+2*exp(-r_hsm*(hsm.95-t_hsm)))^2)#+
+           #(K_int*r_hsm*exp(-r_hsm*(hsm.05-t_hsm)))/(1+exp(-r_hsm*(hsm.05-t_hsm)))^2
+           #K_int*r_hsm/4
+         )
 
+#_ Plot parameters ----
+
+#' Slope/slope
 df.mod.select %>% 
-  ggplot(aes(r_hsm,r_fsm,size=-log(Rhat),color=species.binomial,shape=mod))+
+  ggplot(aes(r_hsm,r_fsm,color=species.binomial,shape=mod,label=species.binomial))+ #size=-log(Rhat),
   geom_point()+
-  scale_x_log10()
+  geom_text(hjust=0,vjust=0)
 
 
-
+#' Threshold/threshold
 df.mod.select %>% 
-  ggplot(aes(t_fsm,t_hsm,color=species.binomial,shape=mod))+
+  # filter(mod=="2sm") %>%
+  ggplot(aes(t_fsm,t_hsm,color=species.binomial,shape=mod,label=species.binomial))+
+  geom_text(hjust=0,vjust=0)+
   geom_point(size=5)
+
+#' thresholds/traits contribution
+df.mod.select %>% 
+  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod) %>% 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("t_fsm","t_hsm"),names_to="threshold",values_to="threshold_val") %>% 
+  filter((mod%in%c("hsm","2sm")&traits=="PX.mu"&threshold=="t_hsm")|
+           (mod%in%c("fsm","2sm")&traits=="LT50.mean"&threshold=="t_fsm")) %>% 
+  mutate(app_thresh=-traits_val-threshold_val) %>% 
+  ggplot(aes(traits_val,threshold_val,color=species.binomial,label=species.binomial,shape=mod))+
+  geom_point(size=3)+
+  geom_text(hjust=0,vjust=0)+
+  geom_abline(slope=-1)+
+  geom_smooth(method="gam",aes(color=NULL,label=NULL,shape=NULL))+
+  facet_wrap(traits~threshold,scales="free")+
+  theme(legend.position = "none")+
+  theme_minimal()+
+  NULL
 
 df.mod.select %>% 
   select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod) %>% 
   pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
   pivot_longer(cols=c("t_fsm","t_hsm"),names_to="threshold",values_to="threshold_val") %>% 
-  filter((traits=="PX.mu"&threshold=="t_hsm")|
-           (traits=="LT50.mean"&threshold=="t_fsm")) %>% 
-  ggplot(aes(traits_val,threshold_val,color=species.binomial,label=species.binomial,shape=mod))+
+  filter((mod%in%c("hsm","2sm")&traits=="PX.mu"&threshold=="t_hsm")|
+           (mod%in%c("fsm","2sm")&traits=="LT50.mean"&threshold=="t_fsm")) %>% 
+  mutate(app_thresh=traits_val-threshold_val) %>% 
+  ggplot(aes(traits_val,app_thresh,color=species.binomial,label=species.binomial,shape=mod))+
   geom_point(size=3)+
   geom_text(hjust=0,vjust=0)+
-  geom_abline(slope=-1)+
-  facet_wrap(traits~threshold,scales="free")
+  geom_abline(slope=1)+
+  geom_smooth(method="gam",aes(color=NULL,label=NULL,shape=NULL))+
+  facet_wrap(~traits,scales="free")+
+  theme(legend.position = "none")+
+  theme_minimal()+
+  NULL
 
+
+#' thresholds/traits contribution
+df.mod.select %>% 
+  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod,inflex_fsm,inflex_hsm) %>% 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("t_fsm","t_hsm"),names_to="threshold",values_to="threshold_val") %>% 
+  pivot_longer(cols=c("inflex_fsm","inflex_hsm"),names_to="inflex",values_to="inflex_val") %>% 
+  filter((traits=="PX.mu"&threshold=="t_hsm"&inflex=="inflex_hsm")|
+           (traits=="LT50.mean"&threshold=="t_fsm"&inflex=="inflex_fsm")) %>% 
+  filter((mod=="hsm"&threshold=="t_hsm")|
+           (mod=="fsm"&threshold=="t_fsm")|
+           (mod=="2sm"&threshold%in%c("t_hsm","t_fsm"))) %>% 
+  mutate(contribution=100*(-traits_val-threshold_val)/(-traits_val)) %>% 
+  ggplot(aes(contribution,species.binomial,color=inflex_val,shape=mod))+
+  geom_point(size=3)+
+  geom_vline(xintercept = 100)+
+  scale_color_gradientn(colours = terrain.colors(5))+
+  facet_wrap(~traits)
+
+df.mod.select %>% 
+  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod,inflex_fsm,inflex_hsm) %>% 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("t_fsm","t_hsm"),names_to="threshold",values_to="threshold_val") %>% 
+  pivot_longer(cols=c("inflex_fsm","inflex_hsm"),names_to="inflex",values_to="inflex_val") %>% 
+  filter((traits=="PX.mu"&threshold=="t_hsm"&inflex=="inflex_hsm")|
+           (traits=="LT50.mean"&threshold=="t_fsm"&inflex=="inflex_hsm")) %>% 
+  filter((mod=="hsm"&threshold=="t_hsm")|
+           (mod=="fsm"&threshold=="t_fsm")|
+           (mod=="2sm"&threshold%in%c("t_hsm","t_fsm"))) %>% 
+  mutate(contribution=100*(threshold_val)/(-traits_val)) %>% 
+  ggplot(aes(traits_val,contribution,color=inflex_val,shape=mod))+
+  geom_point(size=3)+
+  scale_color_gradientn(colours = viridis(5))+
+  geom_smooth(method="gam",aes(color=NULL,shape=NULL))+
+  facet_wrap(~traits,scales="free")+
+  theme_minimal()
+
+
+#' slopes/traits
 df.mod.select %>% 
   select(species.binomial,PX.mu,LT50.mean,r_hsm,r_fsm,mod) %>% 
   pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
@@ -1493,43 +1623,24 @@ df.mod.select %>%
   ggplot(aes(traits_val,slope_val,color=species.binomial,label=species.binomial,shape=mod))+
   geom_point(size=3)+
   geom_text(hjust=0,vjust=0)+
+  theme(legend.position = "none")+
   facet_wrap(traits~slope,scales="free")
 
+#' Inflexion
 
+
+
+#_ Fit curves ----
 hsm.95=quantile(db.clim$hsm,prob=0.95)[[1]]/1000
 hsm.05=quantile(db.clim$hsm,prob=0.05)[[1]]/1000
 fsm.95=quantile(db.clim$fsmwinter,prob=0.95)[[1]]
 fsm.05=quantile(db.clim$fsmwinter,prob=0.05)[[1]]
+
+#' 1 plot by species
+
+# for hsm
+# different type of FSM
 df.mod.select %>% 
-  crossing(hsm=seq(hsm.05,
-                   hsm.95,
-                   length.out=400)) %>% 
-  crossing(data.frame(fsm.type=c("low","indif","high"),
-                      fsm=c(fsm.05,0,fsm.95))) %>% 
-  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
-                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
-  ggplot(aes(hsm,pred,color=mod))+
-  geom_line(size=1)+
-  geom_hline(aes(yintercept=prevalence))+
-  facet_wrap(fsm.type~species.binomial,scales="free", nrow = 3)
-
-df.mod.select %>% 
-  crossing(fsm=seq(fsm.05,
-                   fsm.95,
-                   length.out=400)) %>% 
-  crossing(data.frame(hsm.type=c("low","indif","high"),
-                      hsm=c(hsm.05,0,hsm.95))) %>% 
-  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
-                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
-  ggplot(aes(fsm,pred,color=mod))+
-  geom_line(size=1)+
-  geom_hline(aes(yintercept=prevalence))+
-  facet_wrap(hsm.type~species.binomial,scales="free", nrow = 3)
-
-
-
-df.mod.select %>% 
-  filter(Rhat<1.1) %>% 
   crossing(hsm=seq(hsm.05,
                    hsm.95,
                    length.out=400)) %>% 
@@ -1539,10 +1650,43 @@ df.mod.select %>%
                        (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
   ggplot(aes(hsm,pred,color=fsm.type))+
   geom_line(size=1)+
-  geom_hline(aes(yintercept=prevalence))+
+  # geom_hline(aes(yintercept=prevalence))+
   facet_wrap(~species.binomial,scales="free", nrow = 3)
+# colored by inflexion
 df.mod.select %>% 
-  filter(Rhat<1.1) %>% 
+  crossing(hsm=seq(hsm.05,
+                   hsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(fsm.type=c("indif"),
+                      fsm=c(0))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(hsm,pred,color=inflex_hsm,linesize=species.binomial))+
+  geom_line(size=0.6)+
+  scale_color_gradientn(colours = viridis(15))+
+  # geom_hline(aes(yintercept=prevalence))+
+  # scale_y_log10()+
+  theme_minimal()+
+  NULL
+df.mod.select %>% 
+    crossing(fsm=seq(fsm.05,
+                     fsm.95,
+                     length.out=400)) %>% 
+    crossing(data.frame(hsm.type=c("indif"),
+                        hsm=c(0))) %>% 
+    mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                         (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+    ggplot(aes(fsm,pred,color=inflex_fsm,linesize=species.binomial))+
+    geom_line(size=0.6)+
+    scale_color_gradientn(colours = viridis(15))+
+    # geom_hline(aes(yintercept=prevalence))+
+    # scale_y_log10()+
+    theme_minimal()+
+  NULL
+
+#for fsm
+# different type of HSM
+df.mod.select %>% 
   crossing(fsm=seq(fsm.05,
                    fsm.95,
                    length.out=400)) %>% 
@@ -1552,9 +1696,26 @@ df.mod.select %>%
                        (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
   ggplot(aes(fsm,pred,color=hsm.type))+
   geom_line(size=1)+
-  geom_hline(aes(yintercept=prevalence))+
+  # geom_hline(aes(yintercept=prevalence))+
   facet_wrap(~species.binomial,scales="free", nrow = 3)
 
+#' for a species selection
+df.mod.select %>% 
+  filter(species.binomial%in%c("Picea abies","Fagus sylvatica","Ilex aquifolium")) %>% 
+  crossing(hsm=seq(hsm.05,
+                   hsm.95,
+                   length.out=400)) %>% 
+  crossing(data.frame(fsm.type=c("low","indif","high"),
+                      fsm=c(fsm.05,0,fsm.95))) %>% 
+  mutate(pred=K_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+                       (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+  ggplot(aes(hsm,pred))+
+  geom_line(aes(color=fsm.type),size=1)+ #as.factor(PX.mu)
+  facet_wrap(~species.binomial,scales="free")
+
+
+
+#_ Parameters/predictors ----
 # graph pour voir valeur des paramètre en fonction des modèles
 # ID: voir a quel point le choix du modèlee donne une tendance ou non dans les paramètres
 df.mod.select %>% 
@@ -1571,26 +1732,54 @@ df.mod.select %>%
 # ID : species with extreme niches are explained by only one sm.
 df.niche <- db.clim %>% 
   filter(presence==1) %>% 
+  filter(psi>(-20000)) %>% 
   group_by(species.binomial) %>% 
   summarise(lat.mean=mean(y),
             lat.sd=sd(y),
             long.mean=mean(x),
-            long.sd=sd(x))
+            long.sd=sd(x),
+            lat.q05=quantile(y,prob=0.05)[[1]],
+            lat.q95=quantile(y,prob=0.95)[[1]],
+            psi.q05=quantile(psi,prob=0.05)[[1]],
+            psi.q95=quantile(psi,prob=0.95)[[1]],
+            frost.q05=quantile(frost.winter,prob=0.05)[[1]],
+            frost.q95=quantile(frost.winter,prob=0.95)[[1]]
+            )
 df.mod.select %>% 
   left_join(df.niche,by="species.binomial") %>% 
-  filter(!species.binomial%in%c("Picea abies","Pinus cembra","Quercus ilex","Acer monspessulanum")) %>% 
+  # filter(!species.binomial%in%c("Picea abies","Pinus cembra","Quercus ilex","Acer monspessulanum")) %>% 
   pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm"),
                names_to = "parameter",
                values_to = "val") %>% 
   filter(!(mod=="hsm"&parameter%in%c("r_fsm","t_fsm"))) %>% 
   filter(!(mod=="fsm"&parameter%in%c("r_hsm","t_hsm"))) %>% 
-  pivot_longer(cols=c("prevalence","lat.mean","lat.sd","long.mean","long.sd"),
+  pivot_longer(cols=c("prevalence","lat.mean","lat.sd","long.mean","long.sd","lat.q05","lat.q95"),
                names_to="predictor",
                values_to = "val_pred") %>% 
   ggplot(aes(val_pred,val,color=mod))+
   geom_point()+
-  facet_wrap(predictor~parameter,scales="free")
+  geom_smooth(method="lm",aes(color=NULL))+
+  facet_wrap(parameter~predictor,scales="free",nrow = 5)
+df.mod.select %>% 
+  left_join(df.niche,by="species.binomial") %>% 
+  pivot_longer(cols=c("prevalence","lat.mean","lat.sd","long.mean","long.sd","lat.q05","lat.q95"),
+               names_to="predictor",
+               values_to = "val_pred") %>% 
+  ggplot(aes(mod,val_pred)) +
+  geom_boxplot() +
+  facet_wrap(~predictor,scales="free")
 
+#' Continentality / lat
+df.mod.select %>% 
+  left_join(df.niche,by="species.binomial") %>% 
+  left_join(df.cont,by="species.binomial") %>% 
+  pivot_longer(cols=c("jci","lat.mean","long.mean","long.sd","lat.q05","lat.q95"),
+               names_to="predictor",
+               values_to = "val_pred") %>% 
+  ggplot(aes(mod,val_pred)) +
+  geom_boxplot() +
+  facet_wrap(~predictor,scales="free")
+#' Shade tolerance
 df.shadetol=read.csv2("data/Species traits/data_Niinemets&Valladares_2006.csv")
 
 
@@ -1598,20 +1787,201 @@ df.mod.select %>%
   left_join(df.shadetol,by=c("species.binomial"="Species")) %>% 
   mutate(across(c(shade_tolerance.mean,drought_tolerance.mean,waterlogging_tolerance.mean),
                 as.numeric)) %>% 
-  pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm"),
+  pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","auc"),
                names_to = "parameter",
                values_to = "val") %>% 
   pivot_longer(cols=c("shade_tolerance.mean","drought_tolerance.mean","waterlogging_tolerance.mean"),
                names_to="predictor",
                values_to = "val_pred") %>% 
+  filter(!(mod=="hsm"&parameter%in%c("r_fsm","t_fsm"))) %>% 
+  filter(!(mod=="fsm"&parameter%in%c("r_hsm","t_hsm"))) %>% 
   ggplot(aes(val_pred,val,color=Group))+
   geom_point()+
+  geom_smooth(method="lm",aes(color=NULL))+
   facet_wrap(predictor~parameter,scales="free",nrow=3)
+
+
+# distributional overlap
+df.overlap <- db.clim %>% 
+  filter(presence==1) %>% 
+  group_by(node) %>% 
+  mutate(nb.sp=sum(presence==1),
+         overlap.hsm=sum(hsm>0),
+         overlap.fsm=sum(fsmwinter>0)) %>% 
+  ungroup() %>% 
+  group_by(species.binomial) %>% 
+  summarise(overlap=mean(nb.sp),
+            overlap.hsm=mean(overlap.hsm),
+            overlap.fsm=mean(overlap.fsm))
+
+df.mod.select %>% 
+  left_join(df.overlap,by=c("species.binomial")) %>% 
+  pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm"),
+               names_to = "parameter",
+               values_to = "val") %>% 
+  pivot_longer(cols=c("overlap","overlap.hsm","overlap.fsm"),
+               names_to="overlap",
+               values_to = "overlap_val") %>% 
+  filter(!(mod=="hsm"&parameter%in%c("r_fsm","t_fsm"))) %>% 
+  filter(!(mod=="fsm"&parameter%in%c("r_hsm","t_hsm"))) %>% 
+  ggplot(aes(overlap_val,val,color=mod))+
+  geom_point()+
+  geom_smooth(method="gam",aes(color=NULL))+
+  facet_wrap(overlap~parameter,scales="free",nrow=3)
+
+
+#' inflexion
+# mod type
+df.mod.select %>% 
+  pivot_longer(cols=c("inflex_fsm","inflex_hsm"),
+               names_to = "inflex",
+               values_to="inflex_val") %>% 
+  filter(!(mod=="hsm"&inflex%in%c("inflex_fsm"))) %>% 
+  filter(!(mod=="fsm"&inflex%in%c("inflex_hsm"))) %>% 
+  ggplot(aes(mod,inflex_val,color=mod))+
+  geom_boxplot()+
+  scale_y_log10()+
+  facet_wrap(~inflex,scales="free")
+# niche caract
+df.mod.select %>% 
+  filter(mod %in% c('fsm','2sm')) %>% 
+  left_join(df.niche,by="species.binomial") %>% 
+  pivot_longer(cols=c("prevalence","lat.mean","lat.sd","long.mean","long.sd","lat.q05","lat.q95"),
+               names_to="predictor",
+               values_to = "val_pred") %>% 
+  ggplot(aes(log(inflex_fsm),val_pred)) +
+  geom_point() +
+  geom_smooth(method="lm")+
+  facet_wrap(~predictor,scales="free")
+df.mod.select %>% 
+  filter(mod %in% c('fsm','2sm')) %>% 
+  left_join(df.niche,by="species.binomial") %>% 
+  ggplot(aes(lat.q95,log(inflex_fsm),label=species.binomial))+
+  geom_text()+
+  geom_point()+
+  geom_smooth(method="gam")
+# overlap
+df.mod.select %>% 
+  left_join(df.overlap,by=c("species.binomial")) %>% 
+  pivot_longer(cols=c("overlap","overlap.hsm","overlap.fsm"),
+               names_to="overlap",
+               values_to = "overlap_val") %>% 
+  pivot_longer(cols=c("inflex_fsm","inflex_hsm"),
+               names_to = "inflex",
+               values_to="inflex_val") %>% 
+  filter(!(mod=="hsm"&inflex%in%c("inflex_fsm"))) %>% 
+  filter(!(mod=="fsm"&inflex%in%c("inflex_hsm"))) %>% 
+  ggplot(aes(overlap_val,log(inflex_val),color=mod))+
+  geom_point()+
+  geom_smooth(method="gam",aes(color=NULL))+
+  facet_wrap(overlap~inflex,scales="free",nrow=3)
+#shadetol
+df.mod.select %>% 
+  left_join(df.shadetol,by=c("species.binomial"="Species")) %>% 
+  mutate(across(c(shade_tolerance.mean,drought_tolerance.mean,waterlogging_tolerance.mean),
+                as.numeric)) %>% 
+  pivot_longer(cols=c("shade_tolerance.mean","drought_tolerance.mean","waterlogging_tolerance.mean"),
+               names_to="predictor",
+               values_to = "val_pred") %>% 
+  pivot_longer(cols=c("inflex_fsm","inflex_hsm"),
+               names_to = "inflex",
+               values_to="inflex_val") %>% 
+  filter(!(mod=="hsm"&inflex%in%c("inflex_fsm"))) %>% 
+  filter(!(mod=="fsm"&inflex%in%c("inflex_hsm"))) %>% 
+  ggplot(aes(val_pred,log(inflex_val),color=Group))+
+  geom_point()+
+  geom_smooth(method="lm",aes(color=NULL))+
+  facet_wrap(predictor~inflex,scales="free",nrow=3)
+
+#_ analysis of inflexion index ----
+# inflexion hsm/fsm
+df.mod.select %>% 
+  rename(HSM=inflex_hsm,
+         FSM=inflex_fsm) %>% 
+  pivot_longer(col=c("HSM","FSM")) %>% 
+  filter(mod!="none") %>% 
+  filter(!(mod=="fsm"&name=="HSM")&
+           !(mod=="hsm"&name=="FSM")) %>% 
+  ggplot(aes(name,value))+
+  geom_boxplot()+
+  theme_minimal()+
+  theme(axis.title.x = element_blank())+
+  ylab("Inflexion index")
+
+# inflexion / trait
+df.mod.select %>% 
+  filter(mod!="none") %>% 
+  select(species.binomial,PX.mu,LT50.mean,inflex_hsm,inflex_fsm,mod) %>% 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("inflex_hsm","inflex_fsm"),names_to="inflex",values_to="inflex_val") %>% 
+  filter(!(mod=="fsm"&((inflex=="inflex_hsm")|(traits=="PX.mu")))&
+           !(mod=="hsm"&((inflex=="inflex_fsm")|(traits=="LT50.mean")))) %>% 
+  ggplot(aes(traits_val,inflex_val,color=mod,label=species.binomial,shape=mod))+
+  geom_point(size=3)+
+  geom_text(hjust=0,vjust=0)+
+  geom_smooth(method="lm",aes(color=NULL,shape=NULL,label=NULL))+
+  # theme(legend.position = "none")+
+  facet_wrap(~traits,scales="free")+
+  theme_minimal()
+
+# inflexion / preval
+df.mod.select %>% 
+  filter(mod!="none") %>% 
+  select(species.binomial,prevalence,inflex_hsm,inflex_fsm,mod) %>% 
+  pivot_longer(cols=c("inflex_hsm","inflex_fsm"),names_to="inflex",values_to="inflex_val") %>% 
+  filter(!(mod=="fsm"&((inflex=="inflex_hsm")))&
+           !(mod=="hsm"&((inflex=="inflex_fsm")))) %>% 
+  ggplot(aes(prevalence,inflex_val,color=mod,label=species.binomial,shape=mod))+
+  geom_point(size=3)+
+  geom_text(hjust=0,vjust=0)+
+  geom_smooth(method="lm",aes(color=NULL,shape=NULL,label=NULL))+
+  # theme(legend.position = "none")+
+  facet_wrap(~inflex,scales="free")+
+  theme_minimal()
+
+# inflexion / seuil
+df.mod.select %>% 
+  filter(mod!="none") %>% 
+  select(species.binomial,t_fsm,t_hsm,inflex_hsm,inflex_fsm,mod) %>% 
+  pivot_longer(cols=c("t_fsm","t_hsm"),names_to = "threshold",values_to = "threshold_val") %>% 
+  filter(!(mod=="hsm"&threshold=="t_fsm")&
+           !(mod=="fsm"&threshold=="t_hsm")) %>% 
+  pivot_longer(cols=c("inflex_hsm","inflex_fsm"),names_to="inflex",values_to="inflex_val") %>% 
+  filter(!(mod=="hsm"&inflex=="inflex_fsm")&
+           !(mod=="fsm"&inflex=="inflex_hsm")) %>% 
+  ggplot(aes(inflex_val,threshold_val,color=mod,label=species.binomial,shape=mod))+
+  geom_point(size=3)+
+  geom_text(hjust=0,vjust=0)+
+  geom_smooth(method="lm",aes(color=NULL,shape=NULL,label=NULL))+
+  # theme(legend.position = "none")+
+  facet_wrap(~inflex,scales="free")+
+  theme_minimal()
+
+# contribution / inflexion 
+df.mod.select %>% 
+  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod,inflex_fsm,inflex_hsm) %>% 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("t_fsm","t_hsm"),names_to="threshold",values_to="threshold_val") %>% 
+  pivot_longer(cols=c("inflex_fsm","inflex_hsm"),names_to="inflex",values_to="inflex_val") %>% 
+  filter((traits=="PX.mu"&threshold=="t_hsm"&inflex=="inflex_hsm")|
+           (traits=="LT50.mean"&threshold=="t_fsm"&inflex=="inflex_fsm")) %>% 
+  filter((mod=="hsm"&threshold=="t_hsm")|
+           (mod=="fsm"&threshold=="t_fsm")|
+           (mod=="2sm"&threshold%in%c("t_hsm","t_fsm"))) %>% 
+  mutate(contribution=100*(-traits_val-threshold_val)/(-traits_val)) %>% 
+  ggplot(aes(contribution,label=species.binomial,y=inflex_val,shape=mod))+
+  geom_point(size=3)+
+  scale_color_gradientn(colours = terrain.colors(5))+
+  geom_smooth(method="gam",aes(shape=NULL,label=NULL))+
+  facet_wrap(~inflex)+
+  theme_minimal()
+
+#_ Statistical relation between vars ----
 
 for (par in c("K_int","r_fsm","r_hsm","t_hsm","t_fsm")){
   print(par)
   df.lm <- df.mod.select %>% 
-    filter(!species.binomial%in%c("Picea abies","Pinus cembra","Quercus ilex","Acer monspessulanum")) %>% 
+    # filter(!species.binomial%in%c("Picea abies","Pinus cembra","Quercus ilex","Acer monspessulanum")) %>% 
     left_join(df.shadetol,by=c("species.binomial"="Species")) %>% 
     mutate(across(c(shade_tolerance.mean,drought_tolerance.mean,waterlogging_tolerance.mean),
                   as.numeric)) %>% 
@@ -1621,7 +1991,7 @@ for (par in c("K_int","r_fsm","r_hsm","t_hsm","t_fsm")){
             data=df.lm)
   print(summary(tol.lm))
   df.lm <- df.mod.select %>% 
-    filter(!species.binomial%in%c("Picea abies","Pinus cembra","Quercus ilex","Acer monspessulanum")) %>% 
+    # filter(!species.binomial%in%c("Picea abies","Pinus cembra","Quercus ilex","Acer monspessulanum")) %>% 
     left_join(df.niche,by="species.binomial") 
   par.list=df.lm[,par][[1]]
   niche.lm=lm(par.list~prevalence+lat.mean+lat.sd+long.mean+long.sd+mod,
@@ -1629,29 +1999,407 @@ for (par in c("K_int","r_fsm","r_hsm","t_hsm","t_fsm")){
   print(summary(niche.lm))
 }
 
-## compute indicators of performance
 
-# distributional overlap
-
-df.overlap <- db.clim %>% 
-  group_by(node) %>% 
-  mutate(nb.sp=sum(presence==1)) %>% 
-  ungroup() %>% 
-  filter(presence==1) %>% 
-  group_by(species.binomial) %>% 
-  summarise(overlap=mean(nb.sp))
+#_ Compute prevalence ----
+df.mod.select$preval.theo=NA
+for (sp in df.mod.select$species.binomial){
+  print(sp)
+  if (df.mod.select[df.mod.select$species.binomial==sp,"mod"]=="2sm"){
+    print("2sm")
+    preval=db.clim %>% 
+      filter(species.binomial==sp) %>% 
+      mutate(pres.theo=case_when(hsm>0&fsmwinter>0~1,
+                                 TRUE~0)) %>% 
+      group_by(pres.theo) %>% 
+      summarise(prop=sum(presence==1)/n())
+    df.mod.select[df.mod.select$species.binomial==sp,"preval.theo"]=
+      preval[preval$pres.theo==1,"prop"]/(preval[preval$pres.theo==1,"prop"]+preval[preval$pres.theo==0,"prop"])
+    
+  }else if (df.mod.select[df.mod.select$species.binomial==sp,"mod"]=="hsm"){
+    print("hsm")
+    preval=db.clim %>% 
+      filter(species.binomial==sp) %>% 
+      mutate(pres.theo=case_when(hsm>0~1,
+                                 TRUE~0)) %>% 
+      group_by(pres.theo) %>% 
+      summarise(prop=sum(presence==1)/n())
+    df.mod.select[df.mod.select$species.binomial==sp,"preval.theo"]=
+      preval[preval$pres.theo==1,"prop"]/(preval[preval$pres.theo==1,"prop"]+preval[preval$pres.theo==0,"prop"])
+    
+  }else if (df.mod.select[df.mod.select$species.binomial==sp,"mod"]=="fsm"){
+    print("fsm")
+    preval=db.clim %>% 
+      filter(species.binomial==sp) %>% 
+      mutate(pres.theo=case_when(fsmwinter>0~1,
+                                 TRUE~0)) %>% 
+      group_by(pres.theo) %>% 
+      summarise(prop=sum(presence==1)/n())
+    df.mod.select[df.mod.select$species.binomial==sp,"preval.theo"]=
+      preval[preval$pres.theo==1,"prop"]/(preval[preval$pres.theo==1,"prop"]+preval[preval$pres.theo==0,"prop"])
+    
+  }
+}
 
 df.mod.select %>% 
-  left_join(df.overlap,by=c("species.binomial")) %>% 
   pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm"),
                names_to = "parameter",
                values_to = "val") %>% 
   filter(!(mod=="hsm"&parameter%in%c("r_fsm","t_fsm"))) %>% 
   filter(!(mod=="fsm"&parameter%in%c("r_hsm","t_hsm"))) %>% 
-  ggplot(aes(overlap,val,color=mod))+
+  ggplot(aes(preval.theo,val,color=mod))+
   geom_point()+
   geom_smooth(method="gam",aes(color=NULL))+
   facet_wrap(~parameter,scales="free",nrow=3)
+
+
+#_ Compute AUC ----
+df.output$auc=NA
+df.output$threshold=NA
+
+for (sp in species.list){
+  print(sp)
+  
+  ### 2 var
+  print("2sm")
+  K_int=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="2sm",
+                  "K_int"])
+  r_fsm=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="2sm",
+                  "r_fsm"])
+  t_fsm=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="2sm",
+                  "t_fsm"])
+  r_hsm=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="2sm",
+                  "r_hsm"])
+  t_hsm=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="2sm",
+                  "t_hsm"])
+  db.pred <- db.clim %>% 
+    filter(species.binomial==sp) %>% 
+    crossing(proba_thresh=seq(0.01,1,by=0.01)) %>% 
+    mutate(proba=K_int/
+             ((1+exp(-r_fsm*(fsmwinter-t_fsm)))*
+                (1+exp(-r_hsm*(hsm-t_hsm)))),
+           pred=case_when(proba>proba_thresh~1,
+                          TRUE~0))
+  df.auc=data.frame(threshold=seq(0.01,1,by=0.01),
+                    auc=NA)
+  for (i in seq(0.01,1,by=0.01)){
+    db.pred.auc <- db.pred %>% 
+      filter(proba_thresh==i)
+    df.auc[df.auc$threshold==i,"auc"]=as.numeric(pROC::auc(db.pred.auc$presence,db.pred.auc$pred))
+  }
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="2sm",
+            c("threshold","auc")]=
+    list(df.auc[which.max(df.auc$auc),"threshold"],
+      df.auc[which.max(df.auc$auc),"auc"])
+  rm(db.pred,db.pred.auc,df.auc)
+    
+  # HSM
+  print("hsm")
+  K_int=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="hsm",
+                  "K_int"])
+  r_hsm=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="hsm",
+                  "r_hsm"])
+  t_hsm=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="hsm",
+                  "t_hsm"])
+  db.pred <- db.clim %>% 
+    filter(species.binomial==sp) %>% 
+    crossing(proba_thresh=seq(0.01,1,by=0.01)) %>% 
+    mutate(proba=K_int/
+             ((1+exp(-r_hsm*(hsm-t_hsm)))),
+           pred=case_when(proba>proba_thresh~1,
+                          TRUE~0))
+  df.auc=data.frame(threshold=seq(0.01,1,by=0.01),
+                    auc=NA)
+  for (i in seq(0.01,1,by=0.01)){
+    db.pred.auc <- db.pred %>% 
+      filter(proba_thresh==i)
+    df.auc[df.auc$threshold==i,"auc"]=as.numeric(pROC::auc(db.pred.auc$presence,db.pred.auc$pred))
+  }
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="hsm",
+            c("threshold","auc")]=
+    list(df.auc[which.max(df.auc$auc),"threshold"],
+         df.auc[which.max(df.auc$auc),"auc"])
+  rm(db.pred,db.pred.auc,df.auc)
+  
+  
+  # FSM
+  print("fsm")
+  K_int=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="fsm",
+                  "K_int"])
+  r_fsm=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="fsm",
+                  "r_fsm"])
+  t_fsm=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="fsm",
+                  "t_fsm"])
+  db.pred <- db.clim %>% 
+    filter(species.binomial==sp) %>% 
+    crossing(proba_thresh=seq(0.01,1,by=0.01)) %>% 
+    mutate(proba=K_int/
+             ((1+exp(-r_fsm*(fsmwinter-t_fsm)))),
+           pred=case_when(proba>proba_thresh~1,
+                          TRUE~0))
+  df.auc=data.frame(threshold=seq(0.01,1,by=0.01),
+                    auc=NA)
+  for (i in seq(0.01,1,by=0.01)){
+    db.pred.auc <- db.pred %>% 
+      filter(proba_thresh==i)
+    df.auc[df.auc$threshold==i,"auc"]=as.numeric(pROC::auc(db.pred.auc$presence,db.pred.auc$pred))
+  }
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="fsm",
+            c("threshold","auc")]=
+    list(df.auc[which.max(df.auc$auc),"threshold"],
+         df.auc[which.max(df.auc$auc),"auc"])
+  rm(db.pred,db.pred.auc,df.auc)
+  
+  
+  # None
+  print("none")
+  K_int=as.numeric(df.output[df.output$species.binomial==sp
+                  & df.output$mod=="none",
+                  "K_int"])
+  db.pred <- db.clim %>% 
+    filter(species.binomial==sp) %>% 
+    crossing(proba_thresh=seq(0.01,1,by=0.01)) %>% 
+    mutate(proba=K_int,
+           pred=case_when(proba>proba_thresh~1,
+                          TRUE~0))
+  df.auc=data.frame(threshold=seq(0.01,1,by=0.01),
+                    auc=NA)
+  for (i in seq(0.01,1,by=0.01)){
+    db.pred.auc <- db.pred %>% 
+      filter(proba_thresh==i)
+    df.auc[df.auc$threshold==i,"auc"]=as.numeric(pROC::auc(db.pred.auc$presence,db.pred.auc$pred))
+  }
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="none",
+            c("threshold","auc")]=
+    list(df.auc[which.max(df.auc$auc),"threshold"],
+         df.auc[which.max(df.auc$auc),"auc"])
+  rm(db.pred,db.pred.auc,df.auc)
+  
+  
+}
+
+
+
+#_ continentality index ----
+library(raster)
+rast.cont=as.data.frame(mean(rast("jci_year.nc")),xy=TRUE) %>% 
+  mutate(z=x,
+         x=y,
+         y=z) %>% 
+  select(-z) %>% 
+  rast(crs="epsg:4326")
+df.cont=data.frame(species.binomial=df.mod.select$species.binomial,
+                   jci=NA)
+for (sp in df.mod.select$species.binomial){
+  print(sp)
+  db.pres <- db.clim %>% 
+    filter(species.binomial==sp) %>% 
+    filter(presence==1)
+  db.pres <- cbind(db.pres,
+                   jci=extract(rast.cont,db.pres[,c("x","y")])[["mean"]])
+  jci=mean(db.pres$jci,na.rm=TRUE)
+  df.cont[df.cont$species.binomial==sp,"jci"]=jci
+}
+rm(rast.cont)
+
+
+#### Section 16 ####
+#'@description fit linear models
+#'
+
+
+#_ Fit model ----
+
+species.list=unique(db.clim$species.binomial)
+# c("Abies alba",
+#   "Betula pendula",
+#   "Pinus sylvestris",
+#   "Picea abies",
+#   "Fagus sylvatica",
+#   "Fraxinus excelsior",
+#   "Pinus nigra",
+#   "Quercus ilex")
+df.output=df.traits %>% 
+  filter(species.binomial %in% species.list) %>% 
+  select(species.binomial,Group,p.trait,PX.mu,PX.sd,LT50.mean,LT50.sd,prevalence) %>% 
+  mutate(K_int=NA,
+         r_fsm=NA,
+         r_hsm=NA,
+         t_hsm=NA,
+         t_fsm=NA,
+         Rhat=NA,
+         lp__=NA,
+         divergence=NA) %>% 
+  crossing(mod=c("2sm","hsm","fsm","none"))
+set.seed(4554)
+for (sp in species.list){
+  print(sp)
+  db.pres <- db.clim %>%
+    filter(psi>(-10000)) %>% #remove very low value of psi
+    filter(species.binomial==sp) %>% 
+    mutate(hsm=hsm/1000,
+           fsm=fsmwinter) 
+  
+  # 2 var
+  print("2sm")
+  data.list <- list(N=dim(db.pres)[1],
+                    presence=db.pres$presence,
+                    fsm=as.numeric(db.pres$fsm),
+                    hsm=as.numeric(db.pres$hsm)
+                    )
+  fit.2var <- stan(file = "glm_lin_1sp_2var.stan",
+                   data=data.list,
+                   iter=1000,
+                   chains=3,
+                   core=3,
+                   include=FALSE,
+                   pars=c("proba"))
+  save(fit.2var,file=paste0("fit_mod7/",sp,"_fit2var.RData"))
+  summary=summary(fit.2var)$summary
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="2sm",
+            c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","Rhat","lp__")]=
+    list(summary["K_int","mean"],
+         summary["r_fsm","mean"],
+         summary["r_hsm","mean"],
+         summary["t_hsm","mean"],
+         summary["t_fsm","mean"],
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"]
+    )
+  
+  # HSM
+  print("hsm")
+  data.list <- list(N=dim(db.pres)[1],
+                    presence=db.pres$presence,
+                    hsm=as.numeric(db.pres$hsm)
+                    )
+  fit.hsm <- stan(file = "glm_lin_1sp_1varh.stan",
+                  data=data.list,
+                  iter=1000,
+                  chains=3,
+                  core=3,
+                  include=FALSE,
+                  pars=c("proba"))
+  save(fit.hsm,file=paste0("fit_mod7/",sp,"_fit_hsm.RData"))
+  summary=summary(fit.hsm)$summary
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="hsm",
+            c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","Rhat","lp__")]=
+    list(summary["K_int","mean"],
+         0,
+         summary["r_hsm","mean"],
+         summary["t_hsm","mean"],
+         0,
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"]
+    )
+  
+  # FSM
+  print("fsm")
+  data.list <- list(N=dim(db.pres)[1],
+                    presence=db.pres$presence,
+                    fsm=as.numeric(db.pres$fsm)
+                    )
+  fit.fsm <- stan(file = "glm_lin_1sp_1var.stan",
+                  data=data.list,
+                  iter=1000,
+                  chains=3,
+                  core=3,
+                  include=FALSE,
+                  pars=c("proba"))
+  save(fit.fsm,file=paste0("fit_mod7/",sp,"_fit_fsm.RData"))
+  summary=summary(fit.fsm)$summary
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="fsm",
+            c("K_int","r_fsm","r_hsm","t_hsm","t_fsm","Rhat","lp__")]=
+    list(summary["K_int","mean"],
+         summary["r_fsm","mean"],
+         0,
+         0,
+         summary["t_fsm","mean"],
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"]
+    )
+  
+  
+}
+
+#_ Format output ----
+
+#' Compute divergence
+
+for (sp in species.list){
+  print(sp)
+  
+  ### 2 var
+  print("2sm")
+  load(file=paste0("fit_mod6/",sp,"_fitIII.RData"))
+  par_mod=get_sampler_params(fit.2var)
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="2sm",
+            "divergence"]=
+    mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+  
+  # HSM
+  print("hsm")
+  load(file=paste0("fit_mod6/",sp,"_fitIII_hsm.RData"))
+  par_mod=get_sampler_params(fit.hsm)
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="hsm",
+            "divergence"]=
+    mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+  
+  
+  # FSM
+  print("fsm")
+  load(file=paste0("fit_mod6/",sp,"_fitIII_fsm.RData"))
+  par_mod=get_sampler_params(fit.fsm)
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="fsm",
+            "divergence"]=
+    mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+  
+  # None
+  print("none")
+  load(file=paste0("fit_mod6/",sp,"_fitIII_none.RData"))
+  par_mod=get_sampler_params(fit.none)
+  df.output[df.output$species.binomial==sp
+            & df.output$mod=="none",
+            "divergence"]=
+    mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+  
+}
+
+#' Compute BIC
+df.output <- df.output %>% 
+  mutate(nb.par=case_when(mod=="2sm"~5,
+                          mod=="hsm"|mod=="fsm"~3,
+                          mod=="none"~1),
+         bic=2*nb.par-2*lp__)
+write.csv(df.output,file="fit_mod6/df.output.csv")
+
+#' Model selection
+df.mod.select <- df.output %>% 
+  filter(Rhat<1.2) %>% 
+  filter(divergence <0.1) %>% 
+  group_by(species.binomial) %>% 
+  slice(which.min(bic)) %>% 
+  ungroup()
 
 #### Annexe ####
 #'@description check figure
