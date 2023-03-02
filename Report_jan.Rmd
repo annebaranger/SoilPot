@@ -17,6 +17,12 @@ tar_load(df.species)
 head(df.species)
 db.clim<-tar_read(df.mauri.sfm,store="target_occ")
 tar_load(df.mod.select)
+
+df.species <- df.species |>
+  left_join(
+    db.clim |> filter(presence==1) |> 
+      group_by(species.binomial) |> 
+      summarise(n=n()))
 ```
 
 
@@ -46,16 +52,16 @@ df.mod.select %>%
 
 ```{r par_t_traits}
 df.mod.select %>% 
-  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod) %>% 
+  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod,prevalence) %>% 
   pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
   pivot_longer(cols=c("t_fsm","t_hsm"),names_to="threshold",values_to="threshold_val") %>% 
   filter((mod%in%c("hsm","2sm")&traits=="PX.mu"&threshold=="t_hsm")|
            (mod%in%c("fsm","2sm")&traits=="LT50.mean"&threshold=="t_fsm")) %>% 
   mutate(app_thresh=-traits_val-threshold_val) %>% 
   ggplot(aes(traits_val,threshold_val,color=species.binomial,label=species.binomial,shape=mod))+
-  geom_point(size=3)+
+  geom_point(aes(size=prevalence))+
   geom_text(hjust=0,vjust=0)+
-  geom_abline(slope=-1)+
+  # geom_abline(slope=-1)+
   geom_smooth(method="gam",aes(color=NULL,label=NULL,shape=NULL))+
   facet_wrap(traits~threshold,scales="free")+
   theme(legend.position = "none")+
@@ -79,6 +85,139 @@ df.mod.select %>%
   theme_minimal()+
   NULL
 
+cowplot::plot_grid(
+  df.mod.select |> 
+    left_join(df.species) |> 
+    filter(!mod%in%c("fsm","none")) |> 
+    ggplot(aes(n,t_hsm))+
+    geom_point()+
+    theme_minimal()+
+    geom_smooth(method="gam"),
+  df.mod.select |> 
+    left_join(df.species) |> 
+    filter(!mod%in%c("fsm","none")) |> 
+    ggplot(aes(n,PX.mu))+
+    geom_point()+
+    theme_minimal()+
+    geom_smooth(method="gam")
+)
+
+
+# test significance
+df.lm=df.mod.select |> 
+  filter(!mod%in%c("fsm","none"))
+summary(lm(t_hsm~PX.mu+prevalence,df.lm))
+
+
+df.species |> 
+  filter(prevalence!=0.1) |> 
+  ggplot(aes(prevalence,shade_tolerance.mean,label=species.binomial))+
+  geom_point()+
+  geom_text()+
+  geom_smooth(method="gam")
+
+# distribution des marges de sécurité en fonction du P50
+db.clim |> 
+  left_join(df.species) |> 
+  filter(presence==1) |> 
+  filter(psi>(-10000)) |> 
+  group_by(species.binomial,px.mu,prevalence) |> 
+  summarise(min.hsm=quantile(hsm,probs=0.01),
+           max.hsm=quantile(hsm,probs=0.99),
+           med.hsm=median(hsm)) |> 
+  pivot_longer(cols=c("min.hsm","max.hsm")) |> 
+  ggplot(aes(px.mu,value,color=name))+
+  geom_point()+
+  geom_smooth(method='lm')
+
+db.clim |> 
+  left_join(df.species) |> 
+  filter(presence==1) |> 
+  filter(psi>(-10000)) |> 
+  group_by(species.binomial,px.mu,prevalence) |> 
+  summarise(q05.psi=quantile(hsm,probs=0.05)) |> 
+  ggplot(aes(px.mu,q05.psi))+
+  geom_point()+
+  geom_smooth(method='lm')
+
+db.clim |> 
+  mutate(species.binomial=fct_reorder(species.binomial,px.mu)) |> 
+  filter(presence==1) |> 
+  filter(psi>(-15000)) |>
+  mutate(hsm_sc=hsm/px.mu) |> 
+  ggplot(aes(hsm_sc,species.binomial))+
+  geom_boxplot(outlier.shape = NA)
+
+db.clim |> 
+  mutate(species.binomial=fct_reorder(species.binomial,px.mu)) |> 
+  filter(presence==1) |> 
+  filter(psi>(-15000)) |>
+  mutate(hsm_sc=hsm/px.mu) |> 
+  ggplot(aes(psi,species.binomial))+
+  geom_boxplot(outlier.shape = NA)
+
+db.clim |> 
+  filter(presence==1) |> 
+  filter(psi>(-15000)) |>
+  sample_frac(0.1) |> 
+  ggplot(aes(px.mu,psi))+
+  geom_point()+
+  geom_smooth()
+db.clim |> 
+  left_join(df.species) |> 
+  filter(presence==1) |> 
+  filter(psi>(-10000)) |> 
+  filter(!is.na(px.mu)) |> 
+  group_by(species.binomial,px.mu,prevalence) |> 
+  summarise(min.hsm=quantile(psi,probs=0.01),
+           max.hsm=quantile(psi,probs=0.99)) |> 
+  mutate(hsm.width=max.hsm-min.hsm) |> 
+  ggplot(aes(px.mu,hsm.width/1000,color=species.binomial))+
+  geom_point(aes(size=prevalence))+
+  geom_smooth(method='gam')+
+  theme(legend.position = "none")+
+  # geom_abline(slope = -1)+
+  NULL
+
+db.clim |> 
+  left_join(df.mod.select) |> 
+  filter(presence==1) |> 
+  filter(psi>(-15000)) |> 
+  filter(!is.na(t_hsm)) |> 
+  group_by(species.binomial,t_hsm,prevalence) |> 
+  summarise(min.hsm=quantile(psi,probs=0.01),
+           max.hsm=quantile(psi,probs=0.99)) |> 
+  mutate(hsm.width=max.hsm-min.hsm) |> 
+  ggplot(aes(t_hsm,hsm.width/1000))+
+  geom_point(aes(size=prevalence))+
+  geom_smooth(method='gam')+
+  theme(legend.position = "none")+
+  # geom_abline(slope = -1)+
+  NULL
+
+
+
+
+db.clim |> 
+  left_join(df.species) |> 
+  filter(prevalence !=0.1) |> 
+  filter(presence==1) |> 
+  filter(psi>(-10000)) |> 
+  filter(!is.na(px.mu)) |> 
+  group_by(species.binomial,px.mu,prevalence) |> 
+  summarise(min.hsm=quantile(psi,probs=0.01),
+           max.hsm=quantile(psi,probs=0.99)) |> 
+  mutate(hsm.width=max.hsm-min.hsm) |> 
+  ggplot(aes(prevalence,hsm.width/1000,color=species.binomial))+
+  geom_point()+
+  geom_smooth(method='gam')+
+  theme(legend.position = "none")
+
+df.species |> 
+  filter(prevalence!=0.1) |> 
+  ggplot(aes(lat.q05,prevalence))+
+  geom_point()+
+  geom_smooth()
 ```
 
 #### t / traits contribution
@@ -119,6 +258,54 @@ df.mod.select %>%
   facet_wrap(~traits,scales="free")+
   theme_minimal()
 ```
+#### t rescaled / traits
+
+```{r t_scaled}
+df.range<-db.clim |> 
+  filter(presence==1) |> 
+  filter(psi>(-10000)) |> 
+  group_by(species.binomial) |> 
+  summarise(psi_range=max(psi)/1000-min(psi)/1000,
+            t_range=max(frost.winter)-min(frost.winter))
+
+
+df.mod.select %>% 
+  left_join(df.range) |> 
+  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod,psi_range,t_range) %>% 
+  mutate(t_hsm_scaled=t_hsm/psi_range,
+         t_fsm_scaled=t_fsm/t_range) |> 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("t_hsm_scaled","t_fsm_scaled"),names_to="threshold",values_to="threshold_val") %>% 
+  filter((mod%in%c("hsm","2sm")&traits=="PX.mu"&threshold=="t_hsm_scaled")|
+           (mod%in%c("fsm","2sm")&traits=="LT50.mean"&threshold=="t_fsm_scaled")) %>% 
+  mutate(app_thresh=-traits_val-threshold_val) %>% 
+  ggplot(aes(traits_val,threshold_val,color=species.binomial,label=species.binomial,shape=mod))+
+  geom_point(size=3)+
+  geom_text(hjust=0,vjust=0)+
+  geom_abline(slope=-1)+
+  geom_smooth(method="gam",aes(color=NULL,label=NULL,shape=NULL))+
+  facet_wrap(traits~threshold,scales="free_x")+
+  theme(legend.position = "none")+
+  theme_minimal()+
+  NULL
+
+
+
+df.mod.select %>% 
+  left_join(df.range) |> 
+  select(species.binomial,PX.mu,LT50.mean,t_hsm,t_fsm,mod,psi_range,t_range) %>% 
+  mutate(t_hsm_scaled=t_hsm/psi_range,
+         t_fsm_scaled=t_fsm/t_range) |> 
+  pivot_longer(cols=c("PX.mu","LT50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("t_hsm_scaled","t_fsm_scaled"),names_to="threshold",values_to="threshold_val") %>% 
+  filter((mod%in%c("hsm","2sm")&traits=="PX.mu"&threshold=="t_hsm_scaled")|
+           (mod%in%c("fsm","2sm")&traits=="LT50.mean"&threshold=="t_fsm_scaled")) %>% 
+  ggplot(aes(threshold,threshold_val))+
+  geom_boxplot()+
+  theme_minimal()
+```
+
+
 
 ### r / traits
 ```{r par_r_trait}
@@ -290,19 +477,20 @@ df.mod.select %>%
 ## Parameter / overlap
 ```{r par_overlap}
 df.mod.select %>% 
+  filter(mod!="none") |> 
   left_join(df.species) %>% 
-  pivot_longer(cols=c("K_int","r_fsm","r_hsm","t_hsm","t_fsm"),
+  pivot_longer(cols=c("K_int","inflex_fsm","inflex_hsm","t_hsm","t_fsm"),
                names_to = "parameter",
                values_to = "val") %>% 
-  pivot_longer(cols=c("overlap","overlap.hsm","overlap.fsm"),
+  pivot_longer(cols=matches("overlap"),
                names_to="overlap",
                values_to = "overlap_val") %>% 
-  filter(!(mod=="hsm"&parameter%in%c("r_fsm","t_fsm"))) %>% 
-  filter(!(mod=="fsm"&parameter%in%c("r_hsm","t_hsm"))) %>% 
+  filter(!(mod=="hsm"&parameter%in%c("inflex_fsm","t_fsm"))) %>% 
+  filter(!(mod=="fsm"&parameter%in%c("inflex_hsm","t_hsm"))) %>% 
   ggplot(aes(overlap_val,val,color=mod))+
   geom_point()+
   geom_smooth(method="gam",aes(color=NULL))+
-  facet_wrap(overlap~parameter,scales="free",nrow=3)
+  facet_wrap(overlap~parameter,scales="free",nrow=4)
 ```
 
 
@@ -487,7 +675,7 @@ df.mod.select %>%
 ```
 
 # Statistical analysis
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 for (par in c("K_int","r_fsm","r_hsm","t_hsm","t_fsm")){
   print(par)
@@ -564,5 +752,60 @@ df.mod.select %>%
   geom_point()+
   geom_smooth(method="gam",aes(color=NULL))+
   facet_wrap(~parameter,scales="free",nrow=3)
+```
+
+
+# Compute overlap with shade tolerance - test
+
+```{r}
+df <- data.frame(p = rep(1:4, each = 4), 
+                 sp = c("toto", "tutu", "titi","tata"), 
+                 pres = c(T, T, T, T, F, T, T, F,T, T, F, F,F,T,T,T),
+                 shade = c(1, 2, 3,4))
+df
+
+
+#' Compute shade overlap
+#' 
+#' Shade overlap is the number of species with greater shade tolerance than 
+#' the species shade tolerance present in a plot.
+#' 
+#' @param shade vector of shade tolerance (dbl) for all species
+#' @param pres presence vector (lgl) for all species.
+#' 
+#' @examples 
+#' shade_overlap(shade = 1:3, pres = c(TRUE, TRUE, TRUE))
+#' shade_overlap(shade = 1:3, pres = c(TRUE, TRUE, FALSE))
+#' shade_overlap(shade = 1:3, pres = c(TRUE, FALSE, TRUE))
+#' 
+#' @importFrom  checkmate assertNumeric assertLogical
+#' 
+shade_overlap <- function(shade, pres){
+    
+    # assertNumeric(shade, any.missing = FALSE)
+    # assertLogical(pres, any.missing = FALSE, len = length(shade))
+    
+    # low <- lower.tri(outer(shade, shade))
+    prem <- shade * pres
+    
+    overlap <- outer(prem, prem, ">") #* low
+    res <- colSums(overlap) * pres
+    return(res)
+}
+
+df %>% group_by(p) %>%
+    mutate(overlap = shade_overlap(shade, pres) )
+
+
+df.overlapshade=db.clim |>
+  filter(presence==1) |> 
+  select(node,species.binomial,presence) |> 
+  left_join(df.species[,c("species.binomial","shade_tolerance.mean")]) |> 
+  filter(!is.na(shade_tolerance.mean)) |> 
+  group_by(node) |> 
+  mutate(overlap_plot=colSums(outer(shade_tolerance.mean,shade_tolerance.mean,">"))) |> #shade_overlap(shade_tolerance.mean,presence) 
+  ungroup() |> 
+  group_by(species.binomial) |> 
+  summarise(overlap_shade=mean(overlap_plot))
 ```
 

@@ -60,7 +60,8 @@ list(
   ),
   tar_target(
     df.shadetol,
-    get.shadetol(df.traits)
+    get.shadetol(df.traits,
+                 df.mauri.sfm)
   ),
   tar_target(
     df.species,

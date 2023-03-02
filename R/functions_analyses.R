@@ -280,7 +280,6 @@ get.niche <- function(df.traits,
               overlap.hsm=mean(overlap.hsm),
               overlap.fsm=mean(overlap.fsm))
   
-  
   df.traits <- df.traits %>% 
     left_join(df.niche,by="species.binomial") %>% 
     left_join(df.overlap,by="species.binomial")
@@ -297,11 +296,27 @@ get.niche <- function(df.traits,
 #' @return df.loc + extracted variables + computed variables
 #' 
 
-get.shadetol <- function(df.traits){
+get.shadetol <- function(df.traits,
+                         db.clim){
   df.shadetol=read.csv2("data/Species traits/data_Niinemets&Valladares_2006.csv")
   df.traits=df.traits %>% 
     left_join(df.shadetol,by=c("species.binomial"="Species"))
-  return(df.traits[,c("species.binomial","shade_tolerance.mean","drought_tolerance.mean","waterlogging_tolerance.mean")]) 
+  
+  
+  df.overlapshade=db.clim |>
+    filter(presence==1) |> 
+    select(node,species.binomial,presence) |> 
+    left_join(df.traits[,c("species.binomial","shade_tolerance.mean")], by="species.binomial") |> 
+    filter(!is.na(shade_tolerance.mean)) |> 
+    group_by(node) |> 
+    mutate(overlap_plot=colSums(outer(shade_tolerance.mean,shade_tolerance.mean,">"))) |> #shade_overlap(shade_tolerance.mean,presence) 
+    ungroup() |> 
+    group_by(species.binomial) |> 
+    summarise(overlap_shade=mean(overlap_plot))
+  
+  df.traits=df.traits %>% 
+    left_join(df.overlapshade,by=c("species.binomial"))
+  return(df.traits[,c("species.binomial","shade_tolerance.mean","drought_tolerance.mean","waterlogging_tolerance.mean","overlap_shade")]) 
 }
 
 #' Get traits and caract

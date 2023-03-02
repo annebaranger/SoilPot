@@ -48,10 +48,10 @@ list(
     df.mod.select,
     select.model(df.output)
   ),
-  tar_render(
-    report,
-    "Report_jan.Rmd"
-  ),
+  # tar_render(
+  #   report,
+  #   "Report_jan.Rmd"
+  # ),
   NULL
 
 )
