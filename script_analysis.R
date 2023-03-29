@@ -28,16 +28,18 @@ list(
   ),
   tar_target(
     db.clim.file,
-    "output/db_EuForest.csv",
+    "output/db_EuForest.csv", # a changer --> mette chemin du tar_object
     format="file"
   ),
   
   # run models
-  # tar_target(
-  #   fit.mod,
-  #   fit.logistic(db.clim.file,
-  #                df.species)
-  # ),
+  tar_target(
+    fit.mod,
+    fit.logistic(db.clim.file,
+                 df.species,
+                 soil.depth="real",
+                 output="fit_mod6/")
+  ),
   tar_target(
     df.output,
     get.output(db.clim.file,

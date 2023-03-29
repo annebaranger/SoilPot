@@ -16,16 +16,21 @@ tar_option_set(packages = c("stringr","ggplot2","data.table","tidyr","viridis","
 list(
   tar_target(
     df.traits.file,
-    "output/df_trait_filtered.csv",
+    "target_safetymargin/objects/df.traits",
     format="file"
   ),
   tar_target(
     df.traits,
-    read.csv(df.traits.file)
+    readRDS(df.traits.file)
   ),
   tar_target(
     psi_min,
     "output/psihorday_real.csv",
+    format="file"
+  ),
+  tar_target(
+    psi_min_100,
+    "output/psihorday_100.csv",
     format="file"
   ),
   tar_target(
@@ -40,32 +45,41 @@ list(
   tar_target(
     df.mauri.sfm,
     get.mauri(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
-              df.traits,
-              psi_min,
-              frost.index)
+              psi_min=psi_min,
+              psi_min_100=psi_min_100,
+              frost.index=frost.index)
   ),
-
+  
+  tar_target(
+    df.mauri,
+    get.occurence(df.mauri.sfm,
+                  df.traits)
+  ),
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   #### Section 10 - Compute niche index ####
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   tar_target(
+    species.list,
+    list.files("data/chorological_maps_dataset/")
+  ),
+  tar_target(
     df.preval,
-    get.prevalence(df.traits,
-                   df.mauri.sfm)
+    get.prevalence(species.list,
+                   df.mauri)
   ),
   tar_target(
     df.niche,
-    get.niche(df.traits,
-              df.mauri.sfm)
+    get.niche(species.list,
+              df.mauri)
   ),
   tar_target(
     df.shadetol,
-    get.shadetol(df.traits,
-                 df.mauri.sfm)
+    get.shadetol(species.list,
+                 df.mauri)
   ),
   tar_target(
     df.species,
-    get.species(df.traits,
+    get.species(species.list,
                 df.preval,
                 df.shadetol,
                 df.niche)

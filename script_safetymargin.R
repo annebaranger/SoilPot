@@ -34,14 +34,15 @@ list(
 #### Section 6 - Safety margins ####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # Frost safety margins
-  tar_target(
-    safety.margins,
-    compute.sfm(df.traits,
-                rast.temp,
-                rast.fdg.mean,
-                psihorday_real,
-                europe)
-  ),
+# useless in reality
+  # tar_target(
+  #   safety.margins,
+  #   compute.sfm(df.traits,
+  #               rast.temp,
+  #               rast.fdg.mean,
+  #               psihorday_real,
+  #               europe)
+  # ),
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 7 - Load traits ####

@@ -1114,6 +1114,16 @@ compute.sfm <- function(df.traits,
 #' @authors Maximilian Larter (INRAE - Biogeco) & Anne Baranger (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+#' Get species list 
+#' 
+#' @description get european species list from euforgen
+#' @return  list of European species 
+get.specieslist <- function(){
+  species.list=list.files("data/chorological_maps_dataset/")
+  return(species.list)
+}
+
+
 #'Get LT50 database
 #'
 #'@description From Constance database and measures performed in Clermont campaign
@@ -1176,8 +1186,11 @@ get.LT50 <- function(){
   
   ### Load LT50 database from 2022 campaign ###
   #############################################
-  df.LT50.2022 <- read.csv2("data/Species traits/camp_LT50_DB.csv") # made by code in "Analysis new campaign data.Rmd" : output file
-  #clean rm species with bad fits:
+  df.LT50.2022 <- read.csv2("data/Species traits/camp_LT50_DB.csv") |> # made by code in "Analysis new campaign data.Rmd" : output file
+    bind_rows(read.csv2("data/Species traits/new_data_2023_prelim.csv"))
+  
+    
+    #clean rm species with bad fits:
   df.LT50.2022 %>% filter(!Species %in% c("Abies balsamea", 
                                           "Acer saccharum",
                                           "Betula papyrifera",
@@ -1476,32 +1489,51 @@ get.LT50 <- function(){
 }
 
 
+
+
 #' Get P50 database 
 #' 
 #' @description Load P50 from Max database
 #' @return  Dataframe with P50 per European species 
 get.P50 <- function(){
+  species.list=get.specieslist()
   # df.P50.lit <- read.csv2("data/Species traits/BdD_full_by_species.csv")
   # df.P50.select <- df.P50.lit %>% 
   #   select(colnames(df.P50.lit)[!grepl("LT",colnames(df.P50.lit))]) %>% 
   #   select(-Dmean,-Psi_min_MD,-WD,-Plot_continent,-MHZ,-nplot,-ntree,-D99,-score,-X.gs90,-X.tlp,-densityMEANcor,-Exo,-genus,-GBIF_species,-class) %>% 
   #   filter(New_continent=="E_U") %>% 
   #   filter(!is.nan(P50tot))
+  df.p50.msp<-read.csv2("data/Species traits/p50_nmsp.csv") |> 
+    filter(species.binomial %in% species.list) |> 
+    mutate(group=tolower(group),
+           p88.mu=p50-50/slope,
+           p50.mu=p50,
+           bdd="martinsp") |> 
+    select(group,species.binomial,p50.mu,p88.mu,bdd) |> 
+    filter(!(group=="angiosperm"&is.na(p88.mu)))
   df.p50.lit <- read.csv2("data/Species traits/2022_10_20_cleaned_xft.csv") %>% 
     select(uniqueID,lat,long,XFT.database,Group,Family,Genus,Species,
            Developmental.stage,Growth.form,P50,P50.SD,P12,P88,Curve,Equation,
-           psi.min.predawn..MPa.,psi..min.midday..MPa.) %>% 
-    mutate(species.binomial=paste(Genus,Species)) %>% 
+           psi.min.predawn..MPa.,psi..min.midday..MPa.,P50.number.of.samples) %>% 
+    mutate(species.binomial=paste(Genus,Species),
+           bdd="hammond") %>% 
+    filter((species.binomial %in% species.list)&
+             (!species.binomial %in% df.p50.msp$species.binomial )) |> 
     filter(Curve=="S") %>%
     filter(Growth.form=="T") %>% 
-    group_by(Group,Genus,Species,species.binomial) %>% 
+    filter(Developmental.stage =="A") |> 
+    group_by(Group,Genus,Species,species.binomial,bdd) %>% 
     summarise(P50.mu=mean(as.numeric(P50),na.rm=TRUE),
               P50.sd=sd(as.numeric(P50),na.rm=TRUE),
               P88.mu=mean(as.numeric(P88),na.rm=TRUE),
               P88.sd=sd(as.numeric(P88),na.rm=TRUE)) %>% 
-    ungroup()
-  write.csv(df.p50.lit,"output/df_P50_filtered.csv",row.names = FALSE)
-  return(df.p50.lit)
+    ungroup() |> 
+    rename_with(.cols=everything(),
+                tolower) |> 
+    select(group,species.binomial,p50.mu,p50.sd,p88.mu,p88.sd,bdd)
+  df.p50=bind_rows(df.p50.lit,df.p50.msp)
+  write.csv(df.p50,"output/df_P50_filtered.csv",row.names = FALSE)
+  return(df.p50)
 }
 
 #' Get LT50/P50 database 
@@ -1519,30 +1551,32 @@ get.traits <- function(dir.distribution="data/chorological_maps_dataset",
   # df.LT50 <- read.csv("output/df_LT50_filtered.csv")
   
   df.traits.raw <- df.LT50 %>% 
-    left_join(df.P50,by=c("Species"="species.binomial"))
+    left_join(df.P50,by=c("Species"="species.binomial")) |> 
+    rename_with(.cols=everything(),
+                tolower)
   # df.traits.raw <- full_join(df.P50,df.LT50,by="Species")
   # df.traits.missing <- df.traits.raw %>% 
   #   filter(is.na(P50tot) | is.na(LT50.mean))
   df.traits <- df.traits.raw %>% 
-    filter(!is.na(P50.mu)) %>% 
-    filter(!is.na(LT50.mean)) %>% 
-    select(Species,Group,P50.mu,P50.sd,P88.mu,P88.sd,LT50.mean,LT50.sd,data.quality) %>% #MATmean,MAPmean,Leaf_phenology,
+    filter(!is.na(p50.mu)) %>% 
+    filter(!is.na(lt50.mean)) %>% 
+    select(species,group,p50.mu,p50.sd,p88.mu,p88.sd,lt50.mean,lt50.sd,data.quality) %>% #MATmean,MAPmean,Leaf_phenology,
     unique() %>% 
-    rename(`species.binomial`="Species") %>% 
+    rename(`species.binomial`="species") %>% 
     separate(col = species.binomial,
              into=c("genus","species"),
              remove=FALSE) %>% 
     mutate(sp.ind=paste0(substr(genus,1,2),substr(species,1,2)),
            species.name=str_replace(species.binomial," ","_")) %>% 
     relocate(c("species.name","sp.ind"),.after="species") %>% 
-    mutate(p.trait=case_when(Group=="gymnosperm"~"P50",
-                             Group=="angiosperm"&!is.na(P88.mu)~"P88",
-                             Group=="angiosperm"&is.na(P88.mu)~"P50"),
-           PX.mu=case_when(p.trait=="P88"~P88.mu,
-                           p.trait=="P50"~P50.mu),
-           PX.sd=case_when(p.trait=="P88"~P88.sd,
-                           p.trait=="P50"~P50.sd)) %>% 
-    filter(!(species.binomial=="Pinus contorta"&Group=="angiosperm"))
+    mutate(p.trait=case_when(group=="gymnosperm"~"p50",
+                             group=="angiosperm"&!is.na(p88.mu)~"p88",
+                             group=="angiosperm"&is.na(p88.mu)~"p50"),
+           px.mu=case_when(p.trait=="p88"~p88.mu,
+                           p.trait=="p50"~p50.mu),
+           px.sd=case_when(p.trait=="p88"~p88.sd,
+                           p.trait=="p50"~p50.sd)) %>% 
+    filter(!(species.binomial=="Pinus contorta"&group=="angiosperm"))
   
   for (i in 1:dim(df.traits)[1]){
     species.files=list.files(file.path(dir.distribution,df.traits$species.binomial[i],"shapefiles"))
