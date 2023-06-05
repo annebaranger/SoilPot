@@ -1829,11 +1829,12 @@ db.clim.lm<-
   ungroup() |> 
   group_by(group,species.binomial,name,lt50.mean,px.mu) |> 
   summarise(quant05=quantile(value,probs=0.05,na.rm=TRUE)[[1]],
+            quant50=quantile(value,probs=0.5,na.rm=TRUE)[[1]],
             quant95=quantile(value,probs=0.95,na.rm=TRUE)[[1]]) |> 
   ungroup() |> 
   mutate(lt50.mean=scale(lt50.mean),
          px.mu=scale(px.mu)) |> 
-  pivot_longer(cols=c("quant05","quant95"),
+  pivot_longer(cols=c("quant05","quant50","quant95"),
                names_to="quant_name",
                values_to = "quant_val") |> 
   left_join(df.species[,c("species.binomial","group")])
@@ -1999,14 +2000,14 @@ df.lm.traits |>
 ### Species selected with relevant safety margins 
 
 ``` {r }
-predictor=c("frost.winter","psi","sgdd","wai","pet","pr","prpet")
+predictor=c("frost.winter","psi","sgdd","wai","pet","pr","prpet","temp.mean")
 db.clim.lm<- 
   db.clim |>  
   filter(presence==1) |> 
   filter(psi>(-15000)) |>
   left_join(df.quant.final) |> 
   mutate(prpet=pr-pet) |> 
-  pivot_longer(cols=c("frost.winter","psi","wai","pet","pr","sgdd","prpet")) |> 
+  pivot_longer(cols=predictor) |> 
   group_by(name) |> 
   mutate(value=scale(value)) |> 
   ungroup() |> 
@@ -2086,14 +2087,14 @@ df.lm.traits<-df.lm.traits |>
          signif3=pval>0.01&pval<0.05)
 
 df.lm.traits |> 
-  filter((pred%in% c("sgdd","frost.winter","psi","wai","prpet","pr") & quant=="quant05")|
+  filter((pred%in% c("sgdd","frost.winter","psi","wai","prpet","pr","temp.mean") & quant=="quant05")|
            (pred=="pet"& quant=="quant95")) |> 
-  filter((trait=="lt50"&(pred %in% c("sgdd","frost.winter")))|
+  filter((trait=="lt50"&(pred %in% c("sgdd","frost.winter","temp.mean")))|
            (trait=="px"&(pred %in% c("wai","psi","prpet","pr","pet")))) |> 
   mutate(pred=case_when(pred=="frost.winter"~"tmin",
                         TRUE~pred)) |> 
-  filter(pred %in% c("sgdd","tmin","psi","pet","pr")) |> 
-  mutate(quant=recode(quant, quant05 = "5%", quant95 = "95%")) |> 
+  filter(pred %in% c("temp.mean","tmin","psi","pet","pr")) |> 
+  mutate(quant=forcats::fct_recode(quant, "5%"="quant05", "95%"="quant95")) |> 
   ggplot(aes(x=mean,y=pred,color=quant))+
   scale_color_manual(values=c("darkred","lightblue"))+
   geom_point(size=2.5,alpha=0.6)+ #,position=position_dodge(width=0.5)
@@ -2117,7 +2118,10 @@ df.lm.traits |>
         legend.position = "top",
         axis.text.y = element_text(hjust=0.5))+
   labs(color="Quantiles")->a
+```
 
+
+``` {r fig2.withoutoutrangedspecies}
 df.n <- df.mod.select %>% 
   filter(mod!="none") |> 
   left_join(df.quant.final) |> 
@@ -2304,21 +2308,23 @@ plot2
 ## 4th hypothesis
 
 ```{r fig3}
-predictor=c("overlap_drought","overlap_shade","lat.mean")
+predictor=c("overlap_drought","overlap_shade") #,"lat.mean"
 df.mod.overlap=df.mod.select |> 
   left_join(df.species) |> 
   select(group,species.binomial,
          matches(c("inflex","^t_")),
          overlap_drought,overlap_shade,lat.mean,
          mod) |> 
-  pivot_longer(cols=c("overlap_drought","overlap_shade","lat.mean"),
+  mutate(across(matches("inflex"),
+                ~100-.)) |> 
+  pivot_longer(cols=c("overlap_drought","overlap_shade"), #,"lat.mean"
                names_to = "pred",
                values_to = "pred_val") |> 
-  group_by(pred) |> mutate(pred_val=scale(pred_val)) |> 
+  # group_by(pred) |> mutate(pred_val=scale(pred_val)) |>
   pivot_longer(cols=matches(c("inflex","t_")),
                names_to = "par",
-               values_to = "par_val") |> 
-  group_by(par) |>  mutate(par_val=scale(par_val))
+               values_to = "par_val")# |>
+  # group_by(par) |>  mutate(par_val=scale(par_val))
 
 df.lm.overlap<-data.frame(pred=rep(predictor,2)) |> 
   crossing(par=c("inflex_fsm","inflex_hsm","t_hsm","t_fsm"),
@@ -2337,16 +2343,20 @@ for(preds in predictor){
       filter(pred==preds) |>
       filter(par==pars) |> 
       filter(!is.na(par_val)&
-               !is.na(pred_val)) 
-    if(grepl("hsm",pars)){
-      df.mod.pred<-df.mod.pred |>
-        filter(mod%in%c("2sm","hsm"))|> 
-        mutate(par_val=scale(par_val))
-    }else{
-      df.mod.pred<-df.mod.pred |>
-        filter(mod%in%c("2sm","fsm")) |> 
-        mutate(par_val=scale(par_val))
-    }
+               !is.na(pred_val)) |> 
+      mutate(par_val=scale(par_val),
+             pred_val=scale(pred_val))
+    # if(grepl("hsm",pars)){
+    #   df.mod.pred<-df.mod.pred |>
+    #     filter(mod%in%c("2sm","hsm"))|>
+    #     mutate(par_val=scale(par_val))
+    #            # pred_val=scale(pred_val))
+    # }else{
+    #   df.mod.pred<-df.mod.pred |>
+    #     filter(mod%in%c("2sm","fsm")) |> 
+    #     mutate(par_val=scale(par_val))
+    #            # pred_val=scale(pred_val))
+    # }
     summary=as.data.frame(summary(lm(par_val~pred_val,df.mod.pred))$coefficients)
     conf=confint(lm(formula = par_val~pred_val, data = df.mod.pred))
     print(summary(lm(par_val~pred_val,df.mod.pred)))
@@ -2505,5 +2515,29 @@ plot_ly(x=hsm,y=fsm,z=pred,colors=c("black","lightgrey")) |> add_surface()
 #                       fsm=fsm) 
 ```
 
+## Supplementary mat
+```{r}
+df.mod.select |> 
+  left_join(df.quant.final) |> 
+  relocate(mod, .after = "species.binomial") |> 
+  select(species.binomial,n,mod,prevalence,k_int,r_fsm,t_fsm,r_hsm,t_hsm,inflex_fsm,inflex_hsm,fsm.valid.2,hsm.valid.3,shade_tolerance.mean,drought_tolerance.mean,overlap_shade,overlap_drought) |> 
+  mutate(across(is.numeric,~round(.,digits = 2)),
+         across(matches("_hsm"),~case_when(mod=="fsm"~NA,TRUE~.)),
+         across(matches("_fsm"),~case_when(mod=="hsm"~NA,TRUE~.))) |> 
+  rename(`Shade tolerance`="shade_tolerance.mean",
+         `Drought tolerance`="drought_tolerance.mean",
+         Model="mod",
+         Species="species.binomial",
+         I_fsm="inflex_fsm",
+         I_hsm="inflex_hsm",
+         `Data FSM`="fsm.valid.2",
+         `Data HSM`="hsm.valid.3",
+         `Drought cdi`="overlap_drought",
+         `Shade cdi`="overlap_shade") ->t
+  print(xtable(t),include.rownames=FALSE)
+
+  
+  
+```
 
 

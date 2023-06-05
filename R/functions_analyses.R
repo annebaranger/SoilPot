@@ -167,7 +167,7 @@ get.occurence <- function(db.cont,
                           df.traits){
   db.cont <- db.cont %>% 
     left_join(df.traits) 
-  # compute LT50.sp.spring
+  # compute LT50.sp.spring, averaged by species
   date.dehardening=0
   df.fdg.sp <- db.cont %>%
     filter(presence==1) %>% 
@@ -696,7 +696,10 @@ compute.auc <- function(df.output,
   species.list=unique(df.output$species.binomial)
   
   df.output$auc=NA
-  df.output$threshold=NA
+  df.output$threshold_auc=NA
+  df.output$tss=NA
+  df.output$threshold_tss=NA
+  
   
   for (sp in species.list){
     print(sp)
@@ -722,22 +725,28 @@ compute.auc <- function(df.output,
       filter(species.binomial==sp) %>% 
       crossing(proba_thresh=seq(0.01,1,by=0.01)) %>% 
       mutate(proba=k_int/
-               ((1+exp(-r_fsm*(fsmwinter-t_fsm)))*
+               ((1+exp(-r_fsm*(fsm.winter-t_fsm)))*
                   (1+exp(-r_hsm*(hsm-t_hsm)))),
-             pred=case_when(proba>proba_thresh~1,
-                            TRUE~0))
+             pred=as.integer(case_when(proba>proba_thresh~1,
+                            TRUE~0)))
     df.auc=data.frame(threshold=seq(0.01,1,by=0.01),
-                      auc=NA)
+                      auc=NA,
+                      tss=NA)
     for (i in seq(0.01,1,by=0.01)){
       db.pred.auc <- db.pred %>% 
         filter(proba_thresh==i)
       df.auc[df.auc$threshold==i,"auc"]=as.numeric(pROC::auc(db.pred.auc$presence,db.pred.auc$pred))
+      df.auc[df.auc$threshold==i,"tss"]=confusionMatrix(as.factor(db.pred.auc$pred),as.factor(db.pred.auc$presence))$byClass[["Sensitivity"]] +
+                                        confusionMatrix(as.factor(db.pred.auc$pred),as.factor(db.pred.auc$presence))$byClass[["Specificity"]] -
+                                        1
     }
     df.output[df.output$species.binomial==sp
               & df.output$mod=="2sm",
-              c("threshold","auc")]=
+              c("threshold_auc","auc","threshold_tss","tss")]=
       list(df.auc[which.max(df.auc$auc),"threshold"],
-           df.auc[which.max(df.auc$auc),"auc"])
+           df.auc[which.max(df.auc$auc),"auc"],
+           df.auc[which.max(df.auc$tss),"threshold"],
+           df.auc[which.max(df.auc$tss),"tss"])
     rm(db.pred,db.pred.auc,df.auc)
     
     # HSM
@@ -759,17 +768,23 @@ compute.auc <- function(df.output,
              pred=case_when(proba>proba_thresh~1,
                             TRUE~0))
     df.auc=data.frame(threshold=seq(0.01,1,by=0.01),
-                      auc=NA)
+                      auc=NA,
+                      tss=NA)
     for (i in seq(0.01,1,by=0.01)){
       db.pred.auc <- db.pred %>% 
         filter(proba_thresh==i)
       df.auc[df.auc$threshold==i,"auc"]=as.numeric(pROC::auc(db.pred.auc$presence,db.pred.auc$pred))
+      df.auc[df.auc$threshold==i,"tss"]=confusionMatrix(as.factor(db.pred.auc$pred),as.factor(db.pred.auc$presence))$byClass[["Sensitivity"]] +
+        confusionMatrix(as.factor(db.pred.auc$pred),as.factor(db.pred.auc$presence))$byClass[["Specificity"]] -
+        1
     }
     df.output[df.output$species.binomial==sp
-              & df.output$mod=="hsm",
-              c("threshold","auc")]=
+              & df.output$mod=="2sm",
+              c("threshold_auc","auc","threshold_tss","tss")]=
       list(df.auc[which.max(df.auc$auc),"threshold"],
-           df.auc[which.max(df.auc$auc),"auc"])
+           df.auc[which.max(df.auc$auc),"auc"],
+           df.auc[which.max(df.auc$tss),"threshold"],
+           df.auc[which.max(df.auc$tss),"tss"])
     rm(db.pred,db.pred.auc,df.auc)
     
     
@@ -788,21 +803,27 @@ compute.auc <- function(df.output,
       filter(species.binomial==sp) %>% 
       crossing(proba_thresh=seq(0.01,1,by=0.01)) %>% 
       mutate(proba=k_int/
-               ((1+exp(-r_fsm*(fsmwinter-t_fsm)))),
+               ((1+exp(-r_fsm*(fsm.winter-t_fsm)))),
              pred=case_when(proba>proba_thresh~1,
                             TRUE~0))
     df.auc=data.frame(threshold=seq(0.01,1,by=0.01),
-                      auc=NA)
+                      auc=NA,
+                      tss=NA)
     for (i in seq(0.01,1,by=0.01)){
       db.pred.auc <- db.pred %>% 
         filter(proba_thresh==i)
       df.auc[df.auc$threshold==i,"auc"]=as.numeric(pROC::auc(db.pred.auc$presence,db.pred.auc$pred))
+      df.auc[df.auc$threshold==i,"tss"]=confusionMatrix(as.factor(db.pred.auc$pred),as.factor(db.pred.auc$presence))$byClass[["Sensitivity"]] +
+        confusionMatrix(as.factor(db.pred.auc$pred),as.factor(db.pred.auc$presence))$byClass[["Specificity"]] -
+        1
     }
     df.output[df.output$species.binomial==sp
-              & df.output$mod=="fsm",
-              c("threshold","auc")]=
+              & df.output$mod=="2sm",
+              c("threshold_auc","auc","threshold_tss","tss")]=
       list(df.auc[which.max(df.auc$auc),"threshold"],
-           df.auc[which.max(df.auc$auc),"auc"])
+           df.auc[which.max(df.auc$auc),"auc"],
+           df.auc[which.max(df.auc$tss),"threshold"],
+           df.auc[which.max(df.auc$tss),"tss"])
     rm(db.pred,db.pred.auc,df.auc)
     
     
@@ -818,17 +839,23 @@ compute.auc <- function(df.output,
              pred=case_when(proba>proba_thresh~1,
                             TRUE~0))
     df.auc=data.frame(threshold=seq(0.01,1,by=0.01),
-                      auc=NA)
+                      auc=NA,
+                      tss=NA)
     for (i in seq(0.01,1,by=0.01)){
       db.pred.auc <- db.pred %>% 
         filter(proba_thresh==i)
       df.auc[df.auc$threshold==i,"auc"]=as.numeric(pROC::auc(db.pred.auc$presence,db.pred.auc$pred))
+      df.auc[df.auc$threshold==i,"tss"]=confusionMatrix(as.factor(db.pred.auc$pred),as.factor(db.pred.auc$presence))$byClass[["Sensitivity"]] +
+        confusionMatrix(as.factor(db.pred.auc$pred),as.factor(db.pred.auc$presence))$byClass[["Specificity"]] -
+        1
     }
     df.output[df.output$species.binomial==sp
-              & df.output$mod=="none",
-              c("threshold","auc")]=
+              & df.output$mod=="2sm",
+              c("threshold_auc","auc","threshold_tss","tss")]=
       list(df.auc[which.max(df.auc$auc),"threshold"],
-           df.auc[which.max(df.auc$auc),"auc"])
+           df.auc[which.max(df.auc$auc),"auc"],
+           df.auc[which.max(df.auc$tss),"threshold"],
+           df.auc[which.max(df.auc$tss),"tss"])
     rm(db.pred,db.pred.auc,df.auc)
     
     
