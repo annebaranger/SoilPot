@@ -1411,7 +1411,7 @@ fviz_pca_var(clim.pca,
         plot.title = element_blank()))
 
 
-rm(db.acp,temp.winter,prec.winter,prec.summer,clim.pca)
+rm(db.acp,temp.winter,prec.winter,prec.summer,clim.pca,ph)
 ```
 
 
