@@ -11,7 +11,7 @@ source("R/functions_analyses.R")
 options(tidyverse.quiet = TRUE)
 tar_option_set(packages = c("stringr","ggplot2","data.table","tidyr","viridis",
                             "rgdal","raster","rosm","terra","dplyr","sf",
-                            "lubridate","lme4","rstan"),
+                            "lubridate","lme4","rstan","caret"),
                error = "continue") 
 
 #Targets
@@ -33,13 +33,13 @@ list(
   ),
   
   # run models
-  tar_target(
-    fit.mod,
-    fit.logistic(db.clim.file,
-                 df.species,
-                 soil.depth="real",
-                 output="fit_mod6/")
-  ),
+  # tar_target(
+  #   fit.mod,
+  #   fit.logistic(db.clim.file,
+  #                df.species,
+  #                soil.depth="real",
+  #                output="fit_mod6/")
+  # ),
   tar_target(
     df.output,
     get.output(db.clim.file,
@@ -47,8 +47,13 @@ list(
                output.path="fit_mod6/")
   ),
   tar_target(
+    df.output.auc,
+    compute.auc(df.output,
+                db.clim.file)
+  ),
+  tar_target(
     df.mod.select,
-    select.model(df.output)
+    select.model(df.output.auc)
   ),
   # tar_render(
   #   report,

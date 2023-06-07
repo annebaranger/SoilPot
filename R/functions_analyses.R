@@ -779,7 +779,7 @@ compute.auc <- function(df.output,
         1
     }
     df.output[df.output$species.binomial==sp
-              & df.output$mod=="2sm",
+              & df.output$mod=="hsm",
               c("threshold_auc","auc","threshold_tss","tss")]=
       list(df.auc[which.max(df.auc$auc),"threshold"],
            df.auc[which.max(df.auc$auc),"auc"],
@@ -818,7 +818,7 @@ compute.auc <- function(df.output,
         1
     }
     df.output[df.output$species.binomial==sp
-              & df.output$mod=="2sm",
+              & df.output$mod=="fsm",
               c("threshold_auc","auc","threshold_tss","tss")]=
       list(df.auc[which.max(df.auc$auc),"threshold"],
            df.auc[which.max(df.auc$auc),"auc"],
@@ -850,7 +850,7 @@ compute.auc <- function(df.output,
         1
     }
     df.output[df.output$species.binomial==sp
-              & df.output$mod=="2sm",
+              & df.output$mod=="none",
               c("threshold_auc","auc","threshold_tss","tss")]=
       list(df.auc[which.max(df.auc$auc),"threshold"],
            df.auc[which.max(df.auc$auc),"auc"],

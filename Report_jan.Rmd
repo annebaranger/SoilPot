@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(targets)
 Sys.setenv(TAR_PROJECT="analysis")
-lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","forcats","ggpubr","gdalUtils","sf","lubridate","lme4"),require,character.only=TRUE)
+lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","forcats","ggpubr","gdalUtils","sf","lubridate","lme4","xtable","plotly","factoextra"),require,character.only=TRUE)
 
 ```
 
@@ -74,6 +74,7 @@ rm(df.traits,df.traits.all)
 
 ```{r files.mod}
 tar_load(df.mod.select)
+load("output/df.quant.final.RData")
 ```
 
 # Maps of incicators
@@ -215,6 +216,7 @@ as.data.frame(aggregate(tmin,
         legend.title = element_text(size=9))+
           scale_fill_brewer(palette="RdYlBu")
 
+# plot psimin
 as.data.frame(aggregate(psimin,fact=2),xy=TRUE) |> 
     mutate(psi=cut(psi,
                  breaks=c(-Inf, -15000, -10000, -5000,-3000, -2000, -1000, -500, 0,Inf),
@@ -236,63 +238,69 @@ as.data.frame(aggregate(psimin,fact=2),xy=TRUE) |>
 # rm(psimin,psimin100,safety.margins,tmin)
 ```
 
-# plot traits
+# Plot of physiological traits
 
 ```{r p50.distribution}
-#P50/P88
-df.species |>
-  filter(!is.na(p50.mu)) |> 
-  filter(species.binomial %in% df.mod.select$species.binomial) |> 
-  select(species.binomial,px.mu,px.sd,p.trait) |> 
-  mutate(species.binomial=fct_reorder(species.binomial,px.mu),
-         na.sd=case_when(is.na(px.sd)~"mean",
-                         TRUE~"true"),
-         px.sd=case_when(is.na(px.sd)~mean(df.species$px.sd,na.rm=TRUE),
-                         TRUE~px.sd)) |> 
-  ggplot(aes(px.mu,species.binomial,color=p.trait)) +
-  geom_point()+
-  geom_pointrange(aes(xmin=px.mu-px.sd,xmax=px.mu+px.sd))+
-  theme_minimal()
+#Plot of P50 and P88
+# df.species |>
+#   filter(!is.na(p50.mu)) |> 
+#   filter(species.binomial %in% df.mod.select$species.binomial) |> 
+#   select(species.binomial,px.mu,px.sd,p.trait) |> 
+#   mutate(species.binomial=fct_reorder(species.binomial,px.mu),
+#          na.sd=case_when(is.na(px.sd)~"mean",
+#                          TRUE~"true"),
+#          px.sd=case_when(is.na(px.sd)~mean(df.species$px.sd,na.rm=TRUE),
+#                          TRUE~px.sd)) |> 
+#   ggplot(aes(px.mu,species.binomial,color=p.trait)) +
+#   geom_point()+
+#   geom_pointrange(aes(xmin=px.mu-px.sd,xmax=px.mu+px.sd))+
+#   theme_minimal()+
+#   labs(color="",
+#        y="",
+#        x="Pcrit")
 
-#only p50
-df.species |>
-  filter(!is.na(p50.mu)) |> 
-  filter(species.binomial %in% df.mod.select$species.binomial) |> 
-  select(species.binomial,p50.mu,p50.sd,group) |> 
-  mutate(species.binomial=fct_reorder(species.binomial,p50.mu),
-         na.sd=case_when(is.na(p50.sd)~"mean",
-                         TRUE~"true"),
-         p50.sd=case_when(is.na(p50.sd)~mean(df.species$p50.sd,na.rm=TRUE),
-                         TRUE~p50.sd)) |> 
-  ggplot(aes(p50.mu,species.binomial,color=group)) +
-  geom_point()+
-  geom_pointrange(aes(xmin=p50.mu-p50.sd,xmax=p50.mu+p50.sd))+
-  theme_minimal()+
-  scale_color_manual(values=c("chocolate2","forestgreen"))+
-  labs(color="",
-       y="",
-       x="Pcrit")
+cowplot::plot_grid(
+  #only p50
+  df.species |>
+    filter(!is.na(p50.mu)) |> 
+    filter(species.binomial %in% df.mod.select$species.binomial) |> 
+    select(species.binomial,p50.mu,p50.sd,group) |> 
+    mutate(species.binomial=fct_reorder(species.binomial,p50.mu),
+           na.sd=case_when(is.na(p50.sd)~"mean",
+                           TRUE~"true"),
+           p50.sd=case_when(is.na(p50.sd)~mean(df.species$p50.sd,na.rm=TRUE),
+                           TRUE~p50.sd)) |> 
+    ggplot(aes(p50.mu,species.binomial,color=group)) +
+    geom_point()+
+    geom_pointrange(aes(xmin=p50.mu-p50.sd,xmax=p50.mu+p50.sd))+
+    theme_minimal()+
+    scale_color_manual(values=c("chocolate2","forestgreen"))+
+    labs(color="",
+         y="",
+         x="P50"),
+  #only LT50
+  df.species |>
+    filter(!is.na(lt50.mean)) |> 
+    filter(species.binomial!="Juniperus communis") |> 
+    filter(species.binomial %in% df.mod.select$species.binomial) |> 
+    select(species.binomial,lt50.mean,lt50.sd,group) |> 
+    mutate(species.binomial=fct_reorder(species.binomial,lt50.mean),
+           na.sd=case_when(is.na(lt50.sd)~"mean",
+                           TRUE~"true"),
+           lt50.sd=case_when(is.na(lt50.sd)~mean(df.species$lt50.sd,na.rm=TRUE),
+                           TRUE~lt50.sd)) |> 
+    ggplot(aes(lt50.mean,species.binomial,color=group)) +
+    geom_point()+
+    geom_pointrange(aes(xmin=lt50.mean-lt50.sd,xmax=lt50.mean+lt50.sd))+
+    theme_minimal()+
+    scale_color_manual(values=c("chocolate2","forestgreen"))+
+    labs(color="",
+         y="",
+         x="LT50")
+)
 
-df.species |>
-  filter(!is.na(lt50.mean)) |> 
-  filter(species.binomial!="Juniperus communis") |> 
-  filter(species.binomial %in% df.mod.select$species.binomial) |> 
-  select(species.binomial,lt50.mean,lt50.sd,group) |> 
-  mutate(species.binomial=fct_reorder(species.binomial,lt50.mean),
-         na.sd=case_when(is.na(lt50.sd)~"mean",
-                         TRUE~"true"),
-         lt50.sd=case_when(is.na(lt50.sd)~mean(df.species$lt50.sd,na.rm=TRUE),
-                         TRUE~lt50.sd)) |> 
-  ggplot(aes(lt50.mean,species.binomial,color=group)) +
-  geom_point()+
-  geom_pointrange(aes(xmin=lt50.mean-lt50.sd,xmax=lt50.mean+lt50.sd))+
-  theme_minimal()+
-  scale_color_manual(values=c("chocolate2","forestgreen"))+
-  labs(color="",
-       y="",
-       x="LT50")
 
-
+# Common plot for standardized traits
 df.species |>
   filter(!is.na(lt50.mean)) |> 
   filter(species.binomial!="Juniperus communis") |> 
@@ -322,12 +330,12 @@ df.species |>
   scale_color_manual(values=c("steelblue","darkred"))+
   labs(color="",
        y="",
-       x="Standardized values")->p
+       x="Standardized values")
 ```
 
 # Species selection and traits using euforgen
 
-```{r quantEuforgen}
+```{r quantEuforgen, eval=FALSE, include=FALSE}
 df.quant<-data.frame(species.binomial=unique(db.clim$species.binomial)) |> 
   # left_join(df.species) |> 
   mutate(ymin=NA,
@@ -490,31 +498,54 @@ df.mod.select |>
 
 # Plot model output
 
-## slope/slope
+## Parameters of the model
 
+### slope/slope
+  
 ```{r par_r}
 df.mod.select %>% 
   ggplot(aes(r_hsm,r_fsm,color=species.binomial,shape=mod,label=species.binomial))+ #size=-log(Rhat),
   geom_point()+
-  geom_text(hjust=0,vjust=0)
+  geom_text(hjust=0,vjust=0)+
+  theme_minimal()
 ```
 
-## Threshold/threshold
+### Threshold/threshold
 ```{r par_t}
 df.mod.select %>% 
   ggplot(aes(t_fsm,t_hsm,color=species.binomial,shape=mod,label=species.binomial))+
   geom_text(hjust=0,vjust=0)+
-  geom_point(size=5)
+  geom_point(size=5)+
+  theme_minimal()
 
 ```
 
-## Threshold/slope
-```{r par_t}
+### Threshold/slope
+```{r par_t_preval}
 df.mod.select %>% 
   filter(mod %in% c("2sm","hsm")) |> 
   ggplot(aes(r_hsm,t_hsm,color=species.binomial,shape=mod,label=species.binomial))+
   geom_text(hjust=0,vjust=0)+
-  geom_point(size=5)
+  geom_point(size=5)+
+  theme_minimal()
+cowplot::plot_grid(
+  df.mod.select %>%
+    left_join(df.species) |> 
+    filter(mod %in% c("2sm","hsm")) |> 
+    ggplot(aes(r_hsm,t_hsm,color=prevalence,shape=mod,label=species.binomial))+
+    geom_text(hjust=0,vjust=0)+
+    geom_point(aes(size=prevalence,color=inflex_hsm))+
+    theme_minimal(),
+  df.mod.select %>%
+    left_join(df.species) |> 
+    filter(mod %in% c("2sm","fsm")) |> 
+    ggplot(aes(r_fsm,t_fsm,color=prevalence,shape=mod,label=species.binomial))+
+    geom_text(hjust=0,vjust=0)+
+    geom_point(size=5)+
+    theme_minimal()
+  )
+
+
 
 ```
 
@@ -570,27 +601,6 @@ Not observed for fsm.
 It confirms that HSM might not be a great indicator to catch presence absence of species.
 
 
-```{r par_t_slope}
-cowplot::plot_grid(
-  df.mod.select %>%
-    left_join(df.species) |> 
-    filter(mod %in% c("2sm","hsm")) |> 
-    ggplot(aes(r_hsm,t_hsm,color=prevalence,shape=mod,label=species.binomial))+
-    geom_text(hjust=0,vjust=0)+
-    geom_point(aes(size=prevalence,color=inflex_hsm)),
-  df.mod.select %>%
-    left_join(df.species) |> 
-    filter(mod %in% c("2sm","fsm")) |> 
-    ggplot(aes(r_fsm,t_fsm,color=prevalence,shape=mod,label=species.binomial))+
-    geom_text(hjust=0,vjust=0)+
-    geom_point(size=5)
-  )
-
-
-
-```
-
-
 Same conclusion. Link with abundance for HSM.
 
 ```{r par_t_n}
@@ -611,12 +621,15 @@ cowplot::plot_grid(
     geom_smooth(method="gam")
 )
 # test significance
-df.lm=df.mod.select |> 
-  filter(!mod%in%c("fsm","none"))
-summary(lm(t_hsm~px.mu+prevalence,df.lm))
+# df.lm=df.mod.select |> 
+#   left_join(df.species) |> 
+#   filter(!mod%in%c("fsm","none"))
+# summary(lm(t_hsm~px.mu+prevalence,df.lm))
+# rm(df.lm)
 ```
 
 ## Traits / niche
+
 ```{r trait_quantile}
 db.clim |> 
   filter(!is.na(px.mu)) |> 
@@ -757,9 +770,10 @@ df.lm.traits |>
 
 
 
+### drafts
 
 
-```{r par_t_n}
+```{r par_t_n2}
 
 # distribution des marges de sécurité en fonction du P50
 db.clim |> 
@@ -773,7 +787,8 @@ db.clim |>
   pivot_longer(cols=c("min.hsm","max.hsm")) |> 
   ggplot(aes(px.mu,value,color=name))+
   geom_point()+
-  geom_smooth(method='lm')
+  geom_smooth(method='lm')+
+  labs(title = "quantiles of HSM relative to P50")
 
 db.clim |> 
   left_join(df.species) |> 
@@ -831,7 +846,7 @@ db.clim |>
 
 ```
 
-#### t / traits contribution
+### t / traits contribution
 
 ```{r par_t_contrib}
 df.mod.select %>% 
@@ -872,7 +887,7 @@ df.mod.select %>%
   theme_minimal()
 ```
 
-#### t rescaled / traits
+### t rescaled / traits
 
 ```{r t_scaled}
 df.range<-db.clim |> 
@@ -1336,61 +1351,6 @@ df.mod.select %>%
 ```
 
 
-
-# Prevalence theo
-```{r preval_theo eval=FALSE, include=FALSE}
-#_ Compute prevalence ----
-df.mod.select$preval.theo=NA
-for (sp in df.mod.select$species.binomial){
-  print(sp)
-  if (df.mod.select[df.mod.select$species.binomial==sp,"mod"]=="2sm"){
-    print("2sm")
-    preval=db.clim %>% 
-      filter(species.binomial==sp) %>% 
-      mutate(pres.theo=case_when(hsm>0&fsmwinter>0~1,
-                                 TRUE~0)) %>% 
-      group_by(pres.theo) %>% 
-      summarise(prop=sum(presence==1)/n())
-    df.mod.select[df.mod.select$species.binomial==sp,"preval.theo"]=
-      preval[preval$pres.theo==1,"prop"]/(preval[preval$pres.theo==1,"prop"]+preval[preval$pres.theo==0,"prop"])
-    
-  }else if (df.mod.select[df.mod.select$species.binomial==sp,"mod"]=="hsm"){
-    print("hsm")
-    preval=db.clim %>% 
-      filter(species.binomial==sp) %>% 
-      mutate(pres.theo=case_when(hsm>0~1,
-                                 TRUE~0)) %>% 
-      group_by(pres.theo) %>% 
-      summarise(prop=sum(presence==1)/n())
-    df.mod.select[df.mod.select$species.binomial==sp,"preval.theo"]=
-      preval[preval$pres.theo==1,"prop"]/(preval[preval$pres.theo==1,"prop"]+preval[preval$pres.theo==0,"prop"])
-    
-  }else if (df.mod.select[df.mod.select$species.binomial==sp,"mod"]=="fsm"){
-    print("fsm")
-    preval=db.clim %>% 
-      filter(species.binomial==sp) %>% 
-      mutate(pres.theo=case_when(fsmwinter>0~1,
-                                 TRUE~0)) %>% 
-      group_by(pres.theo) %>% 
-      summarise(prop=sum(presence==1)/n())
-    df.mod.select[df.mod.select$species.binomial==sp,"preval.theo"]=
-      preval[preval$pres.theo==1,"prop"]/(preval[preval$pres.theo==1,"prop"]+preval[preval$pres.theo==0,"prop"])
-    
-  }
-}
-
-df.mod.select %>% 
-  pivot_longer(cols=c("k_int","r_fsm","r_hsm","t_hsm","t_fsm"),
-               names_to = "parameter",
-               values_to = "val") %>% 
-  filter(!(mod=="hsm"&parameter%in%c("r_fsm","t_fsm"))) %>% 
-  filter(!(mod=="fsm"&parameter%in%c("r_hsm","t_hsm"))) %>% 
-  ggplot(aes(preval.theo,val,color=mod))+
-  geom_point()+
-  geom_smooth(method="gam",aes(color=NULL))+
-  facet_wrap(~parameter,scales="free",nrow=3)
-```
-
 # ACP
 BIOMOD: mean annual, winter, and summer precipitation. Mean annual T ?C and minimum T ?C of the coldest month. Growing degree days (GDD > 5 ?C), PET
 
@@ -1424,7 +1384,6 @@ db.acp<-db.acp |>
   drop_na()
 
 ## perform acp
-library(factoextra)
 clim.pca=prcomp(db.acp[,c(3:10,12:15)],
                 scale=FALSE)
 cowplot::plot_grid(
@@ -1509,7 +1468,6 @@ df.mod.select |>
             n_discard=n-n_select)->trans
 df.mod.results[df.mod.results$Model=="none",2:4]=trans
 
-library(xtable)
 df.mod.results |> 
   mutate(Selected=round(100*Selected/Eligible.number),
          Discarded=round(100*Discarded/Eligible.number))
@@ -1736,268 +1694,16 @@ cowplot::plot_grid(
   rel_widths = c(0.5,1)
 )->plot
 plot
-ggsave(filename = "hyp1.png",
-       plot, 
-       width=10,
-       height = 6)
+# ggsave(filename = "hyp1.png",
+#        plot, 
+#        width=10,
+#        height = 6)
 
 
                                   
 ```
 
 ## 1st hypothesis
-
-
-```{r trait_quantile}
-db.clim |> 
-  mutate(species.binomial=fct_reorder(species.binomial,px.mu)) |> 
-  filter(presence==1) |> 
-  filter(psi>(-15000)) |>
-  pivot_longer(cols=c("psi","wai","pet","sgdd")) |> 
-  # mutate(hsm_sc=hsm/px.mu) |> 
-  ggplot(aes(value,species.binomial))+
-  geom_boxplot(outlier.shape = NA)+
-  facet_wrap(~name,scales="free")
-
-db.clim |> 
-    mutate(px.mu=-px.mu,
-         lt50.mean=-lt50.mean,
-         psi=psi,
-         wai=wai) |> 
-  filter(presence==1) |> 
-  filter(psi>(-15000)) |>
-  pivot_longer(cols=c("psi","wai","pet","pr")) |> 
-  group_by(name) |> 
-  mutate(value=scale(value,scale=TRUE,center=TRUE)) |> 
-  ungroup() |> 
-  group_by(species.binomial,name,px.mu) |> 
-  summarise(quant05=quantile(value,probs=0.05),
-            quant95=quantile(value,probs=0.95)) |> 
-  pivot_longer(cols=c("quant05","quant95"),names_to='quantiles',values_to="quant_val") |> 
-  ggplot(aes(px.mu,quant_val,color=quantiles))+
-  geom_point()+
-  geom_smooth(method="gam")+
-  scale_color_manual(values=c("darkred","lightblue"))+
-  # geom_point(aes(px.mu,quant05),color="darkred")+
-  # geom_point(aes(px.mu,quant95),color="lightblue")+
-  # geom_smooth(aes(px.mu,quant05),color="darkred",method="gam")+
-  # geom_smooth(aes(px.mu,quant95),color="lightblue",method="gam")+  # geom_segment(aes(x=trait_val,xend=trait_val,y=start_val,yend=end_val),alpha=0.3)+
-  facet_wrap(~name,scales="free", ncol = 4)+
-  theme_minimal()+
-  theme(axis.title.y=element_blank())+
-  labs(x="P50/88 (-MPa)")
-
-
-db.clim |> 
-    mutate(px.mu=-px.mu,
-         lt50.mean=-lt50.mean,
-         psi=-psi,
-         wai=-wai) |> 
-  filter(presence==1) |> 
-  filter(psi>(-15000)) |>
-  pivot_longer(cols=c("frost.winter","sgdd")) |> 
-  # pivot_longer(cols=c("frost.winter","psi","wai","pet","pr","sgdd")) |> 
-  group_by(name) |> 
-  mutate(value=scale(value,scale=TRUE,center=TRUE)) |> 
-  ungroup() |> 
-  group_by(species.binomial,name,lt50.mean) |> 
-  summarise(quant05=quantile(value,probs=0.05,na.rm=TRUE),
-            quant95=quantile(value,probs=0.95,na.rm=TRUE)) |> 
-  pivot_longer(cols=c("quant05","quant95"),names_to='quantiles',values_to="quant_val") |> 
-  ggplot(aes(lt50.mean,quant_val,color=quantiles))+
-  geom_point()+
-  geom_smooth(method="gam")+
-  scale_color_manual(values=c("darkred","lightblue"))+
-  facet_wrap(~name,scales="free")+
-  theme_minimal()+
-  theme(axis.title.y=element_blank())+
-  labs(x="LT50 (-°C)")
-```
-
-### Traits is P88
-
-```{r lm.trait.clim}
-predictor=c("frost.winter","psi","sgdd","wai","pet","pr","prpet")
-db.clim.lm<- 
-  db.clim |> 
-  filter(presence==1) |> 
-  filter(psi>(-15000)) |>
-  mutate(prpet=pr-pet) |> 
-  pivot_longer(cols=c("frost.winter","psi","wai","pet","pr","sgdd","prpet")) |> 
-  group_by(name) |> 
-  mutate(value=scale(value)) |> 
-  ungroup() |> 
-  group_by(group,species.binomial,name,lt50.mean,px.mu) |> 
-  summarise(quant05=quantile(value,probs=0.05,na.rm=TRUE)[[1]],
-            quant50=quantile(value,probs=0.5,na.rm=TRUE)[[1]],
-            quant95=quantile(value,probs=0.95,na.rm=TRUE)[[1]]) |> 
-  ungroup() |> 
-  mutate(lt50.mean=scale(lt50.mean),
-         px.mu=scale(px.mu)) |> 
-  pivot_longer(cols=c("quant05","quant50","quant95"),
-               names_to="quant_name",
-               values_to = "quant_val") |> 
-  left_join(df.species[,c("species.binomial","group")])
-df.lm.traits<-data.frame(pred=rep(predictor,2)) |> 
-  crossing(trait=c("lt50","px"),
-           quant=c("quant05","quant95"),
-           mean=NA,
-           sd=NA,
-           pval=NA,
-           conf.up=NA,
-           conf.low=NA)
-
-
-for(pred in predictor){
-  print(pred)
-  for(quant in c("quant05","quant95")){
-    print(quant)
-    db.clim.pred<-db.clim.lm |> 
-      filter(name==pred) |> 
-      filter(quant_name==quant)
-    summary=as.data.frame(summary(lm(quant_val~px.mu,db.clim.pred))$coefficients)
-    conf=confint(lm(formula = quant_val ~ px.mu, data = db.clim.pred))
-    print(summary(lm(quant_val~px.mu,db.clim.pred)))
-    df.lm.traits[df.lm.traits$pred==pred&
-                   df.lm.traits$quant==quant&
-                   df.lm.traits$trait=="px",
-                 c("mean","sd","pval","conf.up","conf.low")]=
-      c(summary["px.mu",c("Estimate","Std. Error","Pr(>|t|)")],
-        conf["px.mu",1],
-        conf["px.mu",2])
-    summary=as.data.frame(summary(lm(quant_val~lt50.mean,db.clim.pred))$coefficients)
-    conf=confint(lm(formula = quant_val ~ lt50.mean, data = db.clim.pred))
-    print(summary(lm(quant_val~lt50.mean,db.clim.pred)))
-    df.lm.traits[df.lm.traits$pred==pred&
-                   df.lm.traits$quant==quant&
-                   df.lm.traits$trait=="lt50",
-                 c("mean","sd","pval","conf.up","conf.low")]=
-      c(summary["lt50.mean",c("Estimate","Std. Error","Pr(>|t|)")],
-        conf["lt50.mean",1],
-        conf["lt50.mean",2])
-  }
-
-}   
-
-df.lm.traits<-df.lm.traits |> 
-  mutate(signif=pval<0.05)
-
-df.lm.traits |> 
-  filter((trait=="lt50"&(pred %in% c("sgdd","frost.winter")))|
-           (trait=="px"&(pred %in% c("wai","psi","prpet","pr","pet")))) |> 
-  ggplot(aes(x=mean,y=pred,color=quant))+
-  scale_color_manual(values=c("darkred","lightblue"))+
-  geom_point(size=2.5,alpha=0.6,position=position_dodge(width=0.5))+
-  geom_pointrange(aes(xmin=conf.low,xmax=conf.up),position=position_dodge(width=0.5))+
-  geom_text(aes(label = ifelse(signif, "*", "")), 
-            position = position_dodge(width = 0.8),hjust=5)+
-  geom_vline(xintercept = 0,linetype="dotted")+
-  theme_minimal()+
-  facet_wrap(~trait,scales="free_y")+
-  theme(axis.title= element_blank(),
-        axis.ticks.x = element_line(linewidth = 0.6),
-        axis.line.x = element_line(linewidth = 0.6),
-        panel.grid = element_blank(),
-        # legend.position = "none",
-        axis.text.y = element_text(hjust=0.5))+
-  labs(color="Quantiles")
-
-
-```
-
-### Trait is P50
-
-```{r lm/trait50.clim}
-predictor=c("frost.winter","psi","sgdd","wai","pet","pr","prpet")
-db.clim.lm<- 
-  db.clim |> 
-  filter(presence==1) |> 
-  left_join(df.species) |> 
-  filter(n>400) |> 
-  filter(psi>(-15000)) |>
-  mutate(prpet=pr-pet) |> 
-  pivot_longer(cols=c("frost.winter","psi","wai","pet","pr","sgdd","prpet")) |> 
-  group_by(name) |> 
-  mutate(value=scale(value)) |> 
-  ungroup() |> 
-  group_by(species.binomial,name,lt50.mean,p50.mu) |> 
-  summarise(quant05=quantile(value,probs=0.05,na.rm=TRUE)[[1]],
-            quant95=quantile(value,probs=0.95,na.rm=TRUE)[[1]]) |> 
-  ungroup() |> 
-  mutate(lt50.mean=scale(lt50.mean),
-         p50.mu=scale(p50.mu)) |> 
-  pivot_longer(cols=c("quant05","quant95"),
-               names_to="quant_name",
-               values_to = "quant_val") |> 
-  left_join(df.species[,c("species.binomial","group")])
-df.lm.traits<-data.frame(pred=rep(predictor,2)) |> 
-  crossing(trait=c("lt50","p50"),
-           quant=c("quant05","quant95"),
-           mean=NA,
-           sd=NA,
-           pval=NA,
-           conf.up=NA,
-           conf.low=NA)
-
-
-for(pred in predictor){
-  print(pred)
-  for(quant in c("quant05","quant95")){
-    print(quant)
-    db.clim.pred<-db.clim.lm |> 
-      filter(name==pred) |> 
-      filter(quant_name==quant)
-    summary=as.data.frame(summary(lm(quant_val~p50.mu,db.clim.pred))$coefficients)
-    conf=confint(lm(formula = quant_val ~ p50.mu, data = db.clim.pred))
-    print(summary(lm(quant_val~p50.mu,db.clim.pred)))
-    df.lm.traits[df.lm.traits$pred==pred&
-                   df.lm.traits$quant==quant&
-                   df.lm.traits$trait=="p50",
-                 c("mean","sd","pval","conf.up","conf.low")]=
-      c(summary["p50.mu",c("Estimate","Std. Error","Pr(>|t|)")],
-        conf["p50.mu",1],
-        conf["p50.mu",2])
-    summary=as.data.frame(summary(lm(quant_val~lt50.mean,db.clim.pred))$coefficients)
-    conf=confint(lm(formula = quant_val ~ lt50.mean, data = db.clim.pred))
-    print(summary(lm(quant_val~lt50.mean,db.clim.pred)))
-    df.lm.traits[df.lm.traits$pred==pred&
-                   df.lm.traits$quant==quant&
-                   df.lm.traits$trait=="lt50",
-                 c("mean","sd","pval","conf.up","conf.low")]=
-      c(summary["lt50.mean",c("Estimate","Std. Error","Pr(>|t|)")],
-        conf["lt50.mean",1],
-        conf["lt50.mean",2])
-  }
-
-}   
-
-df.lm.traits<-df.lm.traits |> 
-  mutate(signif=pval<0.05)
-
-df.lm.traits |> 
-  filter((trait=="lt50"&(pred %in% c("sgdd","frost.winter")))|
-           (trait=="p50"&(pred %in% c("wai","psi","prpet","pr","pet")))) |> 
-  ggplot(aes(x=mean,y=pred,color=quant))+
-  scale_color_manual(values=c("darkred","lightblue"))+
-  geom_point(size=2.5,alpha=0.6,position=position_dodge(width=0.5))+
-  geom_pointrange(aes(xmin=conf.low,xmax=conf.up),position=position_dodge(width=0.5))+
-  geom_text(aes(label = ifelse(signif, "*", "")), 
-            position = position_dodge(width = 0.8),hjust=5)+
-  geom_vline(xintercept = 0,linetype="dotted")+
-  theme_minimal()+
-  facet_wrap(~trait,scales="free_x")+
-  theme(axis.title= element_blank(),
-        axis.ticks.x = element_line(linewidth = 0.6),
-        axis.line.x = element_line(linewidth = 0.6),
-        panel.grid = element_blank(),
-        legend.position = "none",
-        axis.text.y = element_text(hjust=0.5))
-
-
-```
-
-
-### Species selected with relevant safety margins 
 
 ``` {r }
 predictor=c("frost.winter","psi","sgdd","wai","pet","pr","prpet","temp.mean")
@@ -2099,15 +1805,15 @@ df.lm.traits |>
   scale_color_manual(values=c("darkred","lightblue"))+
   geom_point(size=2.5,alpha=0.6)+ #,position=position_dodge(width=0.5)
   geom_pointrange(aes(xmin=conf.low,xmax=conf.up))+ #,position=position_dodge(width=0.5)
-  # geom_text(aes(label = ifelse(signif3, "*",
-  #                              ifelse(signif2,"**",
-  #                                     ifelse(signif1,"***",""))),
-  #               x=mean-0.65,
-  #               y=pred),
-  #           # position = position_dodge(9),
-  #           size=8,
-  #           show.legend = FALSE,
-  #           vjust=0.75)+
+  geom_text(aes(label = ifelse(signif3, "*",
+                               ifelse(signif2,"**",
+                                      ifelse(signif1,"***",""))),
+                x=mean-0.65,
+                y=pred),
+            # position = position_dodge(9),
+            size=8,
+            show.legend = FALSE,
+            vjust=0.75)+
   geom_vline(xintercept = 0,linetype="dotted")+
   theme_minimal()+
   facet_wrap(~trait,scales = "free_y")+
@@ -2118,10 +1824,11 @@ df.lm.traits |>
         legend.position = "top",
         axis.text.y = element_text(hjust=0.5))+
   labs(color="Quantiles")->a
+a
 ```
 
 
-``` {r fig2.withoutoutrangedspecies}
+``` {r fig2.withoutoutrangedspecies.2}
 df.n <- df.mod.select %>% 
   filter(mod!="none") |> 
   left_join(df.quant.final) |> 
@@ -2191,7 +1898,7 @@ df.lm.traits<-data.frame(pred=rep(predictor,2)) |>
 ```
 
 
-``` {r fig2.withoutoutrangedspecies}
+``` {r fig2.withoutoutrangedspecies3}
 for(pred in predictor){
   print(pred)
   for(quant in c("quant05","quant95")){
@@ -2401,90 +2108,6 @@ df.lm.overlap |>
         legend.title=element_blank(),
         axis.text.y = element_text(hjust=0.5)) -> plot3
   
-```
-
-
-```{r fig3}
-df.species |> 
-  left_join(df.mod.select) |> 
-  filter(!is.na(mod)) |> 
-  select(species.binomial,mod,inflex_hsm,inflex_fsm,t_hsm,t_fsm,overlap_shade,overlap_drought) |> 
-  pivot_longer(cols=c("inflex_fsm","inflex_hsm","t_hsm","t_fsm"),
-               names_to = "pars",
-               values_to = "pars_vals") |> 
-  pivot_longer(cols=c("overlap_drought","overlap_shade"),
-               names_to="predictors",
-               values_to="pred_vals") |> 
-  # pivot_longer(cols=c("t_hsm","t_fsm"),
-  #              names_to = "threshold",
-  #              values_to = "threshold_val") |> 
-  filter((mod%in%c("hsm","2sm")& pars%in%c("inflex_hsm","t_hsm"))|
-           (mod%in%c("fsm","2sm")&pars%in%c("inflex_fsm","t_fsm"))) |> 
-  ggplot(aes(pred_vals,pars_vals))+
-  geom_point()+
-  geom_smooth(method="gam")+
-  theme_minimal()+
-  theme(axis.title=element_blank(),
-        strip.placement = "outside",
-        axis.line = element_line(size=0.2))+
-  facet_grid(pars~predictors,
-             scales="free")
-
-df.species |> 
-  left_join(df.mod.select) |> 
-  filter(!is.na(mod)) |> 
-  select(species.binomial,mod,inflex_hsm,inflex_fsm,t_hsm,t_fsm,overlap_shade,overlap_drought) |> 
-  pivot_longer(cols=c("inflex_hsm","inflex_fsm"),
-               names_to = "pars",
-               values_to = "pars_vals") |> 
-  pivot_longer(cols=c("overlap_drought","overlap_shade"),
-               names_to="predictors",
-               values_to="pred_vals") |> 
-  # pivot_longer(cols=c("t_hsm","t_fsm"),
-  #              names_to = "threshold",
-  #              values_to = "threshold_val") |> 
-  filter((mod%in%c("hsm","2sm")& pars%in%c("inflex_hsm","t_hsm"))|
-           (mod%in%c("fsm","2sm")&pars%in%c("inflex_fsm","t_fsm"))) |> 
-  ggplot(aes(pred_vals,pars_vals))+
-  geom_point()+
-  # geom_smooth(method="gam")+
-  theme_bw()+
-  theme(axis.title=element_blank(),
-        strip.placement = "outside",
-        axis.line = element_line(size=0.2))+
-  facet_grid(pars~predictors,
-             scales="free")
-```
-
-### Statistical analysis of coefficients
-
-```{r stats}
-## HSM parts
-for (pred in c("overlap_shade","overlap_drought")){
-  print(pred)
-  df.lm=df.species |> 
-    left_join(df.mod.select) |> 
-    filter(!is.na(mod)) |> 
-    select(species.binomial,mod,inflex_hsm,
-           t_hsm,overlap_shade,overlap_drought) |> 
-    filter(mod%in%c("hsm","2sm"))
-  print(summary(lm(df.lm[,"inflex_hsm"]~df.lm[,pred])))
-  print(summary(lm(df.lm[,"t_hsm"]~df.lm[,pred])))
-}
-
-
-## FSM parts
-for (pred in c("overlap_shade","overlap_drought")){
-  print(pred)
-  df.lm=df.species |> 
-    left_join(df.mod.select) |> 
-    filter(!is.na(mod)) |> 
-    select(species.binomial,mod,inflex_fsm,
-           t_fsm,overlap_shade,overlap_drought) |> 
-    filter(mod%in%c("hsm","2sm"))
-  print(summary(lm(df.lm[,"inflex_fsm"]~df.lm[,pred])))
-  print(summary(lm(df.lm[,"t_fsm"]~df.lm[,pred])))
-}
 ```
 
 ## Hypothesis figure
