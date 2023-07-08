@@ -23,9 +23,16 @@ list(
     df.traits,
     readRDS(df.traits.file)
   ),
+  # regular psi_min with beta=0.97
   tar_target(
     psi_min,
     "output/psihorday_real.csv",
+    format="file"
+  ),
+  # regular psi_min with varying beta
+  tar_target(
+    psi_varb,
+    "output/psihorday_varb.csv",
     format="file"
   ),
   tar_target(
@@ -47,16 +54,38 @@ list(
     get.mauri(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
               psi_min=psi_min,
               psi_min_100=psi_min_100,
-              frost.index=frost.index)
+              frost.index=frost.index,
+              file.path="output/db_EuForest_raw.csv")
   ),
   
   tar_target(
     df.mauri,
     get.occurence(df.mauri.sfm,
-                  df.traits)
+                  df.traits,
+                  file.path="output/db_EuForest.csv")
   ),
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  #### Section 10 - Idem, with other psi_min computation ####
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  tar_target(
+    df.mauri.sfm.varb,
+    get.mauri(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
+              psi_min=psi_varb,
+              psi_min_100=psi_min_100,
+              frost.index=frost.index,
+              file.path="output/db_EuForest_raw_varb.csv")
+  ),
+  
+  tar_target(
+    df.mauri.varb,
+    get.occurence(df.mauri.sfm.varb,
+                  df.traits,
+                  file.path="output/db_EuForest_varb.csv")
+  ),
+
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  #### Section 10 - Compute niche index ####
+  #### Section 11 - Compute niche index ####
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   tar_target(
     species.list,

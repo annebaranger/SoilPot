@@ -1,0 +1,180 @@
+---
+title: "Sensitivity analysis of soil"
+author: "Anne Baranger"
+date: "2023-06-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Sensitivity to LAI or Beta
+
+## few graphs
+```{r}
+Sys.setenv(TAR_PROJECT="psi2")
+tar_load(sensitivity_5_0.943)
+tar_load(sensitivity_5_0.966)
+tar_load(psihorday_real)
+tar_load(europe,store="target_data")
+europe=st_as_sf(europe)
+
+cbind(psihorday_real[,c("x","y","psi")],psi_6=sensitivity_5_0.943[,"psi"],psi_5=sensitivity_5_0.966[,"psi"]) |> 
+  pivot_longer(cols=c("psi","psi_5","psi_6")) |> 
+  mutate(value=cut(value,
+                 breaks=c(-Inf, -15000, -10000, -5000,-3000, -2000, -1000, -500, 0,Inf),
+                         labels=c("<-15MPa","-15<HSM<-10MPa","-10<HSM<-5MPa",
+                                  "-5<psi<-3MPa","-3/-2","-2/-1","-1/-0.5","-0.5/0",">0MPa"))) |> 
+  ggplot()+
+  geom_tile(aes(x=x,y=y,fill=value))+
+  geom_sf(data=europe,
+                  fill=NA)+
+  coord_sf()+
+  theme_minimal() +
+  theme(axis.title=element_blank(),
+        axis.text = element_blank(),
+        legend.key.size = unit(0.5,"cm"),
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=9))+
+  scale_fill_brewer(palette="RdYlBu")+
+  facet_wrap(~name)
+
+comp=cbind(psihorday_real[,c("x","y","psi")],
+           psi_6=sensitivity_5_0.943[,"psi"],
+           psi_5=sensitivity_5_0.966[,"psi"]) |> 
+  drop_na()
+cor(comp)
+
+mean(comp$psi-comp$psi_6)
+mean(comp$psi-comp$psi_5)
+
+
+```
+
+```{r}
+cbind(psihorday_real[,c("x","y","psi")],psi_6=sensitivity_5_0.943[,"psi"],psi_5=sensitivity_5_0.966[,"psi"]) |> 
+  pivot_longer(cols=c("psi","psi_5","psi_6")) |> 
+  group_by(name) |> 
+  sample_frac(0.5) |> 
+  mutate(value=cut(value,
+                 breaks=c(-Inf, -15000, -10000, -5000,-3000, -2000, -1000, -500, 0,Inf),
+                         labels=c("<-15MPa","-15<HSM<-10MPa","-10<HSM<-5MPa",
+                                  "-5<psi<-3MPa","-3/-2","-2/-1","-1/-0.5","-0.5/0",">0MPa"))) |> 
+  ggplot(aes(value,fill=name))+
+  geom_bar(position="dodge")
+  
+```
+
+## Compute bias and correlation
+
+### to beta
+```{r}
+tar_load(sensitivity_5_0.943)
+tar_load(sensitivity_5_0.966)
+tar_load(psihorday_real)
+
+
+cbind(psihorday_real[,c("x","y","psi")],
+      psi_94=sensitivity_5_0.943[,"psi"],
+      psi_96=sensitivity_5_0.966[,"psi"]) |> 
+  mutate(ssy_94=((psi_94-psi)/abs(psi)),
+         ssy_96=((psi_96-psi)/abs(psi))) |> 
+  summarise(ssy_94=median(ssy_94,na.rm=TRUE),
+            ssy_96=median(ssy_96,na.rm=TRUE),
+            cor_94=cor(psi_94,psi, use="pairwise.complete.obs"),
+            cor_96=cor(psi_96,psi, use="pairwise.complete.obs"))
+
+
+cbind(psihorday_real[,c("x","y","psi")],
+      psi_94=sensitivity_5_0.943[,"psi"],
+      psi_96=sensitivity_5_0.966[,"psi"]) |> 
+  mutate(ssy_94=((psi_94-psi)/abs(psi)),
+         ssy_96=((psi_96-psi)/abs(psi))) |> 
+  pivot_longer(cols=c("ssy_94","ssy_96")) |> 
+  ggplot(aes(value,color=name))+
+  geom_density()
+```
+
+### to lai
+
+```{r}
+tar_load(sensitivity_3_0.966)
+tar_load(sensitivity_4_0.966)
+tar_load(sensitivity_5_0.966)
+tar_load(sensitivity_6_0.966)
+
+cbind(sensitivity_5_0.966[,c("x","y","psi")],
+      psi_3=sensitivity_3_0.966[,"psi"],
+      psi_4=sensitivity_4_0.966[,"psi"],
+      psi_6=sensitivity_6_0.966[,"psi"]) |> 
+  mutate(ssy_3=((psi_3-psi)/abs(psi)),
+         ssy_4=((psi_4-psi)/abs(psi)),
+         ssy_6=((psi_6-psi)/abs(psi))) |> 
+  summarise(ssy_3=median(ssy_3,na.rm=TRUE),
+            ssy_4=median(ssy_4,na.rm=TRUE),
+            ssy_6=median(ssy_6,na.rm=TRUE),
+            cor_3=cor(psi_3,psi, use="pairwise.complete.obs"),
+            cor_4=cor(psi_4,psi, use="pairwise.complete.obs"),
+            cor_6=cor(psi_6,psi, use="pairwise.complete.obs"))
+```
+
+# Difference in computing specific beta in each area
+```{r}
+tar_load(psihorday_rbeta)
+cbind(psihorday_real[,c("x","y","psi")],psi_b=psihorday_rbeta[,"psi"]) |> 
+  pivot_longer(cols=c("psi","psi_b")) |> 
+  mutate(value=cut(value,
+                 breaks=c(-Inf, -15000, -10000, -5000,-3000, -2000, -1000, -500, 0,Inf),
+                         labels=c("<-15MPa","-15<HSM<-10MPa","-10<HSM<-5MPa",
+                                  "-5<psi<-3MPa","-3/-2","-2/-1","-1/-0.5","-0.5/0",">0MPa"))) |> 
+  ggplot()+
+  geom_tile(aes(x=x,y=y,fill=value))+
+  geom_sf(data=europe,
+                  fill=NA)+
+  coord_sf()+
+  theme_minimal() +
+  theme(axis.title=element_blank(),
+        axis.text = element_blank(),
+        legend.key.size = unit(0.5,"cm"),
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=9))+
+  scale_fill_brewer(palette="RdYlBu")+
+  facet_wrap(~name)
+```
+
+
+```{r}
+cbind(psihorday_real[,c("x","y","psi")],psi_b=psihorday_rbeta[,"psi"]) |> 
+  mutate(dif=psi-psi_b) |> 
+  ggplot()+
+  geom_tile(aes(x=x,y=y,color=dif))+
+  geom_sf(data=europe,
+                  fill=NA)+
+  coord_sf()+
+  theme_minimal() +
+  theme(axis.title=element_blank(),
+        axis.text = element_blank(),
+        legend.key.size = unit(0.5,"cm"),
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=9))
+```
+```{r}
+cbind(psihorday_real[,c("x","y","psi")],psi_b=psihorday_rbeta[,"psi"]) |> 
+  mutate(dif=psi-psi_b) |> 
+  mutate(value=cut(dif,
+                 breaks=c(-Inf,-3000, -2000, -1000, -500, 0,500,1000,2000,3000,Inf))) |> 
+  ggplot()+
+  geom_tile(aes(x=x,y=y,fill=value))+
+  geom_sf(data=europe,
+                  fill=NA)+
+  coord_sf()+
+  theme_minimal() +
+  theme(axis.title=element_blank(),
+        axis.text = element_blank(),
+        legend.key.size = unit(0.5,"cm"),
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=9))+
+  scale_fill_brewer(palette="RdYlBu")
+```
+

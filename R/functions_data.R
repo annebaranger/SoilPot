@@ -901,6 +901,438 @@ compute_psihorday <- function(SWCmin,
 }
 
 
+
+#' Compute psi min weighted over horizons with daily timepath, and with varying beta
+#' 
+#' @description function applies VG equation to compute minimum soil 
+#' potential using swc per horizon and associated parameters extracted from 
+#' 3D soil database. SWC computed with daily timestep
+#' @param SWCmin dataframe of SWC min of each horizons
+#' @param hor number of horizons to account for
+#' @param europe Europe polygon
+#' @param dir.data
+#' @param dir.file directory of 3D soil database
+#' @return Psi_min dataframe, that contains values of Psi_min computed with SUREAU 
+#' method
+compute_psihorday_beta <- function(SWCmin,
+                              europe,
+                              dir.data="data",
+                              dir.file="EU_SoilHydroGrids_1km",
+                              LAImax=5,
+                              file.output
+                              ){
+  
+  ## Compute SUREAU ##
+  # necessary functions 
+  kseriesum <- function(k1,k2) {return(1/(1/k1+1/k2))}
+  compute.B_GC <- function (La, Lv, rootRadius=0.0004) {
+    b <- 1 / sqrt(pi * Lv)
+    return(La * 2 * pi / (log(b/rootRadius)))
+  }
+  
+  # compute root characteristics
+  # betaRootProfile =0.97 
+  fRootToLeaf=1
+  # LAImax = 5
+  RAI = LAImax*fRootToLeaf
+  rootRadius=0.0004
+  
+  # depth used
+  rast.depth=rast("data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst")
+  crs(rast.depth) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
+  rast.depth <- terra::project(rast.depth,"epsg:4326",method="near")
+  rast.depth <- resample(rast.depth,
+                         crop(rast(file.path(dir.data,
+                                             dir.file,
+                                             "MRC_alp_sl2.tif")),
+                              vect(europe),
+                              mask=TRUE),
+                         method="near")
+  names(rast.depth)="depth"
+  
+  ## Look for biome beta
+  ecoregions=read_sf(dsn="data/WWF/official",
+                     layer="wwf_terr_ecos") |> 
+    select(BIOME,geometry)
+  sf_use_s2(FALSE)
+  ecoregions=st_crop(ecoregions,sf::st_bbox(europe))
+  points=st_as_sf(SWCmin[,c("x","y")],coords=c("x","y"),crs=st_crs(ecoregions))
+  points_biome=st_join(points,ecoregions) |> 
+    mutate(beta=case_when(BIOME%in%c(4,8,9,98)~0.966,
+                          BIOME%in%c(5)~0.976,
+                          BIOME%in%c(6)~0.943,
+                          BIOME==11~0.914,
+                          BIOME==12~0.964))
+  beta=resample(rast(cbind(SWCmin[,c("x","y")],
+                           betaRootProfile=points_biome$beta)),
+                crop(rast(file.path(dir.data,
+                                    dir.file,
+                                    "MRC_alp_sl2.tif")),
+                     vect(europe),
+                     mask=TRUE),
+                method="near")
+  ## Compute psi and ksoil and ksoiltostem ##
+  
+  # correspondance between horizons fril ERA5 and 3D hydrosoil
+  hor_corr=matrix(data=c(1,2,2,3,3,4,4,1,2,3,4,5,6,7,0,0.05,0.15,0.3,0.6,1,2),ncol=3)
+  hor_corr_inv=matrix(data=c(1,2,3,4,1,3,5,7),ncol=2)
+  
+  # "downscale" SWC 
+  SWCmin=resample(rast(SWCmin,crs="epsg:4326"),
+                  crop(rast(file.path(dir.data,
+                                      dir.file,
+                                      "MRC_alp_sl2.tif")),
+                       vect(europe),
+                       mask=TRUE),
+                  method="near")
+  
+  # Compute root density characteristics per horizons according to depth
+  rast.depth.samp <- c(rast.depth,beta) %>% 
+    as.data.frame(xy=TRUE,na.rm=FALSE) %>% 
+    #filter(depth!=0)%>% 
+    ## Compute rescaled density of roots per horizons
+    mutate(depth=as.numeric(depth),
+           depth=na_if(depth,0),
+           hor.1=case_when(depth<5~1,
+                           TRUE~(1-betaRootProfile^5)/(1-betaRootProfile^depth)),
+           hor.2=case_when(depth<=5~0,
+                           depth>5 & depth < 15 ~ (betaRootProfile^5-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^5-betaRootProfile^15)/(1-betaRootProfile^depth)),
+           hor.3=case_when(depth<=15~0,
+                           depth>15 & depth < 30 ~ (betaRootProfile^15-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^15-betaRootProfile^30)/(1-betaRootProfile^depth)),
+           hor.4=case_when(depth<=30~0,
+                           depth>30 & depth < 60 ~ (betaRootProfile^30-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^30-betaRootProfile^60)/(1-betaRootProfile^depth)),
+           hor.5=case_when(depth<=60~0,
+                           depth>60 & depth < 100 ~ (betaRootProfile^60-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^60-betaRootProfile^100)/(1-betaRootProfile^depth)),
+           hor.6=case_when(depth<=100~0,
+                           depth>100 & depth < 200 ~ (betaRootProfile^100-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^100-betaRootProfile^200)/(1-betaRootProfile^depth)),
+           hor.7=case_when(depth<=200~0,
+                           TRUE~(betaRootProfile^200-betaRootProfile^depth)/(1-betaRootProfile^depth))
+    ) %>%
+  ## Compute  BCG per horizons
+  mutate(hor.1=case_when(depth<5~compute.B_GC(La = RAI*hor.1/(2*pi*rootRadius),
+                                              Lv = RAI*hor.1/(2*pi*rootRadius*depth)),
+                         TRUE~compute.B_GC(La = RAI*hor.1/(2*pi*rootRadius),
+                                           Lv = RAI*hor.1/(2*pi*rootRadius*5))),
+         hor.2=case_when(depth<=5~0,
+                         depth>5 & depth < 15 ~compute.B_GC(La = RAI*hor.2/(2*pi*rootRadius),
+                                                            Lv = RAI*hor.2/(2*pi*rootRadius*(depth-5))),
+                         TRUE~compute.B_GC(La = RAI*hor.2/(2*pi*rootRadius),
+                                           Lv = RAI*hor.2/(2*pi*rootRadius*10))),
+         hor.3=case_when(depth<=15~0,
+                         depth>15 & depth < 30 ~ compute.B_GC(La = RAI*hor.3/(2*pi*rootRadius),
+                                                              Lv = RAI*hor.3/(2*pi*rootRadius*(depth-15))),
+                         TRUE~compute.B_GC(La = RAI*hor.3/(2*pi*rootRadius),
+                                           Lv = RAI*hor.3/(2*pi*rootRadius*15))),
+         hor.4=case_when(depth<=30~0,
+                         depth>30 & depth < 60 ~ compute.B_GC(La = RAI*hor.4/(2*pi*rootRadius),
+                                                              Lv = RAI*hor.4/(2*pi*rootRadius*(depth-30))),
+                         TRUE~compute.B_GC(La = RAI*hor.4/(2*pi*rootRadius),
+                                           Lv = RAI*hor.4/(2*pi*rootRadius*30))),
+         hor.5=case_when(depth<=60~0,
+                         depth>60 & depth < 100 ~compute.B_GC(La = RAI*hor.5/(2*pi*rootRadius),
+                                                              Lv = RAI*hor.5/(2*pi*rootRadius*(depth-60))),
+                         TRUE~compute.B_GC(La = RAI*hor.5/(2*pi*rootRadius),
+                                           Lv = RAI*hor.5/(2*pi*rootRadius*40))),
+         hor.6=case_when(depth<=100~0,
+                         depth>100 & depth < 200 ~compute.B_GC(La = RAI*hor.6/(2*pi*rootRadius),
+                                                               Lv = RAI*hor.6/(2*pi*rootRadius*(depth-100))),
+                         TRUE~compute.B_GC(La = RAI*hor.6/(2*pi*rootRadius),
+                                           Lv = RAI*hor.6/(2*pi*rootRadius*100))),
+         hor.7=case_when(depth<=200~0,
+                         TRUE~compute.B_GC(La = RAI*hor.7/(2*pi*rootRadius),
+                                           Lv = RAI*hor.7/(2*pi*rootRadius*(depth-200))))
+  ) |> 
+    select(-betaRootProfile)
+  rast.depth.samp=rast(rast.depth.samp,crs="epsg:4326")
+  #rast(SWCmin,crs="epsg:4326")
+  
+  # Gather spatialized PDF parameters with SWC min/max for each of the 7 horizons
+  names(SWCmin)=rep("SWC_min",4)
+  names(rast.depth.samp)=c("depth",rep("BGC",7))
+  pars.files=list.files(file.path(dir.data,dir.file))
+  mrc.files=pars.files[grepl("MRC_",pars.files)]
+  hcc.files=pars.files[grepl("HCC_",pars.files)]
+  for (i in 1:7){ # loop on the 7 horizons
+    psi=c(SWCmin[[hor_corr[i,1]]],
+          rast.depth.samp[[1]], # depth 
+          rast.depth.samp[[i+1]], # BCG of horizons
+          crop(rast(file.path(dir.data,dir.file,mrc.files[endsWith(mrc.files,paste0(i,".tif"))])),
+               vect(europe),
+               mask=TRUE),
+          crop(rast(file.path(dir.data,dir.file,hcc.files[endsWith(hcc.files,paste0(i,".tif"))])),
+               vect(europe),
+               mask=TRUE)
+    )
+    names(psi)=str_replace(names(psi), paste0("_sl",i), "") #make generic names
+    psi=as.data.frame(psi,xy=TRUE) %>% 
+      mutate(
+        REW_mrc=case_when((SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))<0~0.01,
+                          (SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))>1~1,
+                          TRUE~(SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))),
+        REW_hcc=case_when((SWC_min-HCC_thr*10^(-4))/((HCC_ths-HCC_thr)*10^(-4))<0~0.01,
+                          (SWC_min-HCC_thr*10^(-4))/((HCC_ths-HCC_thr)*10^(-4))>1~1,
+                          TRUE~(SWC_min-HCC_thr*10^(-4))/((HCC_ths-HCC_thr)*10^(-4))),
+        psi_min=-(((1/REW_mrc)
+                   ^(1/(MRC_m*10^(-4)))
+                   -1)
+                  ^(1/(MRC_n*10^(-4)))
+                  *(1/(MRC_alp*10^(-4)))
+                  *9.78*10^(-2)),
+        ksoil=(HCC_K0
+               *(REW_hcc^(HCC_L*10^(-4)))
+               *(1-(1-REW_hcc^(1/(HCC_m*10^(-4))))
+                 ^(HCC_m*10^(-4)))^2),
+        ksoilGC=(HCC_K0
+                 *(REW_hcc^(HCC_L*10^(-4)))
+                 *(1-(1-REW_hcc^(1/(HCC_m*10^(-4))))
+                   ^(HCC_m*10^(-4)))^2)*1000 *BGC,
+        #k_soiltostem=kseriesum(ksoilGC,k_RootToStem[i]),
+        psi_w=ksoilGC*psi_min
+      )
+    assign(paste0("psi_h",i),
+           psi)
+    rm(psi)
+  }
+  
+  
+  # Apply SUREAU wieghting method across horizons
+  psi_min=psi_h1[c("x","y")]
+  for (i in 1:7){
+    psi_min=psi_min %>% 
+      left_join(eval(parse(text=paste0("psi_h",i)))[c("x","y","ksoilGC","psi_w")],
+                by=c("x","y"))
+    colnames(psi_min)=c(colnames(psi_min)[1:(2+2*(i-1))],
+                        paste0("ksoilGC_",i),
+                        paste0("psi_w_",i))
+  }
+  sum_psi=rowSums(psi_min[grepl("psi_w_",colnames(psi_min))],na.rm = TRUE)
+  sum_k=rowSums(psi_min[grepl("ksoilGC_",colnames(psi_min))],na.rm = TRUE)
+  psi_min$psi=sum_psi/sum_k 
+  
+  fwrite(psi_min,file.output)
+  
+  return(psi_min)
+}
+
+
+
+#' Compute psi min weighted over horizons with daily timepath
+#' 
+#' @description function applies VG equation to compute minimum soil 
+#' potential using swc per horizon and associated parameters extracted from 
+#' 3D soil database. SWC computed with daily timestep
+#' @param SWCmin dataframe of SWC min of each horizons
+#' @param hor number of horizons to account for
+#' @param europe Europe polygon
+#' @param dir.data
+#' @param dir.file directory of 3D soil database
+#' @return Psi_min dataframe, that contains values of Psi_min computed with SUREAU 
+#' method
+compute_sensitivity <- function(SWCmin,
+                                europe,
+                                dir.data="data",
+                                dir.file="EU_SoilHydroGrids_1km",
+                                depth,
+                                LAImax,
+                                betaRootProfile){
+  
+  ## Compute SUREAU ##
+  # necessary functions 
+  kseriesum <- function(k1,k2) {return(1/(1/k1+1/k2))}
+  compute.B_GC <- function (La, Lv, rootRadius=0.0004) {
+    b <- 1 / sqrt(pi * Lv)
+    return(La * 2 * pi / (log(b/rootRadius)))
+  }
+  
+  # compute root characteristics
+  # betaRootProfile =0.97 
+  fRootToLeaf=1
+  # LAImax = 5
+  RAI = LAImax*fRootToLeaf
+  rootRadius=0.0004
+  
+  # depth used
+  if (typeof(depth)=="character"){
+    rast.depth=rast("data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst")
+    crs(rast.depth) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
+    rast.depth <- terra::project(rast.depth,"epsg:4326",method="near")
+    rast.depth <- resample(rast.depth,
+                           crop(rast(file.path(dir.data,
+                                               dir.file,
+                                               "MRC_alp_sl2.tif")),
+                                vect(europe),
+                                mask=TRUE),
+                           method="near")
+    names(rast.depth)="depth"
+  } else {
+    # create a raster model
+    rast.depth=crop(rast(file.path(dir.data,
+                                   dir.file,
+                                   "MRC_alp_sl2.tif")),
+                    vect(europe),
+                    mask=TRUE)
+    rast.depth[[1]][rast.depth[[1]]>=0] <- depth
+    names(rast.depth)="depth"
+  }
+  
+  
+  ## Compute psi and ksoil and ksoiltostem ##
+  
+  # correspondance between horizons fril ERA5 and 3D hydrosoil
+  hor_corr=matrix(data=c(1,2,2,3,3,4,4,1,2,3,4,5,6,7,0,0.05,0.15,0.3,0.6,1,2),ncol=3)
+  hor_corr_inv=matrix(data=c(1,2,3,4,1,3,5,7),ncol=2)
+  
+  # "downscale" SWC 
+  SWCmin=resample(rast(SWCmin,crs="epsg:4326"),
+                  crop(rast(file.path(dir.data,
+                                      dir.file,
+                                      "MRC_alp_sl2.tif")),
+                       vect(europe),
+                       mask=TRUE),
+                  method="near")
+  
+  # Compute root density characteristics per horizons according to depth
+  rast.depth.samp <- rast.depth %>% 
+    as.data.frame(xy=TRUE,na.rm=FALSE) %>% 
+    #filter(depth!=0)%>% 
+    ## Compute rescaled density of roots per horizons
+    mutate(depth=as.numeric(depth),
+           depth=na_if(depth,0),
+           hor.1=case_when(depth<5~1,
+                           TRUE~(1-betaRootProfile^5)/(1-betaRootProfile^depth)),
+           hor.2=case_when(depth<=5~0,
+                           depth>5 & depth < 15 ~ (betaRootProfile^5-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^5-betaRootProfile^15)/(1-betaRootProfile^depth)),
+           hor.3=case_when(depth<=15~0,
+                           depth>15 & depth < 30 ~ (betaRootProfile^15-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^15-betaRootProfile^30)/(1-betaRootProfile^depth)),
+           hor.4=case_when(depth<=30~0,
+                           depth>30 & depth < 60 ~ (betaRootProfile^30-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^30-betaRootProfile^60)/(1-betaRootProfile^depth)),
+           hor.5=case_when(depth<=60~0,
+                           depth>60 & depth < 100 ~ (betaRootProfile^60-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^60-betaRootProfile^100)/(1-betaRootProfile^depth)),
+           hor.6=case_when(depth<=100~0,
+                           depth>100 & depth < 200 ~ (betaRootProfile^100-betaRootProfile^depth)/(1-betaRootProfile^depth),
+                           TRUE~(betaRootProfile^100-betaRootProfile^200)/(1-betaRootProfile^depth)),
+           hor.7=case_when(depth<=200~0,
+                           TRUE~(betaRootProfile^200-betaRootProfile^depth)/(1-betaRootProfile^depth))
+    ) %>%
+    ## Compute  BCG per horizons
+    mutate(hor.1=case_when(depth<5~compute.B_GC(La = RAI*hor.1/(2*pi*rootRadius),
+                                                Lv = RAI*hor.1/(2*pi*rootRadius*depth)),
+                           TRUE~compute.B_GC(La = RAI*hor.1/(2*pi*rootRadius),
+                                             Lv = RAI*hor.1/(2*pi*rootRadius*5))),
+           hor.2=case_when(depth<=5~0,
+                           depth>5 & depth < 15 ~compute.B_GC(La = RAI*hor.2/(2*pi*rootRadius),
+                                                              Lv = RAI*hor.2/(2*pi*rootRadius*(depth-5))),
+                           TRUE~compute.B_GC(La = RAI*hor.2/(2*pi*rootRadius),
+                                             Lv = RAI*hor.2/(2*pi*rootRadius*10))),
+           hor.3=case_when(depth<=15~0,
+                           depth>15 & depth < 30 ~ compute.B_GC(La = RAI*hor.3/(2*pi*rootRadius),
+                                                                Lv = RAI*hor.3/(2*pi*rootRadius*(depth-15))),
+                           TRUE~compute.B_GC(La = RAI*hor.3/(2*pi*rootRadius),
+                                             Lv = RAI*hor.3/(2*pi*rootRadius*15))),
+           hor.4=case_when(depth<=30~0,
+                           depth>30 & depth < 60 ~ compute.B_GC(La = RAI*hor.4/(2*pi*rootRadius),
+                                                                Lv = RAI*hor.4/(2*pi*rootRadius*(depth-30))),
+                           TRUE~compute.B_GC(La = RAI*hor.4/(2*pi*rootRadius),
+                                             Lv = RAI*hor.4/(2*pi*rootRadius*30))),
+           hor.5=case_when(depth<=60~0,
+                           depth>60 & depth < 100 ~compute.B_GC(La = RAI*hor.5/(2*pi*rootRadius),
+                                                                Lv = RAI*hor.5/(2*pi*rootRadius*(depth-60))),
+                           TRUE~compute.B_GC(La = RAI*hor.5/(2*pi*rootRadius),
+                                             Lv = RAI*hor.5/(2*pi*rootRadius*40))),
+           hor.6=case_when(depth<=100~0,
+                           depth>100 & depth < 200 ~compute.B_GC(La = RAI*hor.6/(2*pi*rootRadius),
+                                                                 Lv = RAI*hor.6/(2*pi*rootRadius*(depth-100))),
+                           TRUE~compute.B_GC(La = RAI*hor.6/(2*pi*rootRadius),
+                                             Lv = RAI*hor.6/(2*pi*rootRadius*100))),
+           hor.7=case_when(depth<=200~0,
+                           TRUE~compute.B_GC(La = RAI*hor.7/(2*pi*rootRadius),
+                                             Lv = RAI*hor.7/(2*pi*rootRadius*(depth-200))))
+    )
+  rast.depth.samp=rast(rast.depth.samp,crs="epsg:4326")
+  #rast(SWCmin,crs="epsg:4326")
+  
+  # Gather spatialized PDF parameters with SWC min/max for each of the 7 horizons
+  names(SWCmin)=rep("SWC_min",4)
+  names(rast.depth.samp)=c("depth",rep("BGC",7))
+  pars.files=list.files(file.path(dir.data,dir.file))
+  mrc.files=pars.files[grepl("MRC_",pars.files)]
+  hcc.files=pars.files[grepl("HCC_",pars.files)]
+  for (i in 1:7){ # loop on the 7 horizons
+    psi=c(SWCmin[[hor_corr[i,1]]],
+          rast.depth.samp[[1]], # depth 
+          rast.depth.samp[[i+1]], # BCG of horizons
+          crop(rast(file.path(dir.data,dir.file,mrc.files[endsWith(mrc.files,paste0(i,".tif"))])),
+               vect(europe),
+               mask=TRUE),
+          crop(rast(file.path(dir.data,dir.file,hcc.files[endsWith(hcc.files,paste0(i,".tif"))])),
+               vect(europe),
+               mask=TRUE)
+    )
+    names(psi)=str_replace(names(psi), paste0("_sl",i), "") #make generic names
+    psi=as.data.frame(psi,xy=TRUE) %>% 
+      mutate(
+        REW_mrc=case_when((SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))<0~0.01,
+                          (SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))>1~1,
+                          TRUE~(SWC_min-MRC_thr*10^(-4))/((MRC_ths-MRC_thr)*10^(-4))),
+        REW_hcc=case_when((SWC_min-HCC_thr*10^(-4))/((HCC_ths-HCC_thr)*10^(-4))<0~0.01,
+                          (SWC_min-HCC_thr*10^(-4))/((HCC_ths-HCC_thr)*10^(-4))>1~1,
+                          TRUE~(SWC_min-HCC_thr*10^(-4))/((HCC_ths-HCC_thr)*10^(-4))),
+        psi_min=-(((1/REW_mrc)
+                   ^(1/(MRC_m*10^(-4)))
+                   -1)
+                  ^(1/(MRC_n*10^(-4)))
+                  *(1/(MRC_alp*10^(-4)))
+                  *9.78*10^(-2)),
+        ksoil=(HCC_K0
+               *(REW_hcc^(HCC_L*10^(-4)))
+               *(1-(1-REW_hcc^(1/(HCC_m*10^(-4))))
+                 ^(HCC_m*10^(-4)))^2),
+        ksoilGC=(HCC_K0
+                 *(REW_hcc^(HCC_L*10^(-4)))
+                 *(1-(1-REW_hcc^(1/(HCC_m*10^(-4))))
+                   ^(HCC_m*10^(-4)))^2)*1000 *BGC,
+        #k_soiltostem=kseriesum(ksoilGC,k_RootToStem[i]),
+        psi_w=ksoilGC*psi_min
+      )
+    assign(paste0("psi_h",i),
+           psi)
+    rm(psi)
+  }
+  
+  
+  # Apply SUREAU wieghting method across horizons
+  psi_min=psi_h1[c("x","y")]
+  for (i in 1:7){
+    psi_min=psi_min %>% 
+      left_join(eval(parse(text=paste0("psi_h",i)))[c("x","y","ksoilGC","psi_w")],
+                by=c("x","y"))
+    colnames(psi_min)=c(colnames(psi_min)[1:(2+2*(i-1))],
+                        paste0("ksoilGC_",i),
+                        paste0("psi_w_",i))
+  }
+  sum_psi=rowSums(psi_min[grepl("psi_w_",colnames(psi_min))],na.rm = TRUE)
+  sum_k=rowSums(psi_min[grepl("ksoilGC_",colnames(psi_min))],na.rm = TRUE)
+  psi_min$psi=sum_psi/sum_k 
+  
+  # write.csv(psi_min,file.output)
+  
+  return(psi_min)
+}
+
+
+
+
+
+
 #' Mask psi_min with only forest areas
 #' 
 #' @description function that enables to mask psi_min data with only forest 

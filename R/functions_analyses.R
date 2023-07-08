@@ -66,7 +66,8 @@ get_waisgdd <- function(dir.chelsa="data/CHELSA/",
 get.mauri <- function(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
                       psi_min,
                       psi_min_100,
-                      frost.index){
+                      frost.index,
+                      file.path){
   # load european species
   species.list=list.files("data/chorological_maps_dataset/")
   
@@ -110,20 +111,20 @@ get.mauri <- function(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
   
   ## Load climate
   # fdg
-  rast.fdg=rast("data/eea_2000-2016/SOS_2000_2016_DOY.BIL")
-  rast.fdg.mean <- mean(rast.fdg,na.rm=TRUE)
-  rast.fdg.mean <- terra::project(rast.fdg.mean,"epsg:4326")
-  rast.fdg.mean[rast.fdg.mean<0] <- 30
-  names(rast.fdg.mean)="fdg"
-  
-  rm(rast.fdg)
+  # rast.fdg=rast("data/eea_2000-2016/SOS_2000_2016_DOY.BIL")
+  # rast.fdg.mean <- mean(rast.fdg,na.rm=TRUE)
+  # rast.fdg.mean <- terra::project(rast.fdg.mean,"epsg:4326")
+  # rast.fdg.mean[rast.fdg.mean<0] <- 30
+  # names(rast.fdg.mean)="fdg"
+  # 
+  # rm(rast.fdg)
 
   # get frost and psi
   psi_min=rast(fread(psi_min)[,c("x","y","psi")],crs="epsg:4326")
   psi_min_100=rast(fread(psi_min_100)[,c("x","y","psi")],crs="epsg:4326")
   names(psi_min_100)="psi.100"
-  frost.index.spring=rast(fread(frost.index)[,-1],crs="epsg:4326")
-  names(frost.index.spring)="frost.spring"
+  # frost.index.spring=rast(fread(frost.index)[,-1],crs="epsg:4326")
+  # names(frost.index.spring)="frost.spring"
   frost.index.winter=min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm=FALSE)
   frost.index.winter=classify(frost.index.winter, cbind(6553500, NA)) #set as NA default value
   names(frost.index.winter)="frost.winter"
@@ -131,7 +132,7 @@ get.mauri <- function(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
   
   
   #Extract frost and psi on eahc abs.pres points
-  for (rast in list(psi_min,psi_min_100,frost.index.spring,frost.index.winter,rast.fdg.mean)){
+  for (rast in list(psi_min,psi_min_100,frost.index.winter)){ #,frost.index.spring,rast.fdg.mean  /// if analysis on spring index needed
     print(rast)
     db.cont <- cbind(db.cont,
                      extract(rast,
@@ -148,7 +149,7 @@ get.mauri <- function(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
                 tolower) # %>%
     # filter(!is.na(hsm)) %>% 
     # filter(!is.na(fsmwinter)) 
-  write.csv(db.clim,"output/db_EuForest_raw.csv")
+  fwrite(db.clim,file.path)
   # write.csv(df.fdg.sp,"output/LT50_spring.csv")
   
   return(db.clim)
@@ -164,23 +165,25 @@ get.mauri <- function(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
 #' is mentionned, and associated predictors
 
 get.occurence <- function(db.cont,
-                          df.traits){
+                          df.traits,
+                          file.path){
   db.cont <- db.cont %>% 
     left_join(df.traits) 
-  # compute LT50.sp.spring, averaged by species
-  date.dehardening=0
-  df.fdg.sp <- db.cont %>%
-    filter(presence==1) %>% 
-    select(species.binomial,sp.ind,lt50.mean,fdg) %>% 
-    group_by(species.binomial,sp.ind,lt50.mean) %>% 
-    summarise(fdg.sp.mean=mean(fdg,na.rm=TRUE),
-              fdg.sp.sd=sd(fdg,na.rm=TRUE)) %>% 
-    ungroup() %>% 
-    mutate(lt50.sp.spring=-5+(30/2)*((5+lt50.mean)/(fdg.sp.mean-date.dehardening)))
+  
+  # compute LT50.sp.spring, averaged by species /// IF SPRING FROST NEEDED
+  # date.dehardening=0
+  # df.fdg.sp <- db.cont %>%
+  #   filter(presence==1) %>% 
+  #   select(species.binomial,sp.ind,lt50.mean,fdg) %>% 
+  #   group_by(species.binomial,sp.ind,lt50.mean) %>% 
+  #   summarise(fdg.sp.mean=mean(fdg,na.rm=TRUE),
+  #             fdg.sp.sd=sd(fdg,na.rm=TRUE)) %>% 
+  #   ungroup() %>% 
+  #   mutate(lt50.sp.spring=-5+(30/2)*((5+lt50.mean)/(fdg.sp.mean-date.dehardening)))
   
   
   db.cont <- db.cont %>% 
-    left_join(df.fdg.sp[,c("species.binomial","lt50.sp.spring")],by="species.binomial") %>% 
+    # left_join(df.fdg.sp[,c("species.binomial","lt50.sp.spring")],by="species.binomial") %>% 
     mutate(psi_old=psi,
            psi=case_when(psi<(-20000)~(-20000),
                          TRUE~psi),
@@ -190,15 +193,15 @@ get.occurence <- function(db.cont,
     mutate(hsm=psi-px.mu*1000,
            hsm.100=psi.100-px.mu*1000,
            fsm.winter=frost.winter-lt50.mean,
-           fsm.spring=frost.spring-(lt50.sp.spring),
+           # fsm.spring=frost.spring-(lt50.sp.spring),
            species.binomial=as.factor(species.binomial))
   db.cont$hsm[is.nan(db.cont$hsm)] <- NA
   db.cont$hsm.100[is.nan(db.cont$hsm.100)] <- NA
   db.cont$fsm.winter[is.nan(db.cont$fsm.winter)] <- NA
-  db.cont$fsm.spring[is.nan(db.cont$fsm.spring)] <- NA
+  # db.cont$fsm.spring[is.nan(db.cont$fsm.spring)] <- NA
   
   
-  fwrite(db.cont,"output/db_EuForest.csv")
+  fwrite(db.cont,file.path)
   
   return(db.cont)
 }
@@ -316,7 +319,7 @@ get.niche <- function(species.list,
     )
   
   
-  rast.cont=as.data.frame(mean(rast("jci_year.nc")),xy=TRUE) %>% 
+  rast.cont=as.data.frame(mean(rast("data/jci_year.nc")),xy=TRUE) %>% 
     mutate(z=x,
            x=y,
            y=z) %>% 
@@ -429,7 +432,7 @@ get.species <- function(species.list,
 fit.logistic <- function(db.clim.file,
                          df.species,
                          soil.depth="real",
-                         output="fit_mod6/"){
+                         output){
   # read db.clim and filter some species
   db.clim=fread(db.clim.file) %>% 
       # filter(!species.binomial %in% c("Juniperus virginiana",
@@ -554,7 +557,8 @@ fit.logistic <- function(db.clim.file,
 
 get.output <- function(db.clim.file,
                        df.species,
-                       output.path){
+                       output.path,
+                       file.path){
   # read db.clim 
   db.clim=fread(db.clim.file) %>% 
     filter(!is.na(hsm)) |> 
@@ -667,7 +671,7 @@ get.output <- function(db.clim.file,
                             mod=="hsm"|mod=="fsm"~3,
                             mod=="none"~1),
            bic=2*nb.par-2*lp__)
-  write.csv(df.output,file="output/df.output.csv")
+  fwrite(df.output,file=file.path)
   return(df.output)
 }
 

@@ -26,12 +26,13 @@ list(
     df.species,
     read.csv(df.species.file)
   ),
+  
+  # with beta fixed
   tar_target(
     db.clim.file,
     "output/db_EuForest.csv", # a changer --> mette chemin du tar_object
     format="file"
   ),
-  
   # run models
   # tar_target(
   #   fit.mod,
@@ -44,7 +45,8 @@ list(
     df.output,
     get.output(db.clim.file,
                df.species,
-               output.path="fit_mod6/")
+               output.path="fit_mod6/",
+               "output/df.ouput2.csv")
   ),
   tar_target(
     df.output.auc,
@@ -55,6 +57,38 @@ list(
     df.mod.select,
     select.model(df.output.auc)
   ),
+  
+  
+  # with varying beta
+  tar_target(
+    db.clim.file.varb,
+    "output/db_EuForest_varb.csv", # a changer --> mette chemin du tar_object
+    format="file"
+  ),
+  tar_target(
+    fit.mod.varb,
+    fit.logistic(db.clim.file.varb,
+                 df.species,
+                 soil.depth="real",
+                 output="fit_mod_varb/")
+  ),
+  tar_target(
+    df.output.varb,
+    get.output(db.clim.file.varb,
+               df.species,
+               output.path="fit_mod_varb/",
+               "output/df.ouput2.csv")
+  ),
+  # tar_target(
+  #   df.output.auc,
+  #   compute.auc(df.output,
+  #               db.clim.file)
+  # ),
+  tar_target(
+    df.mod.select.varb,
+    select.model(df.output.varb)
+  ),
+
   # tar_render(
   #   report,
   #   "Report_jan.Rmd"
