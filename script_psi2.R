@@ -17,8 +17,8 @@ tar_option_set(packages = c("stringr","ggplot2","data.table","tidyr","viridis","
 europe <- tar_read(europe, store = "target_data")
 SWC_day <- tar_read(SWC_day,store="target_data")
 SWCtot <- tar_read(SWCtot,store = "target_data")
-values <- data.frame(LAImax=c(3,4,5,5,5,5,6),
-                     betaRootProfile=c(0.966,0.966,0.914,0.942,0.966,0.976,0.966))
+values <- data.frame(LAImax=c(2,3,4,5,5,5,5,6,7,8),
+                     betaRootProfile=c(0.966,0.966,0.966,0.914,0.942,0.966,0.976,0.966,0.966,0.966))
           # expand.grid(LAImax=3:6,
           #             betaRootProfile=c(0.914,0.943,0.966,0.976))
 
@@ -60,17 +60,17 @@ list(
                         file.output="output/psihorday_100.csv")
     ),
   # sensitivity analysis
-  # tar_map(
-  #   values=values,
-  #   tar_target(sensitivity,
-  #              compute_sensitivity(SWC_day,
-  #                       europe,
-  #                       dir.data="data",
-  #                       dir.file="EU_SoilHydroGrids_1km",
-  #                       depth="real",
-  #                       LAImax,
-  #                       betaRootProfile))
-  #   ),
+  tar_map(
+    values=values,
+    tar_target(sensitivity,
+               compute_sensitivity(SWC_day,
+                        europe,
+                        dir.data="data",
+                        dir.file="EU_SoilHydroGrids_1km",
+                        depth="real",
+                        LAImax,
+                        betaRootProfile))
+    ),
   tar_target(
     psihorday_rbeta,
     compute_psihorday_beta(SWC_day,

@@ -676,6 +676,88 @@ get.output <- function(db.clim.file,
 }
 
 
+#' Build output with uncertainties
+#' 
+#' @description load each model and extract relevant parameters
+#' @param df.species df of traits for each species
+#' @param output.path
+#' @return df.output
+#'
+
+get.output.uncertainties <- function(output.path,
+                                     file.path){
+  # Get a list of all .RData files in the directory
+  files <- list.files(path = output.path, pattern = "*.RData")
+  
+  # Initialize an empty list to store the data frames
+  list_of_tables <- list()
+  
+  # Loop over the files
+  for (i in 133:140) {
+    print(i)
+    tryCatch({
+      new_env <- new.env()
+      load(file=paste0(output.path, files[i]),envir=new_env)
+      obj_name <- ls(new_env)[1]
+      model <- get(obj_name, envir = new_env)
+      par_mod=rstan::get_sampler_params(model)
+      rm(new_env)
+      
+      summary=as.data.frame(summary(model)$summary)
+      summary$div=mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+          
+      # Add columns for species and model
+      summary$species <- strsplit(files[i], "_")[[1]][1]
+      summary$model <- if_else(is.na(strsplit(files[i], "_")[[1]][3]),"2sm",strsplit(files[i], "_")[[1]][3])
+      summary$model <- gsub(".RData", "", summary$model) # Remove the .RData from the model name
+      
+      # Add the modified table to the list
+      list_of_tables[[i]] <- summary
+      rm(model,par_mod,summary)
+    },
+    error=function(e){print(paste0("error for ",i))}
+    )
+    
+  }
+  
+  # Use lapply to apply the same function to each table
+  reshaped_tables <- lapply(list_of_tables, function(df) {
+    tryCatch({
+      df <- as.data.frame(df) |> tibble::rownames_to_column(var="parameter")
+      df <- df %>% pivot_longer(cols = c(-parameter,-species,-model), names_to = "posterior", values_to = "quantile")
+    },
+    error=function(e){print(paste0("error"))}
+    )
+    return(df)
+  })
+  
+  # Bind all the reshaped tables together
+  df.mod.output <- bind_rows(reshaped_tables) |> 
+    rename(mod=model)
+  bic <- df.mod.output %>% 
+    filter(posterior=="mean"&parameter=="lp__") |> 
+    mutate(nb.par=case_when(mod=="2sm"~5,
+                            mod=="hsm"|mod=="fsm"~3,
+                            mod=="none"~1),
+           bic=2*nb.par-2*quantile) |> 
+    select(species,mod,bic)
+  df.mod.output<-df.mod.output |> 
+    left_join(bic,by=c("species","mod"))
+  
+  
+  df.mod.output |> filter(posterior%in% c("Rhat","div")&parameter=="lp__") |> 
+    pivot_wider(names_from = posterior,
+                values_from = quantile) |> 
+    filter(Rhat<1.2) %>% 
+    filter(div <0.1) %>% 
+    group_by(species) %>% 
+    slice(which.min(bic)) %>% 
+    ungroup() -> df.output.select
+  return(df.mod.output)
+}
+
+
+
 #' Compute auc
 #' 
 #' @description compute auc for each model
@@ -867,7 +949,6 @@ compute.auc <- function(df.output,
   
   return(df.output)
 }
-
 
 #' Model selection
 #' 

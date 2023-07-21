@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(targets)
 Sys.setenv(TAR_PROJECT="analysis")
-lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","forcats","ggpubr","gdalUtils","sf","lubridate","lme4","xtable","plotly","factoextra"),require,character.only=TRUE)
+lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","forcats","ggpubr","gdalUtils","sf","lubridate","lme4","xtable","plotly","factoextra","latex2exp"),require,character.only=TRUE)
 
 ```
 
@@ -47,7 +47,7 @@ tar_load(df.P50,store="target_safetymargin")
 tar_load(df.LT50,store="target_safetymargin")
 df.LT50=df.LT50$df.LT50sp.cor
 
-df.traits.all=df.P50%>% 
+df.traits.all=df.P50%>% #all species for which there is at least one of the two traits
   left_join(df.LT50,by=c("species.binomial"="Species")) |> 
   rename_with(.cols=everything(),
                 tolower) |> 
@@ -1585,25 +1585,77 @@ c<-df.mod.select %>%
         #                                   size =0.02),
         axis.text.y = element_text(hjust=0.5),
         strip.placement = "outside",
-        strip.text = element_text(size=11,vjust=-1.1))+
+        strip.text = element_text(size=11,vjust=-1.1),
+        text=element_text(size=12))+
     facet_wrap(~xsm_name,scales="free",
              strip.position = "bottom")+
   NULL
 
 
 df.n<- df.mod.select %>% 
+  left_join(df.species) |> 
+  rename(HSM=inflex_hsm,
+         FSM=inflex_fsm) %>% 
+  pivot_longer(col=c("HSM","FSM")) %>% 
+  filter(mod!="none") %>% 
+  filter(!(mod=="fsm"&name=="HSM")&
+           !(mod=="hsm"&name=="FSM")) %>% 
+  group_by(group,name) |> 
+  summarise(n=n(),
+            value=quantile(100-value,probs=0.5)[[1]]) |> 
+  ungroup()
+df.mod.select %>%
+  left_join(df.species) |> 
+  mutate(HSM=100-inflex_hsm,
+         FSM=100-inflex_fsm) %>% 
+  pivot_longer(col=c("HSM","FSM")) %>% 
+  filter(mod!="none") %>% 
+  filter(!(mod=="fsm"&name=="HSM")&
+           !(mod=="hsm"&name=="FSM")) %>% 
+  ggplot(aes(name,value,fill=group))+
+  geom_boxplot()+
+  geom_text(data=df.n,
+            mapping=aes(x=name,y=value,label=n),
+            position = position_dodge(width=0.75),
+            vjust=2)+
+  geom_signif(comparisons = list(c("HSM","FSM")),
+              map_signif_level = TRUE)+
+  # geom_signif(comparisons = list(c("angiosperm","gymnosperm")),
+  #             map_signif_level = TRUE)+
+  # stat_compare_means(aes(label = ..p.signif..),
+  #                    method = "t.test",
+  #                    label.x = 1.5, label.y = 60)+
+  scale_fill_manual(values=c("chocolate2","forestgreen"))+
+  theme_minimal()+
+  theme(axis.title.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.line.y = element_line(linewidth = 0.6),
+        legend.title = element_blank(),
+        # panel.grid = element_blank(),
+        # panel.grid.major = element_line(color = "lightgrey",
+        #                                   size =0.02),
+        axis.text.y = element_text(hjust=0.5),
+        text=element_text(size=12))+
+  labs(x="Inflexion index")-> b
+#%%%%%%%%%%%%%%%%%%%
+df.n<- df.mod.select %>% 
   left_join(df.species) |>
-  dplyr::select(species.binomial,group,px.mu,lt50.mean,t_hsm,t_fsm,mod) %>% 
-  mutate(`HSM`=px.mu,
-          FSM=lt50.mean) |> 
+    left_join(df.range) |> 
+    dplyr::select(species.binomial,px.mu,lt50.mean,t_hsm,t_fsm,mod,psi_range,t_range,group) %>% 
+    mutate(t_range=case_when(is.na(t_range)~mean(df.range$t_range,na.rm=TRUE),
+                           TRUE~t_range),
+         HSM=t_hsm/psi_range,
+         FSM=t_fsm/t_range) |> 
+  dplyr::select(group,species.binomial,mod,HSM,FSM) %>% 
   pivot_longer(cols=c("HSM","FSM"),names_to = "threshold",values_to = "traits_val") %>% 
   filter((mod%in%c("hsm","2sm")&threshold=="HSM")|
            (mod%in%c("fsm","2sm")&threshold=="FSM")) %>% 
   group_by(group,threshold) |> 
-  summarise(n=n()) |> 
-  mutate(threshold_val=0.4) |> 
+  summarise(n=n(),
+            value=quantile(traits_val,probs=0.5)[[1]]) |> 
   ungroup()
-a<-df.mod.select %>% 
+df.mod.select %>% 
   left_join(df.species) |>
   left_join(df.range) |> 
   dplyr::select(species.binomial,px.mu,lt50.mean,t_hsm,t_fsm,mod,psi_range,t_range,group) %>% 
@@ -1618,8 +1670,14 @@ a<-df.mod.select %>%
   group_by(threshold) |> 
   mutate(n=n()) |> 
   ungroup() |> 
-  ggplot(aes(threshold,threshold_val))+
-  geom_boxplot(aes(fill=group))+
+  ggplot(aes(threshold,threshold_val,fill=group))+
+  geom_boxplot()+
+  geom_text(data=df.n,
+            mapping=aes(x=threshold,y=value,label=n),
+            position = position_dodge(width=0.75),
+            vjust=-0.5)+
+  geom_signif(comparisons = list(c("HSM","FSM")),
+              map_signif_level = TRUE)+
   # geom_text(data=df.n,mapping=aes(x=threshold,y=threshold_val,label=n))+
   # stat_compare_means(aes(label = ..p.signif..),
   #                    method = "t.test",
@@ -1634,50 +1692,14 @@ a<-df.mod.select %>%
         # panel.grid.major = element_line(color = "lightgrey",
         #                                   size =0.02),
         axis.text.y = element_text(hjust=0.5),
-        strip.placement = "outside")+
+        strip.placement = "outside",
+        text=element_text(size=12))+
   labs(x="Rescaled thresholds")+
-  NULL
-a
-df.n<- df.mod.select %>% 
-  left_join(df.species) |> 
-  rename(HSM=inflex_hsm,
-         FSM=inflex_fsm) %>% 
-  pivot_longer(col=c("HSM","FSM")) %>% 
-  filter(mod!="none") %>% 
-  filter(!(mod=="fsm"&name=="HSM")&
-           !(mod=="hsm"&name=="FSM")) %>% 
-  group_by(group,name) |> 
-  summarise(n=n()) |> 
-  mutate(value=85) |> 
-  ungroup()
-b<-df.mod.select %>%
-  left_join(df.species) |> 
-  mutate(HSM=100-inflex_hsm,
-         FSM=100-inflex_fsm) %>% 
-  pivot_longer(col=c("HSM","FSM")) %>% 
-  filter(mod!="none") %>% 
-  filter(!(mod=="fsm"&name=="HSM")&
-           !(mod=="hsm"&name=="FSM")) %>% 
-  ggplot(aes(name,value))+
-  geom_boxplot(aes(fill=group))+
-  # geom_text(data=df.n,mapping=aes(x=name,y=value,label=n))+
-  # stat_compare_means(aes(label = ..p.signif..),
-  #                    method = "t.test",
-  #                    label.x = 1.5, label.y = 60)+
-  scale_fill_manual(values=c("chocolate2","forestgreen"))+
-  theme_minimal()+
-  theme(axis.title.y = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.line.x = element_blank(),
-        axis.line.y = element_line(linewidth = 0.6),
-        legend.title = element_blank(),
-        # panel.grid = element_blank(),
-        # panel.grid.major = element_line(color = "lightgrey",
-        #                                   size =0.02),
-        axis.text.y = element_text(hjust=0.5))+
-  labs(x="Inflexion index")
-b
+  NULL-> a
+
+
 cowplot::plot_grid(
+  c,
   cowplot::plot_grid(get_legend(b),
                    cowplot::plot_grid(a+theme(legend.position = "none"),
                                       b+theme(legend.position = "none"),
@@ -1687,21 +1709,27 @@ cowplot::plot_grid(
                    rel_widths = c(0.2,1),
                    axis="l"
                    ),
-  c,
   labels=c("A","B"),
   label_size = 12,
   hjust=c(-0.2,0.51),
-  rel_widths = c(0.5,1)
+  rel_widths = c(1,0.5)
 )->plot
 plot
 # ggsave(filename = "hyp1.png",
 #        plot, 
 #        width=10,
 #        height = 6)
-
+ggsave("figures/fig2_gg2.png",
+       plot=plot,
+       scale=1.5,
+       dpi=600,
+       width = 16,
+       height = 8,
+       units="cm")
 
                                   
 ```
+
 
 ## 1st hypothesis
 
@@ -1793,13 +1821,23 @@ df.lm.traits<-df.lm.traits |>
          signif3=pval>0.01&pval<0.05)
 
 df.lm.traits |> 
+  # filter the relevant quantile for each variable (ie stressful edge)
   filter((pred%in% c("sgdd","frost.winter","psi","wai","prpet","pr","temp.mean") & quant=="quant05")|
-           (pred=="pet"& quant=="quant95")) |> 
+           (pred=="pet"& quant=="quant95")) |>
+  # filter the relevant trait for each variable
   filter((trait=="lt50"&(pred %in% c("sgdd","frost.winter","temp.mean")))|
            (trait=="px"&(pred %in% c("wai","psi","prpet","pr","pet")))) |> 
-  mutate(pred=case_when(pred=="frost.winter"~"tmin",
+  # rename traits
+  mutate(trait=case_when(trait=="px"~"$\\Psi_{crit}$",
+                         trait=="lt50"~"$LT_{50}$")) |> 
+  # filter variables
+  filter(pred %in% c("temp.mean","frost.winter","psi","pet","pr")) |> 
+  # rename
+  mutate(pred=case_when(pred=="frost.winter"~"$T_{min}$",
+                        pred=="psi"~"$\\Psi_{min}$",
+                        pred=="temp.mean"~"mat",
+                        pred=="pr"~"map",
                         TRUE~pred)) |> 
-  filter(pred %in% c("temp.mean","tmin","psi","pet","pr")) |> 
   mutate(quant=forcats::fct_recode(quant, "5%"="quant05", "95%"="quant95")) |> 
   ggplot(aes(x=mean,y=pred,color=quant))+
   scale_color_manual(values=c("darkred","lightblue"))+
@@ -1808,23 +1846,35 @@ df.lm.traits |>
   geom_text(aes(label = ifelse(signif3, "*",
                                ifelse(signif2,"**",
                                       ifelse(signif1,"***",""))),
-                x=mean-0.65,
-                y=pred),
+                x=mean,
+                y=pred
+                ),
             # position = position_dodge(9),
             size=8,
             show.legend = FALSE,
-            vjust=0.75)+
+            vjust=-0.25)+
   geom_vline(xintercept = 0,linetype="dotted")+
   theme_minimal()+
-  facet_wrap(~trait,scales = "free_y")+
+  facet_wrap(~trait,
+             labeller=as_labeller(TeX,
+                                  default = label_parsed),
+             scales = "free_y")+
   theme(axis.title= element_blank(),
         axis.ticks.x = element_line(linewidth = 0.6),
         axis.line.x = element_line(linewidth = 0.6),
         panel.grid = element_blank(),
         legend.position = "top",
         axis.text.y = element_text(hjust=0.5))+
-  labs(color="Quantiles")->a
-a
+  xlim(-1,1.1)+
+  scale_y_discrete(label=TeX)+
+  labs(color="Quantiles")-> a
+ggsave("figures/fig1_gg.pdf",
+       plot=a,
+       scale=1.5,
+       dpi=600,
+       width = 9,
+       height = 6,
+       units="cm")
 ```
 
 
@@ -2018,8 +2068,10 @@ plot2
 predictor=c("overlap_drought","overlap_shade") #,"lat.mean"
 df.mod.overlap=df.mod.select |> 
   left_join(df.species) |> 
+  left_join(df.quant.final) |> 
   select(group,species.binomial,
          matches(c("inflex","^t_")),
+         hsm.valid.3,fsm.valid.2,
          overlap_drought,overlap_shade,lat.mean,
          mod) |> 
   mutate(across(matches("inflex"),
@@ -2050,20 +2102,22 @@ for(preds in predictor){
       filter(pred==preds) |>
       filter(par==pars) |> 
       filter(!is.na(par_val)&
-               !is.na(pred_val)) |> 
-      mutate(par_val=scale(par_val),
-             pred_val=scale(pred_val))
-    # if(grepl("hsm",pars)){
-    #   df.mod.pred<-df.mod.pred |>
-    #     filter(mod%in%c("2sm","hsm"))|>
-    #     mutate(par_val=scale(par_val))
-    #            # pred_val=scale(pred_val))
-    # }else{
-    #   df.mod.pred<-df.mod.pred |>
-    #     filter(mod%in%c("2sm","fsm")) |> 
-    #     mutate(par_val=scale(par_val))
-    #            # pred_val=scale(pred_val))
-    # }
+               !is.na(pred_val)) #|> 
+      # mutate(par_val=scale(par_val),
+      #        pred_val=scale(pred_val))
+    if(grepl("hsm",pars)){
+      df.mod.pred<-df.mod.pred |>
+        # filter(hsm.valid.3==TRUE) |> 
+        filter(mod%in%c("2sm","hsm"))|>
+        mutate(par_val=scale(par_val),
+               pred_val=scale(pred_val))
+    }else{
+      df.mod.pred<-df.mod.pred |>
+        # filter(fsm.valid.2==TRUE) |> 
+        filter(mod%in%c("2sm","fsm")) |>
+        mutate(par_val=scale(par_val),
+               pred_val=scale(pred_val))
+    }
     summary=as.data.frame(summary(lm(par_val~pred_val,df.mod.pred))$coefficients)
     conf=confint(lm(formula = par_val~pred_val, data = df.mod.pred))
     print(summary(lm(par_val~pred_val,df.mod.pred)))
@@ -2084,8 +2138,13 @@ df.lm.overlap<-df.lm.overlap |>
 
 df.lm.overlap |> 
   # mutate(quant=recode(quant, quant05 = "5%", quant95 = "95%")) |> 
+  mutate(pred=case_when(pred=="overlap_drought"~"Competitive dominance index \nfor drought tolerance",
+                        pred=="overlap_shade"~"Competitive dominance index \nfor shade tolerance")
+         ) |> 
   separate(col = par,
            sep="_", into=c("par","mod")) |> 
+  mutate(par=case_when(par=="inflex"~"Inflexion index \n I",
+                       par=="t"~"Threshold \n t")) |> 
   ggplot(aes(x=mean,y=par,color=mod))+
   scale_color_manual(values=c("lightblue","darkred"))+
   geom_point(size=2.5,alpha=0.6,position=position_dodge(width=0.5))+ 
@@ -2107,7 +2166,13 @@ df.lm.overlap |>
         # legend.position = "top",
         legend.title=element_blank(),
         axis.text.y = element_text(hjust=0.5)) -> plot3
-  
+ggsave("figures/fig3_gg.pdf",
+       plot=plot3,
+       scale=1.5,
+       dpi=600,
+       width = 9,
+       height = 6,
+       units="cm")
 ```
 
 ## Hypothesis figure
@@ -2163,4 +2228,631 @@ df.mod.select |>
   
 ```
 
+### Sensisitivity analysis
+Prepare data
+```{r}
+db.clim<-tar_read(df.mauri,store="target_occ")
+tar_load(df.species) 
+df.species <- df.species |>
+  left_join(
+    db.clim |> filter(presence==1) |> 
+      group_by(species.binomial) |> 
+      summarise(n=n()))
 
+
+
+tar_load(df.traits,store="target_safetymargin") #only species with both traits
+
+species.europe=list.files("data/chorological_maps_dataset/")
+
+tar_load(df.P50,store="target_safetymargin")
+tar_load(df.LT50,store="target_safetymargin")
+df.LT50=df.LT50$df.LT50sp.cor
+
+df.traits.all=df.P50%>% 
+  left_join(df.LT50,by=c("species.binomial"="Species")) |> 
+  rename_with(.cols=everything(),
+                tolower) |> 
+  dplyr::select(species.binomial,group,p50.mu,p50.sd,p88.mu,p88.sd,lt50.mean,lt50.sd,bdd) |> 
+  filter(species.binomial %in% species.europe) |> 
+  mutate(p.trait=case_when(group=="gymnosperm"~"p50",
+                             group=="angiosperm"&!is.na(p88.mu)~"p88",
+                             group=="angiosperm"&is.na(p88.mu)~"p50"),
+           px.mu=case_when(p.trait=="p88"~p88.mu,
+                           p.trait=="p50"~p50.mu),
+           px.sd=case_when(p.trait=="p88"~p88.sd,
+                           p.trait=="p50"~p50.sd))
+rm(df.P50,df.LT50)
+
+df.species <- df.species |> 
+  left_join(df.traits.all)
+
+df.species.rest <- df.species |> 
+  filter(!is.na(p50.mu)&!is.na(lt50.mean)) |> 
+  filter(species.binomial %in% unique(db.clim$species.binomial))
+
+rm(df.traits,df.traits.all)
+tar_load(df.mod.select.varb)
+df.mod.select=df.mod.select.varb
+rm(df.mod.select.varb)
+```
+
+
+
+Redo figure 2
+```{r figure1}
+hsm.95=quantile(db.clim$hsm,prob=0.95,na.rm=TRUE)[[1]]/1000
+hsm.05=quantile(db.clim$hsm,prob=0.05,na.rm=TRUE)[[1]]/1000
+fsm.95=quantile(db.clim$fsm.winter,prob=0.95,na.rm=TRUE)[[1]]
+fsm.05=quantile(db.clim$fsm.winter,prob=0.05,na.rm=TRUE)[[1]]
+
+df.range<-db.clim |> 
+  filter(presence==1) |> 
+  filter(psi>(-10000)) |> 
+  group_by(species.binomial) |> 
+  summarise(psi_range=max(psi)/1000-min(psi)/1000,
+            t_range=max(frost.winter)-min(frost.winter))
+
+
+
+# df.mod.select %>%
+#   filter(mod %in% c("2sm","hsm")) |> 
+#   crossing(hsm=seq(hsm.05,
+#                    hsm.95,
+#                    length.out=400)) %>% 
+#   crossing(data.frame(fsm.type=c("indif"),
+#                       fsm=c(0))) %>% 
+#   mutate(pred=k_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+#                        (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+#   ggplot(aes(hsm,pred,color=prevalence,linesize=species.binomial))+
+#   theme_minimal()+
+#   theme(axis.title.y= element_blank(),
+#         axis.ticks.x = element_line(linewidth = 0.6),
+#         axis.line.x = element_line(linewidth = 0.6),
+#         # panel.grid = element_blank(),
+#         # panel.grid.major = element_line(color = "lightgrey",
+#         #                                   size =0.02),
+#         axis.text.y = element_text(hjust=0.5))+
+#   geom_vline(xintercept = 0,linetype="dashed")+
+#   geom_line(aes(alpha=0.6),size=0.6)+
+#   scale_color_gradientn(colours = viridis(15,direction=-1))+
+#   guides(alpha="none")+
+#   labs(color="Species prevalence",
+#        x="Hydraulic safety margins (MPa)")+
+#   NULL
+# df.mod.select %>%
+#   filter(mod %in% c("2sm","fsm")) |> 
+#   crossing(fsm=seq(fsm.05,
+#                    fsm.95,
+#                    length.out=400)) %>% 
+#   crossing(data.frame(hsm.type=c("indif"),
+#                       hsm=c(0))) %>% 
+#   mutate(pred=k_int/((1+exp(-r_fsm*(fsm-t_fsm)))*
+#                        (1+exp(-r_hsm*(hsm-t_hsm))))) %>% 
+#   ggplot(aes(fsm,pred,color=prevalence,linesize=species.binomial))+
+#   theme_minimal()+
+#   theme(axis.title.y= element_blank(),
+#         axis.ticks.x = element_line(linewidth = 0.6),
+#         axis.line.x = element_line(linewidth = 0.6),
+#         # panel.grid = element_blank(),
+#         # panel.grid.major = element_line(color = "lightgrey",
+#         #                                   size =0.02),
+#         axis.text.y = element_text(hjust=0.5))+
+#   geom_vline(xintercept = 0,linetype="dashed")+
+#   geom_line(aes(alpha=0.6),size=0.6)+
+#   scale_color_gradientn(colours = viridis(15,direction=-1),
+#                         breaks=c(0,0.1,0.2,0.3,0.4,0.5,0.6))+
+#   guides(alpha="none")+
+#   labs(color="Species prevalence",
+#        x="Frost safety margin (°C)")+
+#   NULL
+# 
+
+c<-df.mod.select %>%
+  left_join(df.species) |>
+  crossing(data.frame(xsm_val=c(seq(fsm.05,
+                                    fsm.95,
+                                    length.out=100),
+                                seq(hsm.05,
+                                    hsm.95,
+                                    length.out=100)),
+                      xsm_name=c(rep("Frost safety margins (°C)",100),
+                                 rep("Hydraulic safety margins (MPa)",100)))) |> 
+  filter((mod %in% c("2sm","hsm") & xsm_name=="Hydraulic safety margins (MPa)")|
+           mod %in% c("2sm","fsm") & xsm_name=="Frost safety margins (°C)") |> 
+  mutate(pred=case_when(mod=="2sm"&xsm_name=="Hydraulic safety margins (MPa)"~k_int/((1+exp(-r_fsm*(fsm.95-t_fsm)))*
+                                                            (1+exp(-r_hsm*(xsm_val-t_hsm)))),
+                        mod=="2sm"&xsm_name=="Frost safety margins (°C)"~k_int/((1+exp(-r_hsm*(hsm.95-t_hsm)))*
+                                                            (1+exp(-r_fsm*(xsm_val-t_fsm)))),
+                        mod=="hsm"~k_int/(1+exp(-r_hsm*(xsm_val-t_hsm))),
+                        mod=="fsm"~k_int/(1+exp(-r_fsm*(xsm_val-t_fsm)))
+                        )
+         ) |>
+  ggplot(aes(xsm_val,pred,color=group,linesize=species.binomial,linetype=mod))+ #color=prevalence,
+  geom_vline(xintercept = 0,linetype="dashed")+
+  geom_line(alpha=0.6,size=0.6)+
+  scale_color_manual(values=c("chocolate2","forestgreen"))+
+  # scale_color_gradientn(colours = viridis(15,direction=-1),
+  #                       breaks=c(0,0.1,0.2,0.3,0.4,0.5,0.6))+
+  guides(alpha="none")+
+  labs(color="Species prevalence")+
+  theme_minimal()+
+  theme(axis.title= element_blank(),
+        axis.ticks.x = element_line(linewidth = 0.6),
+        axis.line = element_line(linewidth = 0.6),
+        legend.position = "none",
+        # panel.grid = element_blank(),
+        # panel.grid.major = element_line(color = "lightgrey",
+        #                                   size =0.02),
+        axis.text.y = element_text(hjust=0.5),
+        strip.placement = "outside",
+        strip.text = element_text(size=11,vjust=-1.1),
+        text=element_text(size=12))+
+    facet_wrap(~xsm_name,scales="free",
+             strip.position = "bottom")+
+  NULL
+
+
+df.n<- df.mod.select %>% 
+  left_join(df.species) |> 
+  rename(HSM=inflex_hsm,
+         FSM=inflex_fsm) %>% 
+  pivot_longer(col=c("HSM","FSM")) %>% 
+  filter(mod!="none") %>% 
+  filter(!(mod=="fsm"&name=="HSM")&
+           !(mod=="hsm"&name=="FSM")) %>% 
+  group_by(group,name) |> 
+  summarise(n=n(),
+            value=quantile(100-value,probs=0.5)[[1]]) |> 
+  ungroup()
+df.mod.select %>%
+  left_join(df.species) |> 
+  mutate(HSM=100-inflex_hsm,
+         FSM=100-inflex_fsm) %>% 
+  pivot_longer(col=c("HSM","FSM")) %>% 
+  filter(mod!="none") %>% 
+  filter(!(mod=="fsm"&name=="HSM")&
+           !(mod=="hsm"&name=="FSM")) %>% 
+  ggplot(aes(name,value,fill=group))+
+  geom_boxplot()+
+  geom_text(data=df.n,
+            mapping=aes(x=name,y=value,label=n),
+            position = position_dodge(width=0.75),
+            vjust=2)+
+  geom_signif(comparisons = list(c("HSM","FSM")),
+              map_signif_level = TRUE)+
+  # geom_signif(comparisons = list(c("angiosperm","gymnosperm")),
+  #             map_signif_level = TRUE)+
+  # stat_compare_means(aes(label = ..p.signif..),
+  #                    method = "t.test",
+  #                    label.x = 1.5, label.y = 60)+
+  scale_fill_manual(values=c("chocolate2","forestgreen"))+
+  theme_minimal()+
+  theme(axis.title.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.line.y = element_line(linewidth = 0.6),
+        legend.title = element_blank(),
+        # panel.grid = element_blank(),
+        # panel.grid.major = element_line(color = "lightgrey",
+        #                                   size =0.02),
+        axis.text.y = element_text(hjust=0.5),
+        text=element_text(size=12))+
+  labs(x="Inflexion index")-> b
+#%%%%%%%%%%%%%%%%%%%
+df.n<- df.mod.select %>% 
+  left_join(df.species) |>
+    left_join(df.range) |> 
+    dplyr::select(species.binomial,px.mu,lt50.mean,t_hsm,t_fsm,mod,psi_range,t_range,group) %>% 
+    mutate(t_range=case_when(is.na(t_range)~mean(df.range$t_range,na.rm=TRUE),
+                           TRUE~t_range),
+         HSM=t_hsm/psi_range,
+         FSM=t_fsm/t_range) |> 
+  dplyr::select(group,species.binomial,mod,HSM,FSM) %>% 
+  pivot_longer(cols=c("HSM","FSM"),names_to = "threshold",values_to = "traits_val") %>% 
+  filter((mod%in%c("hsm","2sm")&threshold=="HSM")|
+           (mod%in%c("fsm","2sm")&threshold=="FSM")) %>% 
+  group_by(group,threshold) |> 
+  summarise(n=n(),
+            value=quantile(traits_val,probs=0.5)[[1]]) |> 
+  ungroup()
+df.mod.select %>% 
+  left_join(df.species) |>
+  left_join(df.range) |> 
+  dplyr::select(species.binomial,px.mu,lt50.mean,t_hsm,t_fsm,mod,psi_range,t_range,group) %>% 
+  mutate(t_range=case_when(is.na(t_range)~mean(df.range$t_range,na.rm=TRUE),
+                           TRUE~t_range),
+         `HSM`=t_hsm/psi_range,
+         FSM=t_fsm/t_range) |> 
+  pivot_longer(cols=c("px.mu","lt50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("HSM","FSM"),names_to="threshold",values_to="threshold_val") %>% 
+  filter((mod%in%c("hsm","2sm")&traits=="px.mu"&threshold=="HSM")|
+           (mod%in%c("fsm","2sm")&traits=="lt50.mean"&threshold=="FSM")) %>% 
+  group_by(threshold) |> 
+  mutate(n=n()) |> 
+  ungroup() |> 
+  ggplot(aes(threshold,threshold_val,fill=group))+
+  geom_boxplot()+
+  geom_text(data=df.n,
+            mapping=aes(x=threshold,y=value,label=n),
+            position = position_dodge(width=0.75),
+            vjust=-0.5)+
+  geom_signif(comparisons = list(c("HSM","FSM")),
+              map_signif_level = TRUE)+
+  # geom_text(data=df.n,mapping=aes(x=threshold,y=threshold_val,label=n))+
+  # stat_compare_means(aes(label = ..p.signif..),
+  #                    method = "t.test",
+  #                    label.x = 1.5, label.y = 0.35)+
+  scale_fill_manual(values=c("chocolate2","forestgreen"))+
+  theme_minimal()+
+  theme(axis.title.y= element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.line.y = element_line(linewidth = 0.6),
+        # panel.grid = element_blank(),
+        # panel.grid.major = element_line(color = "lightgrey",
+        #                                   size =0.02),
+        axis.text.y = element_text(hjust=0.5),
+        strip.placement = "outside",
+        text=element_text(size=12))+
+  labs(x="Rescaled thresholds")+
+  NULL-> a
+
+
+cowplot::plot_grid(
+  c,
+  cowplot::plot_grid(get_legend(b),
+                   cowplot::plot_grid(a+theme(legend.position = "none"),
+                                      b+theme(legend.position = "none"),
+                                      nrow=1),
+                   nrow=2,
+                   rel_heights = c(0.2,1),
+                   rel_widths = c(0.2,1),
+                   axis="l"
+                   ),
+  labels=c("A","B"),
+  label_size = 12,
+  hjust=c(-0.2,0.51),
+  rel_widths = c(1,0.5)
+)->plot
+plot
+# ggsave(filename = "hyp1.png",
+#        plot, 
+#        width=10,
+#        height = 6)
+ggsave("figures/fig2_beta_gg.pdf",
+       plot=plot,
+       scale=2,
+       dpi=600,
+       width = 13,
+       height = 8,
+       units="cm")
+
+                                  
+```
+
+### accounting for uncertainties
+```{r}
+hsm.95=quantile(db.clim$hsm,prob=0.95,na.rm=TRUE)[[1]]/1000
+hsm.05=quantile(db.clim$hsm,prob=0.05,na.rm=TRUE)[[1]]/1000
+fsm.95=quantile(db.clim$fsm.winter,prob=0.95,na.rm=TRUE)[[1]]
+fsm.05=quantile(db.clim$fsm.winter,prob=0.05,na.rm=TRUE)[[1]]
+
+df.range<-db.clim |> 
+  filter(presence==1) |> 
+  filter(psi>(-10000)) |> 
+  group_by(species.binomial) |> 
+  summarise(psi_range=max(psi)/1000-min(psi)/1000,
+            t_range=max(frost.winter,na.rm=TRUE)-min(frost.winter,na.rm=TRUE))
+
+c<-df.mod.select %>%
+  left_join(df.species) |>
+  crossing(data.frame(xsm_val=c(seq(fsm.05,
+                                    fsm.95,
+                                    length.out=100),
+                                seq(hsm.05,
+                                    hsm.95,
+                                    length.out=100)),
+                      xsm_name=c(rep("Frost safety margins (°C)",100),
+                                 rep("Hydraulic safety margins (MPa)",100)))) |> 
+  filter((mod %in% c("2sm","hsm") & xsm_name=="Hydraulic safety margins (MPa)")|
+           mod %in% c("2sm","fsm") & xsm_name=="Frost safety margins (°C)") |> 
+  mutate(pred=case_when(mod=="2sm"&xsm_name=="Hydraulic safety margins (MPa)"~k_int/((1+exp(-r_fsm*(fsm.95-t_fsm)))*
+                                                            (1+exp(-r_hsm*(xsm_val-t_hsm)))),
+                        mod=="2sm"&xsm_name=="Frost safety margins (°C)"~k_int/((1+exp(-r_hsm*(hsm.95-t_hsm)))*
+                                                            (1+exp(-r_fsm*(xsm_val-t_fsm)))),
+                        mod=="hsm"~k_int/(1+exp(-r_hsm*(xsm_val-t_hsm))),
+                        mod=="fsm"~k_int/(1+exp(-r_fsm*(xsm_val-t_fsm)))
+                        )
+         ) |>
+  ggplot(aes(xsm_val,pred,color=group,linesize=species.binomial,linetype=mod))+ #color=prevalence,
+  geom_vline(xintercept = 0,linetype="dashed")+
+  geom_line(alpha=0.6,size=0.6)+
+  scale_color_manual(values=c("chocolate2","forestgreen"))+
+  # scale_color_gradientn(colours = viridis(15,direction=-1),
+  #                       breaks=c(0,0.1,0.2,0.3,0.4,0.5,0.6))+
+  guides(alpha="none")+
+  labs(color="Species prevalence")+
+  theme_minimal()+
+  theme(axis.title= element_blank(),
+        axis.ticks.x = element_line(linewidth = 0.6),
+        axis.line = element_line(linewidth = 0.6),
+        legend.position = "none",
+        # panel.grid = element_blank(),
+        # panel.grid.major = element_line(color = "lightgrey",
+        #                                   size =0.02),
+        axis.text.y = element_text(hjust=0.5),
+        strip.placement = "outside",
+        strip.text = element_text(size=11,vjust=-1.1),
+        text=element_text(size=12))+
+    facet_wrap(~xsm_name,scales="free",
+             strip.position = "bottom")+
+  NULL
+
+
+df.n<- df.mod.select %>% 
+  left_join(df.species) |> 
+  rename(HSM=inflex_hsm,
+         FSM=inflex_fsm) %>% 
+  pivot_longer(col=c("HSM","FSM")) %>% 
+  filter(mod!="none") %>% 
+  filter(!(mod=="fsm"&name=="HSM")&
+           !(mod=="hsm"&name=="FSM")) %>% 
+  group_by(group,name) |> 
+  summarise(n=n(),
+            value=quantile(100-value,probs=0.5)[[1]]) |> 
+  ungroup()
+df.mod.select %>%
+  left_join(df.species) |> 
+  mutate(HSM=100-inflex_hsm,
+         FSM=100-inflex_fsm) %>% 
+  pivot_longer(col=c("HSM","FSM")) %>% 
+  filter(mod!="none") %>% 
+  filter(!(mod=="fsm"&name=="HSM")&
+           !(mod=="hsm"&name=="FSM")) %>% 
+  ggplot(aes(name,value,fill=group))+
+  geom_boxplot()+
+  geom_text(data=df.n,
+            mapping=aes(x=name,y=value,label=n),
+            position = position_dodge(width=0.75),
+            vjust=2)+
+  geom_signif(comparisons = list(c("HSM","FSM")),
+              map_signif_level = TRUE)+
+  # geom_signif(comparisons = list(c("angiosperm","gymnosperm")),
+  #             map_signif_level = TRUE)+
+  # stat_compare_means(aes(label = ..p.signif..),
+  #                    method = "t.test",
+  #                    label.x = 1.5, label.y = 60)+
+  scale_fill_manual(values=c("chocolate2","forestgreen"))+
+  theme_minimal()+
+  theme(axis.title.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.line.y = element_line(linewidth = 0.6),
+        legend.title = element_blank(),
+        # panel.grid = element_blank(),
+        # panel.grid.major = element_line(color = "lightgrey",
+        #                                   size =0.02),
+        axis.text.y = element_text(hjust=0.5),
+        text=element_text(size=12))+
+  labs(x="Inflexion index")-> b
+
+
+#%%%%%%%%%%%%%%%%%%%
+df.n<- df.mod.select %>% 
+  left_join(df.species) |>
+    left_join(df.range) |> 
+    dplyr::select(species.binomial,px.mu,lt50.mean,t_hsm,t_fsm,mod,psi_range,t_range,group) %>% 
+    mutate(t_range=case_when(is.na(t_range)~mean(df.range$t_range,na.rm=TRUE),
+                           TRUE~t_range),
+         HSM=t_hsm/psi_range,
+         FSM=t_fsm/t_range) |> 
+  dplyr::select(group,species.binomial,mod,HSM,FSM) %>% 
+  pivot_longer(cols=c("HSM","FSM"),names_to = "threshold",values_to = "traits_val") %>% 
+  filter((mod%in%c("hsm","2sm")&threshold=="HSM")|
+           (mod%in%c("fsm","2sm")&threshold=="FSM")) %>% 
+  group_by(group,threshold) |> 
+  summarise(n=n(),
+            value=quantile(traits_val,probs=0.5)[[1]]) |> 
+  ungroup()
+df.mod.select %>% 
+  left_join(df.species) |>
+  left_join(df.range) |> 
+  dplyr::select(species.binomial,px.mu,lt50.mean,t_hsm,t_fsm,mod,psi_range,t_range,group) %>% 
+  mutate(t_range=case_when(is.na(t_range)~mean(df.range$t_range,na.rm=TRUE),
+                           TRUE~t_range),
+         `HSM`=t_hsm/psi_range,
+         FSM=t_fsm/t_range) |> 
+  pivot_longer(cols=c("px.mu","lt50.mean"),names_to = "traits",values_to = "traits_val") %>% 
+  pivot_longer(cols=c("HSM","FSM"),names_to="threshold",values_to="threshold_val") %>% 
+  filter((mod%in%c("hsm","2sm")&traits=="px.mu"&threshold=="HSM")|
+           (mod%in%c("fsm","2sm")&traits=="lt50.mean"&threshold=="FSM")) %>% 
+  group_by(threshold) |> 
+  mutate(n=n()) |> 
+  ungroup() |> 
+  ggplot(aes(threshold,threshold_val,fill=group))+
+  geom_boxplot()+
+  geom_text(data=df.n,
+            mapping=aes(x=threshold,y=value,label=n),
+            position = position_dodge(width=0.75),
+            vjust=-0.5)+
+  geom_signif(comparisons = list(c("HSM","FSM")),
+              map_signif_level = TRUE)+
+  # geom_text(data=df.n,mapping=aes(x=threshold,y=threshold_val,label=n))+
+  # stat_compare_means(aes(label = ..p.signif..),
+  #                    method = "t.test",
+  #                    label.x = 1.5, label.y = 0.35)+
+  scale_fill_manual(values=c("chocolate2","forestgreen"))+
+  theme_minimal()+
+  theme(axis.title.y= element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.line.y = element_line(linewidth = 0.6),
+        # panel.grid = element_blank(),
+        # panel.grid.major = element_line(color = "lightgrey",
+        #                                   size =0.02),
+        axis.text.y = element_text(hjust=0.5),
+        strip.placement = "outside",
+        text=element_text(size=12))+
+  labs(x="Rescaled thresholds")+
+  NULL-> a
+
+```
+
+
+#### using posterior distribution
+Threshold
+```{r}
+df.range<-db.clim |> 
+  filter(presence==1) |> 
+  filter(psi>(-10000)) |> 
+  group_by(species.binomial) |> 
+  summarise(psi_range=max(psi)/1000-min(psi)/1000,
+            t_range=max(frost.winter,na.rm=TRUE)-min(frost.winter,na.rm=TRUE))
+
+threshold_prior=df.output.select |> select(species,mod) |> #extract model selection
+  left_join(df.mod.output,by=c("species","mod"))  |> 
+  select(species,mod,parameter) |> 
+  filter(grepl("t_",parameter)) |> unique() |> 
+  mutate(file=case_when(mod=="hsm"~paste0(species,"_fitIII_hsm.RData"),
+                        mod=="fsm"~paste0(species,"_fitIII_fsm.RData"),
+                        mod=="2sm"~paste0(species,"_fitIII.RData"),
+                        mod=="none"~paste0(species,"_fitIII_none.RData")))
+
+threshold_post=threshold_prior |> 
+  left_join(df.range,by=c("species"="species.binomial")) |> 
+  pivot_longer(cols=c("psi_range","t_range")) |> 
+  filter((parameter=="t_hsm"&name=="psi_range")|
+           (parameter=="t_fsm"&name=="t_range")) |> 
+  crossing(posterior=seq(888,889,length.out=1500)) 
+  
+# Loop over the files
+  for (i in seq_along(threshold_prior$species)) {
+    print(i)
+    tryCatch({
+      new_env <- new.env()
+      load(file=paste0("fit_mod6/", threshold_prior$file[i]),envir=new_env)
+      obj_name <- ls(new_env)[1]
+      model <- get(obj_name, envir = new_env)
+      rm(new_env)
+      posterior=as.data.frame(model)
+      threshold_post[threshold_post$species==threshold_prior$species[i]&
+                       threshold_post$parameter==threshold_prior$parameter[i],"posterior"]= 
+        posterior[,threshold_prior$parameter[i]]
+    },
+    error=function(e){print(paste0("error for ",i))}
+    )
+    
+  }
+
+threshold_post |> 
+  left_join(df.species[,c("group","species.binomial")],by=c("species"="species.binomial")) |> 
+  mutate(rescale=posterior/value) |>
+  ggplot(aes(parameter,rescale,fill=group))+
+  geom_boxplot()+
+  # geom_text(data=df.n,
+  #           mapping=aes(x=threshold,y=value,label=n),
+  #           position = position_dodge(width=0.75),
+  #           vjust=-0.5)+
+  # geom_signif(comparisons = list(c("HSM","FSM")),
+  #             map_signif_level = TRUE)+
+  # geom_text(data=df.n,mapping=aes(x=threshold,y=threshold_val,label=n))+
+  # stat_compare_means(aes(label = ..p.signif..),
+  #                    method = "t.test",
+  #                    label.x = 1.5, label.y = 0.35)+
+  scale_fill_manual(values=c("chocolate2","forestgreen"))+
+  theme_minimal()+
+  theme(axis.title.y= element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.line.y = element_line(linewidth = 0.6),
+        # panel.grid = element_blank(),
+        # panel.grid.major = element_line(color = "lightgrey",
+        #                                   size =0.02),
+        axis.text.y = element_text(hjust=0.5),
+        strip.placement = "outside",
+        text=element_text(size=12))+
+  labs(x="Rescaled thresholds")->ac
+ac
+a
+```
+Slope
+
+```{r}
+df.range<-db.clim |> 
+  filter(presence==1) |> 
+  filter(psi>(-10000)) |> 
+  group_by(species.binomial) |> 
+  summarise(psi_range=max(psi)/1000-min(psi)/1000,
+            t_range=max(frost.winter,na.rm=TRUE)-min(frost.winter,na.rm=TRUE))
+
+threshold_prior=df.output.select |> select(species,mod) |> #extract model selection
+  left_join(df.mod.output,by=c("species","mod"))  |> 
+  select(species,mod,parameter) |> 
+  filter(grepl("r_",parameter)) |> unique() |> 
+  mutate(file=case_when(mod=="hsm"~paste0(species,"_fitIII_hsm.RData"),
+                        mod=="fsm"~paste0(species,"_fitIII_fsm.RData"),
+                        mod=="2sm"~paste0(species,"_fitIII.RData"),
+                        mod=="none"~paste0(species,"_fitIII_none.RData")))
+
+threshold_post=threshold_prior |> 
+  left_join(df.range,by=c("species"="species.binomial")) |> 
+  pivot_longer(cols=c("psi_range","t_range")) |> 
+  filter((parameter=="r_hsm"&name=="psi_range")|
+           (parameter=="r_fsm"&name=="t_range")) |> 
+  crossing(posterior=seq(888,889,length.out=1500)) |> 
+  mutate(posterior_t=posterior)
+  
+# Loop over the files
+  for (i in seq_along(threshold_prior$species)) {
+    print(i)
+    tryCatch({
+      new_env <- new.env()
+      load(file=paste0("fit_mod6/", threshold_prior$file[i]),envir=new_env)
+      obj_name <- ls(new_env)[1]
+      model <- get(obj_name, envir = new_env)
+      rm(new_env)
+      posterior=as.data.frame(model)
+      threshold_post[threshold_post$species==threshold_prior$species[i]&
+                       threshold_post$parameter==threshold_prior$parameter[i],c("posterior","posterior_t")]= 
+        cbind(posterior[,threshold_prior$parameter[i]],
+              posterior[,paste0("t_",str_sub(threshold_prior$parameter[i],-3,-1))])
+              
+    },
+    error=function(e){print(paste0("error for ",i))}
+    )
+    
+  }
+
+threshold_post |> 
+  left_join(df.species[,c("group","species.binomial")],by=c("species"="species.binomial")) |> 
+  mutate(inflex=case_when(parameter=="r_hsm"~100-100*((16*exp(-posterior*(hsm.95-posterior_t)))/(2+2*exp(-posterior*(hsm.95-posterior_t)))^2),
+                          parameter=="r_fsm"~100-100*((16*exp(-posterior*(fsm.95-posterior_t)))/(2+2*exp(-posterior*(fsm.95-posterior_t)))^2))) |> 
+  ggplot(aes(parameter,inflex,fill=group))+
+  geom_boxplot()+
+  # geom_text(data=df.n,
+  #           mapping=aes(x=threshold,y=value,label=n),
+  #           position = position_dodge(width=0.75),
+  #           vjust=-0.5)+
+  # geom_signif(comparisons = list(c("HSM","FSM")),
+  #             map_signif_level = TRUE)+
+  # geom_text(data=df.n,mapping=aes(x=threshold,y=threshold_val,label=n))+
+  # stat_compare_means(aes(label = ..p.signif..),
+  #                    method = "t.test",
+  #                    label.x = 1.5, label.y = 0.35)+
+  scale_fill_manual(values=c("chocolate2","forestgreen"))+
+  theme_minimal()+
+  theme(axis.title.y= element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.line.y = element_line(linewidth = 0.6),
+        # panel.grid = element_blank(),
+        # panel.grid.major = element_line(color = "lightgrey",
+        #                                   size =0.02),
+        axis.text.y = element_text(hjust=0.5),
+        strip.placement = "outside",
+        text=element_text(size=12))+
+  labs(x="Rescaled thresholds")->bc
+bc
+b
+```
