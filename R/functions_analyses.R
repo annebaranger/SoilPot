@@ -433,6 +433,7 @@ fit.logistic <- function(db.clim.file,
                          df.species,
                          soil.depth="real",
                          output){
+  
   # read db.clim and filter some species
   db.clim=fread(db.clim.file) %>% 
       # filter(!species.binomial %in% c("Juniperus virginiana",
@@ -950,6 +951,205 @@ compute.auc <- function(df.output,
   return(df.output)
 }
 
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 4 - Fit model with climate ####
+#' @description Fit model with classical climatic variable
+#' @authors Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+#' Fit model
+#' 
+#' @description function that fit 4 models for each species and save it
+#' @param df.species df of traits for each species
+#' @param soil.depth "real" or "constant"
+#' @return no return, fit_mod6 is the folder with all fitted models
+#' 
+
+fit.logistic.clim <- function(db.clim.file,
+                         df.species,
+                         output,
+                         file.path){
+  # check that ouput directory exists
+  if (!dir.exists(output)) {
+    dir.create(output, recursive = TRUE)
+    cat("Folder created at:", output, "\n")
+  } else {
+    cat("Folder already exists at:", output, "\n")
+  }
+  
+  
+  
+  # read db.clim and filter some species
+  db.clim=fread(db.clim.file) %>% 
+    filter(!is.na(hsm)) |> 
+    filter(!is.na(fsm.winter)) |> 
+    filter(psi>(-10000)) |>  #remove very low value of psi
+    mutate(hsm=hsm/1000,
+           hsm.100=hsm.100/1000,
+           fsm=fsm.winter) |> 
+    filter(!is.na(wai)) |> 
+    filter(!is.na(temp.mean))
+    
+  
+  
+  # set species list, as sp present in occ data
+  species.list=unique(db.clim$species.binomial)
+  
+  # prepare dataframe output
+  df.output=df.species %>% 
+    filter(species.binomial %in% species.list) %>% 
+    select(species.binomial,prevalence) %>% 
+    mutate(k_int=NA,
+           r_mat=NA,
+           r_wai=NA,
+           t_mat=NA,
+           t_wai=NA,
+           rhat=NA,
+           lp__=NA,
+           divergence=NA) %>% 
+    crossing(mod=c("2var","wai","mat"))
+  
+  
+  # for loop for model fitting, no none model because already fitted with safety
+  # margins
+  for (sp in species.list){
+    print(sp)
+    
+    #initialize
+    db.pres <- db.clim %>%
+      filter(species.binomial==sp) 
+    mean.mat=mean(db.pres$temp.mean)
+    mean.wai=mean(db.pres$wai)
+    preval=df.species[df.species$species.binomial==sp,
+                      "prevalence"]
+    
+    # 2 var
+    print("2var")
+    data.list <- list(N=dim(db.pres)[1],
+                      presence=db.pres$presence,
+                      mat=as.numeric(db.pres$temp.mean),
+                      wai=as.numeric(db.pres$wai),
+                      prior_K=preval,
+                      mean_mat=mean.mat,
+                      mean_wai=mean.wai,
+                      NULL)
+    fit.2var <- stan(file = "glm_log_1sp_2clim.stan",
+                     data=data.list,
+                     iter=1000,
+                     chains=3,
+                     core=3,
+                     include=FALSE,
+                     pars=c("proba","K_vect"))
+    save(fit.2var,file=paste0(output,sp,"_fit_2clim.RData"))
+    
+    summary=summary(fit.2var)$summary
+    par_mod=get_sampler_params(fit.2var)
+    df.output[df.output$species.binomial==sp
+              & df.output$mod=="2var",
+              c("k_int","r_mat","r_wai","t_wai","t_mat","rhat","lp__","divergence")]=
+      list(summary["K_int","mean"],
+           summary["r_mat","mean"],
+           summary["r_wai","mean"],
+           summary["t_wai","mean"],
+           summary["t_mat","mean"],
+           max(summary[,"Rhat"]),
+           summary["lp__","mean"],
+           mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+      )
+    
+    
+    # WAi (equivalent HSM)
+    print("wai")
+    data.list <- list(N=dim(db.pres)[1],
+                      presence=db.pres$presence,
+                      wai=as.numeric(db.pres$wai),
+                      prior_K=preval,
+                      mean_wai=mean.wai,
+                      NULL)
+    fit.wai <- stan(file = "glm_log_1sp_wai.stan",
+                    data=data.list,
+                    iter=1000,
+                    chains=3,
+                    core=3,
+                    include=FALSE,
+                    pars=c("proba","K_vect"))
+    save(fit.wai,file=paste0(output,sp,"_fit_wai.RData"))
+    
+    summary=summary(fit.wai)$summary
+    par_mod=get_sampler_params(fit.wai)
+    df.output[df.output$species.binomial==sp
+              & df.output$mod=="wai",
+              c("k_int","r_mat","r_wai","t_wai","t_mat","rhat","lp__","divergence")]=
+      list(summary["K_int","mean"],
+           0,
+           summary["r_wai","mean"],
+           summary["t_wai","mean"],
+           0,
+           max(summary[,"Rhat"]),
+           summary["lp__","mean"],
+           mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+      )
+    
+    
+    # MAT (equivalent FSM)
+    print("mat")
+    data.list <- list(N=dim(db.pres)[1],
+                      presence=db.pres$presence,
+                      mat=as.numeric(db.pres$temp.mean),
+                      prior_K=preval,
+                      mean_mat=mean.mat,
+                      NULL)
+    fit.mat <- stan(file = "glm_log_1sp_mat.stan",
+                    data=data.list,
+                    iter=1000,
+                    chains=3,
+                    core=3,
+                    include=FALSE,
+                    pars=c("proba","K_vect"))
+    save(fit.mat,file=paste0(output,sp,"_fit_mat.RData"))
+    
+    summary=summary(fit.mat)$summary
+    par_mod=get_sampler_params(fit.mat)
+    df.output[df.output$species.binomial==sp
+              & df.output$mod=="mat",
+              c("k_int","r_mat","r_wai","t_wai","t_mat","rhat","lp__","divergence")]=
+      list(summary["K_int","mean"],
+           summary["r_mat","mean"],
+           0,
+           0,
+           summary["t_mat","mean"],
+           max(summary[,"Rhat"]),
+           summary["lp__","mean"],
+           mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+      )
+  }
+  
+  
+  #' Compute BIC & inflexion index
+  wai.95=quantile(db.clim$wai,prob=0.95)[[1]]
+  mat.95=quantile(db.clim$temp.mean,prob=0.95)[[1]]
+  df.output <- df.output %>% 
+    mutate(nb.par=case_when(mod=="2var"~5,
+                            mod=="wai"|mod=="mat"~3,
+                            mod=="none"~1),
+           bic=2*nb.par-2*lp__) |> 
+    mutate(inflex_mat=100-100*((16*exp(-r_mat*(mat.95-t_mat)))/(2+2*exp(-r_mat*(mat.95-t_mat)))^2),
+           inflex_wai=100-100*((16*exp(-r_wai*(wai.95-t_wai)))/(2+2*exp(-r_wai*(wai.95-t_wai)))^2))
+  fwrite(df.output,file=file.path)
+  
+}
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#### Section 5 - Model selection ####
+#' @description Select best model for each species 
+#' @authors Anne Baranger (INRAE - LESSEM)
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 #' Model selection
 #' 
 #' @description compute auc for each model
@@ -979,3 +1179,67 @@ select.model <- function(df.output){
     )
   return(df.mod.select)
 }
+
+
+
+fit.allspecies<- function(db.clim.file,
+                          df.species,
+                          output,
+                          file.path){
+  # check that ouput directory exists
+  if (!dir.exists(output)) {
+    dir.create(output, recursive = TRUE)
+    cat("Folder created at:", output, "\n")
+  } else {
+    cat("Folder already exists at:", output, "\n")
+  }
+  
+  
+  
+  # read db.clim and filter some species
+  db.clim=fread(db.clim.file) %>% 
+    filter(!is.na(hsm)) |> 
+    filter(!is.na(fsm.winter)) |> 
+    filter(psi>(-10000)) |>  #remove very low value of psi
+    mutate(hsm=hsm/1000,
+           hsm.100=hsm.100/1000,
+           fsm=fsm.winter) |> 
+    filter(!is.na(wai)) |> 
+    filter(!is.na(temp.mean))
+  
+  
+  
+  # set species list, as sp present in occ data
+  species.list=db.clim |> 
+    filter(presence==1) |> 
+    group_by(species.binomial) |> 
+    summarise(n=n()) |> 
+    arrange(n)
+  n.pres=quantile(species.list$n,probs=0.1)
+  
+  
+  db.clim.sub=db.clim |> 
+    group_by(species.binomial,presence) |> 
+    sample_n(n.pres,replace=TRUE)
+  
+  
+  data.list<-list(N=dim(db.clim.sub)[1],
+                  S=nlevels(as.factor(db.clim.sub$species.binomial)),
+                  presence=db.clim.sub$presence,
+                  species=as.numeric(as.factor(db.clim.sub$species.binomial)),
+                  fsm=db.clim.sub$fsm,
+                  hsm=db.clim.sub$hsm)
+  
+  fit.allsp <- stan(file = "old_mod/glm_log_all.stan",
+                     data=data.list,
+                     iter=1000,
+                     chains=3,
+                     core=3,
+                     include=FALSE,
+                     pars=c("proba","K_vect"))
+  
+  # save(fit.allsp,file="fit_random_allsp.RData")
+  fit.allsp
+  
+    
+  }

@@ -93,6 +93,15 @@ list(
   #   report,
   #   "Report_jan.Rmd"
   # ),
+  
+  # fit with climatic variable
+  tar_target(
+    fit.mod.clim,
+    fit.logistic.clim(db.clim.file,
+                      df.species,
+                      output="fit_modClim/",
+                      file.path="output/df.outputClim.csv")
+  ),
   NULL
 
 )
