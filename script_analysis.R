@@ -2,7 +2,7 @@
 
 #library
 library(targets)
-library(tarchetypes)
+# library(tarchetypes)
 # lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate","lme4"),require,character.only=TRUE)
 
 
@@ -11,7 +11,7 @@ source("R/functions_analyses.R")
 options(tidyverse.quiet = TRUE)
 tar_option_set(packages = c("stringr","ggplot2","data.table","tidyr","viridis",
                             "rgdal","raster","rosm","terra","dplyr","sf",
-                            "lubridate","lme4","rstan","caret"),
+                            "lubridate","lme4","rstan","caret","pROC"),
                error = "continue") 
 
 #Targets

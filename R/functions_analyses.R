@@ -30,23 +30,23 @@
 #' @return df.loc + extracted variables + computed variables
 
 get_waisgdd <- function(dir.chelsa="data/CHELSA/",
+                        file=c("bio1","bio12","pet_penman_mean","gdd5"),
+                        rast.mod,
                         df.loc){
-  annual_temp=extract(rast("data/CHELSA/CHELSA_bio1_1981-2010_V.2.1.tif"),
-                      df.loc)[2]
-  pr_chelsa=extract(rast("data/CHELSA/CHELSA_bio12_1981-2010_V.2.1.tif"),
-                    df.loc)[2]
-  pet_chelsa=extract(rast("data/CHELSA/CHELSA_pet_penman_mean_1981-2010_V.2.1.tif"),
-                     df.loc)[2]
-  sgdd_chelsa=extract(rast("data/CHELSA/CHELSA_gdd5_1981-2010_V.2.1.tif"),
-                      df.loc)[2]
+  rast.mod=rast(rast.mod,
+                crs="epsg:4326")
+  clim.files=paste0(dir.chelsa,"CHELSA_",file,"_1981-2010_V.2.1.tif")
+  rast.clim=rast(clim.files)
+  names(rast.clim)=file
+  rast.clim=resample(crop(rast.clim,
+                          rast.mod),
+                     rast.mod,
+                     method="near")
   df.loc=cbind(df.loc,
-               temp.mean=annual_temp,
-               pr=pr_chelsa,
-               pet=pet_chelsa,
-               sgdd=sgdd_chelsa)
-  colnames(df.loc)=c("x","y","temp.mean","pr","pet","sgdd")
+               extract(rast.clim,df.loc)[2:(nlyr(rast.clim)+1)])
+  colnames(df.loc)=c("x","y","mat","map","pet","sgdd")
   df.loc <- df.loc %>% 
-    mutate(wai=(pr-12*pet)/pet)
+    mutate(wai=(map-12*pet)/pet)
   return(df.loc)
 }
 
@@ -1183,9 +1183,9 @@ select.model <- function(df.output){
 
 
 fit.allspecies<- function(db.clim.file,
-                          df.species,
+                          output.clim.file,
                           output,
-                          file.path){
+                          mod.folder){
   # check that ouput directory exists
   if (!dir.exists(output)) {
     dir.create(output, recursive = TRUE)
@@ -1194,7 +1194,12 @@ fit.allspecies<- function(db.clim.file,
     cat("Folder already exists at:", output, "\n")
   }
   
-  
+  if (!dir.exists(mod.folder)) {
+    dir.create(mod.folder, recursive = TRUE)
+    cat("Folder created at:", mod.folder, "\n")
+  } else {
+    cat("Folder already exists at:", mod.folder, "\n")
+  }
   
   # read db.clim and filter some species
   db.clim=fread(db.clim.file) %>% 
@@ -1210,36 +1215,85 @@ fit.allspecies<- function(db.clim.file,
   
   
   # set species list, as sp present in occ data
-  species.list=db.clim |> 
-    filter(presence==1) |> 
-    group_by(species.binomial) |> 
-    summarise(n=n()) |> 
-    arrange(n)
-  n.pres=quantile(species.list$n,probs=0.1)
+  # species.list=db.clim |> 
+  #   filter(presence==1) |> 
+  #   group_by(species.binomial) |> 
+  #   summarise(n=n()) |> 
+  #   arrange(n)
+  # n.pres=quantile(species.list$n,probs=0.1)
+  # 
+  # 
+  # db.clim.sub=db.clim |>
+  #   sample_n(dim(db.clim)[1]/100,replace=TRUE)
+
+  data.list<-list(N=dim(db.clim)[1],
+                  S=nlevels(as.factor(db.clim$species.binomial)),
+                  presence=db.clim$presence,
+                  species=as.numeric(as.factor(db.clim$species.binomial)),
+                  fsm=db.clim$fsm,
+                  hsm=db.clim$hsm)
   
-  
-  db.clim.sub=db.clim |> 
-    group_by(species.binomial,presence) |> 
-    sample_n(n.pres,replace=TRUE)
-  
-  
-  data.list<-list(N=dim(db.clim.sub)[1],
-                  S=nlevels(as.factor(db.clim.sub$species.binomial)),
-                  presence=db.clim.sub$presence,
-                  species=as.numeric(as.factor(db.clim.sub$species.binomial)),
-                  fsm=db.clim.sub$fsm,
-                  hsm=db.clim.sub$hsm)
-  
-  fit.allsp <- stan(file = "old_mod/glm_log_all.stan",
+  fit.allsp <- stan(file = "glm_log_all.stan",
                      data=data.list,
                      iter=1000,
                      chains=3,
                      core=3,
                      include=FALSE,
                      pars=c("proba","K_vect"))
+  save(fit.allsp,file=paste0(mod.folder,"fit_random_allsp.RData"))
   
-  # save(fit.allsp,file="fit_random_allsp.RData")
-  fit.allsp
+  outputclim=fread(output.clim.file) |>  #output.clim.file="output/df.outputClim.csv"
+    filter(rhat<1.2) %>% 
+    filter(divergence <0.1) %>% 
+    group_by(species.binomial) %>% 
+    slice(which.min(bic)) %>% 
+    ungroup() |> 
+    mutate(across(c("r_mat","r_wai","t_wai","t_mat"),
+                  ~na_if(.,0)))|>
+    mutate(across(where(is.numeric),
+                  ~mean(.,na.rm=TRUE))) |> 
+    select(-species.binomial,-mod) |> unique()
+  # db.clim<-db.clim |> filter(species.binomial %in% c("Abies alba","Fagus sylvatica","Picea abies")) |> sample_n(70000)
+  data.list<-list(N=dim(db.clim)[1],
+                  S=nlevels(as.factor(db.clim$species.binomial)),
+                  presence=db.clim$presence,
+                  species=as.numeric(as.factor(db.clim$species.binomial)),
+                  mat=db.clim$temp.mean,
+                  wai=db.clim$wai,
+                  prior=as.numeric(outputclim[,c("r_mat","r_wai","t_mat","t_wai")]),
+                  # mean_mat=mean(db.clim.sub$temp.mean),
+                  # mean_wai=mean(db.clim.sub$wai)
+                  )
+  fit.allspClim <- stan(file = "glm_log_allClim.stan",
+                    data=data.list,
+                    iter=1000,
+                    chains=3,
+                    core=3,
+                    include=FALSE,
+                    pars=c("proba","K_vect"))
+  save(fit.allspClim,file=paste0(mod.folder,"fit_random_allspClim.RData"))
+
+  posteriors_mean_sfm<-as.data.frame(t(summary(fit.allsp)$summary)) |> 
+    select(!matches("K_sp"))
+  posteriors_mean_clim<-as.data.frame(t(summary(fit.allspClim)$summary)) |> 
+    select(!matches("K_sp"))
   
-    
-  }
+  db.clim.auc<-db.clim |> 
+    # filter(species.binomial==sp) |> 
+    select(species.binomial,presence,x,y,hsm,fsm,temp.mean,wai) |> 
+    mutate(pred_sfm=posteriors_mean_sfm$K_int[1]/
+             ((1+exp(-posteriors_mean_sfm$r_fsm[1]*(fsm-posteriors_mean_sfm$t_fsm[1])))*
+                (1+exp(-posteriors_mean_sfm$r_hsm[1]*(hsm-posteriors_mean_sfm$t_hsm[1])))),
+           pred_clim=posteriors_mean_clim$K_int[1]/
+             ((1+exp(-posteriors_mean_clim$r_mat[1]*(temp.mean-posteriors_mean_clim$t_mat[1])))*
+                (1+exp(-posteriors_mean_clim$r_wai[1]*(wai-posteriors_mean_clim$t_wai[1]))))
+           ) |> 
+    group_by(species.binomial) |> 
+    summarize(auc_sfm=as.numeric(auc(presence,pred_sfm)),
+              auc_clim=as.numeric(auc(presence,pred_clim)))
+  # prior sur le range des aprametres du mod par esp
+  fwrite(db.clim.auc,file=paste0(output,"db.clim.auc.csv"))
+  return(db.clim.auc)
+}
+  
+

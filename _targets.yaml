@@ -1,21 +1,24 @@
-prerequisite_data:
+data:
   script: script_data.R
   store: target_data
-psi1:
-  script: script_psi1.R
-  store: target_psi1
+# psi1: moved in dev, outdated
+#   script: script_psi1.R
+#   store: target_psi1
 psi2:
   script: script_psi2.R
   store: target_psi2
 frost:
   script: script_frost.R
   store: target_frost
-safetymargin:
-  script: script_safetymargin.R
-  store: target_safetymargin
+traits:
+  script: script_traits.R
+  store: target_traits
 occurence_dataset:
   script: script_abspres.R
   store: target_occ
 analysis:
   script: script_analysis.R
   store: target_analysis
+modrandom:
+  script: script_modrandom.R
+  store: target_modrandom

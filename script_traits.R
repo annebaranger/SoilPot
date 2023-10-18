@@ -13,22 +13,22 @@ tar_option_set(packages = c("stringr","ggplot2","data.table","tidyr","viridis","
                error = "continue") #"KrigR","gdalUtils",
 
 # Load objects from other projects
-europe <- tar_read(europe, store = "target_data")
-psihorday_real <- tar_read(psihorday_real,store="target_psi2")
+# europe <- tar_read(europe, store = "target_data")
+# psihorday_real <- tar_read(psihorday_real,store="target_psi2")
 
 #Targets
 list(
 # Load necessary files
-  tar_target(
-    rast.temp,
-    "output/budburst_tquant.csv",
-    format="file"
-  ),
-  tar_target(
-    rast.fdg.mean,
-    "output/budburst_2.csv",
-    format="file"
-  ),
+  # tar_target(
+  #   rast.temp,
+  #   "output/budburst_tquant.csv",
+  #   format="file"
+  # ),
+  # tar_target(
+  #   rast.fdg.mean,
+  #   "output/budburst_2.csv",
+  #   format="file"
+  # ),
   
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 6 - Safety margins ####

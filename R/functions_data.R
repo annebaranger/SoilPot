@@ -44,7 +44,8 @@ europe_extent <- function(countries=c("Albania","Austria","Belgium","Bulgaria",
   library(rworldmap) # package to get countries polygon
   europe <- getMap(resolution="high")
   europe <- europe[europe@data$ADMIN.1%in%countries,] # select countries of interest
-  europe <-  raster::crop(europe, extent(-10, 46, 32, 72))
+  europe <-  crop(vect(europe),ext(-10,46,32,72))
+  europe <- st_as_sf(europe)
   return(europe)
 }
 
@@ -75,122 +76,6 @@ forest_cover <- function(dir.data="data",
 #'  data
 #' @authors Anne Baranger, Matthieu Combaud (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-#' Data downloading from ERA5-land 
-#' 
-#' @description function used to download ERA5-land data using KrigR packages,
-#'  and to save it in a folder
-#' @note this function is obsolete as it takes a lot of time to download data 
-#' from KrigR and this is much faster to do it directly from the website
-#' @note Prior using KrigR function, it is necessary to sign in to 
-#' "https://cds.climate.copernicus.eu" 
-#' @param API_User API_user of user account
-#' @param API_Key Key of user account
-#' @param dir.data directory of project data
-#' @param Dir.Shapes directory of countries masks
-#' @param extent an object of SpatialExtent type that delimits the spatial zone
-#' to extract. Default = NULL because countries name can be used to extract data
-#' @param countries list of countries to extract ERA5-land data of
-#' @param date_start "YYYY-MM-DD" beginning of the period to extract
-#' @param date_end "YYYY-MM-DD" end of the period to extract
-#' @param time_step "day", "month" or "year"
-#' @output create folders with aggregated variables
-era_data <- function(API_User="124078",
-                     API_Key="ab883de0-39cd-4452-a1f0-7cd45ab252b0",
-                     dir.data,
-                     Dir.Shapes,
-                     extent=NULL,
-                     countries,
-                     variables,
-                     date_start,
-                     date_end,
-                     time_step){
-  StateMask <- readOGR(Dir.Shapes, "ne_10m_admin_1_states_provinces", verbose = FALSE)
-  
-  if(is.null(extent)){
-    position <- unlist(lapply(countries,function(x) which(StateMask$geonunit==x)))
-    extent <- StateMask[position,]
-    # extent= extent(State_Shp)
-  }
-  lapply(variables,function(x){Dir.Var=file.path(dir.data,x)
-                               dir.create(Dir.Var)
-                               download_ERA(
-                                Variable = x,
-                                DataSet = "era5-land",
-                                DateStart = date_start,
-                                DateStop = date_end,
-                                TResolution = time_step,
-                                TStep = 1,
-                                Extent = extent,
-                                Dir = Dir.Var,
-                                API_User = API_User,
-                                API_Key = API_Key)})
-}
-
-
-#' Load data from TerraClimate
-#'  
-#' @description load TerraClimate data, soil water content from 1958 to 2021
-#' @note terraclimate data can be downloaded directly from website 
-#' https://www.climatologylab.org
-#' @note spatial extent is to be specified directly on the website when DLing
-#' @return a dataframe of TerraClimate data
-terraclimate_data <- function() {
-  terraclimate <- as.data.frame(rast("data/Terraclimate/agg_terraclimate_soil_1958_CurrentYear_GLOBE.nc"),
-                             xy=TRUE)
-  return(terraclimate)
-}
-
-#' Data downloading from DL soilgrid 
-#' @note see Natheo script as function proposed by Soilgrid website is obsolete
-
-
-#' Load data from Chelsa
-#'  
-#' @description function used to load Chelsa data into target envt. Bio6 variable
-#' is loaded, and correspond to mean daily minimum air temperature of the coldest
-#'  month during the period 1980-2010
-#' @note Chelsa can be downloaded on
-#'  https://envicloud.wsl.ch/#/?prefix=chelsa%2Fchelsa_V2%2FGLOBAL%2F
-#' @note spatial extent is to be specified directly on the website when DLing
-#' @return a dataframe of TerraClimate data
-chelsabio6_data <- function(dir.data,dir.file,europe) {
-  chelsabio6 <- crop(rast(file.path(dir.data,dir.file)),vect(europe),mask=TRUE)
-  names(chelsabio6)="t.min"
-  return(as.data.frame(chelsabio6,xy=TRUE))
-}
-
-
-#' Load FNI data from Franvr
-#'  
-#' @description function to load data from France National Inventory
-#' @note Code from Matthieu Combaud
-#' @param input.directory
-#' @param zip.file
-#' 
-get.fni <- function(input.directory="data/IFN",
-                    zip.file="export_dataifn_2005_2020.zip"){
-  db.tree<-as.data.table(read.table(unz(paste0(input.directory,"/",zip.file), "ARBRE.csv"),
-                                    header = TRUE, 
-                                    sep = ";", 
-                                    dec = ".", 
-                                    encoding = "UTF-8"))
-  db.cover<-as.data.table(read.table(unz(paste0(input.directory,"/",zip.file), "COUVERT.csv"), 
-                                     header = TRUE,
-                                     sep = ";",
-                                     dec = ".",
-                                     encoding = "UTF-8"))
-  db.stand<-as.data.table(read.table(unz(paste0(input.directory,"/",zip.file), "PLACETTE.csv"), 
-                                     header = TRUE,
-                                     sep = ";",
-                                     dec = ".", 
-                                     encoding = "UTF-8"))
-  return(list(tree=db.tree,
-              cover=db.cover,
-              stand=db.stand))
-}
-
 
 #' Function to compute the water aridity index based on chelsa mean temperature data
 #'
@@ -223,147 +108,60 @@ get_waisgdd <- function(dir.chelsa="data/CHELSA/",
 #' @authors Anne Baranger (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-#' Compute texture from ESDAC over a specified spatial extent
+#' Load min computed externally with python, from ERA5land
 #' 
-#' @description Function that load ESDAC texture data from directory
-#' @note Texture data can be downloaded on ESDAC website. They encompass texture
-#' from topsoil and subsoil at 1x1km resolution. Parameters are from Wosten 1999
-#' @param dir.data directory of data of the project
-#' @param dir.soil directory of soil data downloaded from ESDAC
-#' @param europe SpatialPolygonsDataFrame of the spatial extent 
-#' @return spatial dataframe (SpatRaster converted to dataframe) of clay and 
-#' sand content average among topsoil and subsoil, cropped to spatial extent
-get_textureESDAC <- function(dir.data,dir.soil,europe){
-  # get spatial extent
-  rast_model <- terra::vect(europe)
-  
-  # Clay 
-  clay <- c(rast(file.path(dir.data,dir.soil,"STU_EU_T_CLAY.rst")), #load topsoil
-            rast(file.path(dir.data,dir.soil,"STU_EU_S_CLAY.rst"))) # bind subsoil
-  crs(clay) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
-  names(clay) <- c("topsoil","subsoil")
-  clay <- terra::mask(project(clay,"epsg:4326"),rast_model) # project laea to wgs
+#' @description Load and reshape SWC data computed with python program, per horizon
+#' @note Python code need to be run prior executing this function
+#' @param dir.data
+#' @param dir.var
+#' @param vars list of vars corresponding to each horizons computed
+#' @param format either csv, grib or nc
+#' @return dataframe with min swc per horizon
 
-    # Sand 
-  sand <- c(rast(file.path(dir.data,dir.soil,"STU_EU_T_SAND.rst")),
-            rast(file.path(dir.data,dir.soil,"STU_EU_S_SAND.rst")))
-  crs(sand) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
-  names(sand) <- c("topsoil","subsoil")
-  sand <- terra::mask(project(sand,"epsg:4326"),rast_model)
-
-  # Organic content
-  oc <- c(rast(file.path(dir.data,dir.soil,"STU_EU_T_OC.rst")),
-          rast(file.path(dir.data,dir.soil,"STU_EU_S_OC.rst")))
-  crs(oc) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
-  names(oc) <- c("topsoil","subsoil")
-  oc <- terra::mask(project(oc,"epsg:4326"),rast_model)
+load_swc <- function(dir.data="data",
+                     dir.file="ERA5-land/daily/swcd-1950-2021-",
+                     vars=c("layer1","layer2","layer3","layer4"),
+                     extension="",
+                     format,
+                     europe){
+  if (format=="csv"){ # swc daily min computed u
+    rast.model=rast(paste0(dir.data,"/",dir.file,vars,extension,".nc"))[[1]]
+    rast.swc=rast(nrows=dim(rast.model)[1],
+                  ncol=dim(rast.model)[2],
+                  xmin=ext(rast.model)$xmin,
+                  xmax=ext(rast.model)$xmax,
+                  ymin=ext(rast.model)$ymin,
+                  ymax=ext(rast.model)$ymax,
+                  nlyrs=4)
+    for (i in 1:length(vars)){
+      rast.min=as.matrix(read.table(paste0(dir.data,"/",dir.file,vars[i],"_min.csv"),
+                                    header=FALSE,
+                                    sep=",",
+                                    dec = "."))
+      rast.min[rast.min==-32767] <- NA
+      rast.swc[[i]]=rast(nrows=dim(rast.min)[1],
+                         ncol=dim(rast.min)[2],
+                         xmin=ext(rast.model)$xmin,
+                         xmax=ext(rast.model)$xmax,
+                         ymin=ext(rast.model)$ymin,
+                         ymax=ext(rast.model)$ymax,
+                         crs=crs(rast.model),
+                         vals=c(t(rast.min)))
+      
+    }
+    names(rast.swc)=paste0("h",1:length(vars))
+  }
   
-  # Texture
-  texture_raw <- c(clay,sand,oc) #bind all contents
-  names(texture_raw) <- paste0(names(texture_raw),".",c("clay","clay","sand","sand","oc","oc"))
-  texture_raw <- as.data.frame(texture_raw,xy=TRUE)
-  
-  # Pars from Wosten
-  pars=list(topsoil=data.frame(texture=c(6,5,4,3,2,1),
-                        psi_e=c(-0.790569415,-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
-                        b=c(2.6411388301,2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
-                        teta_r=c(0.010,0.0250,0.0100,0.0100,0.0100,0.0100),
-                        teta_s=c(0.766,0.4030,0.4390,0.4300,0.5200,0.6140),
-                        alpha=c(0.0130,0.0383,0.0314,0.0083,0.0367,0.0265),
-                        n=c(1.2039,1.3774,1.1804,1.2539,1.1012,1.1033),
-                        m=c(0.1694,0.2740,0.1528,0.2025,0.0919,0.0936)),
-            subsoil=data.frame(texture=c(6,5,4,3,2,1),
-                        psi_e=c(-0.790569415,-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
-                        b=c(2.6411388301,2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
-                        teta_r=c(0.010,0.0250,0.0100,0.0100,0.0100,0.0100),
-                        teta_s=c(0.766,0.3660,0.3920,0.4120,0.4810,0.5380),
-                        alpha=c(0.0130,0.0430,0.0249,0.0082,0.0198,0.0168),
-                        n=c(1.2039,1.5206,1.1689,1.2179,1.0861,1.0730),
-                        m=c(0.1694,0.3424,0.1445,0.1789,0.0793,0.0680)))
-  
-  texture <- sapply(names(pars),FUN=function(x){
-    oc.tx <- paste0(x,".oc")
-    clay.tx <- paste0(x,".clay")
-    sand.tx <- paste0(x,".sand")
-    assign(paste0("texture_",x),
-           cbind(texture_raw[,c("x","y")],texture_raw[,grepl(x,colnames(texture_raw))]) %>%
-             mutate(texture=case_when(.data[[clay.tx]]==0&.data[[sand.tx]]==0~0,
-                                        .data[[oc.tx]]>15~6,
-                                       .data[[clay.tx]]>60~1,
-                                       .data[[clay.tx]]>35&.data[[clay.tx]]<=60~2,
-                                       .data[[clay.tx]]<=35&.data[[sand.tx]]<15~3,
-                                       .data[[clay.tx]]>18&.data[[clay.tx]]<=35&.data[[sand.tx]]>15~4,
-                                       .data[[clay.tx]]<=18&.data[[sand.tx]]>15&.data[[sand.tx]]<65~4,
-                                       .data[[clay.tx]]<=18&.data[[sand.tx]]>=65~5)) %>% 
-             left_join(pars[[x]],by=c("texture")))
-  },simplify=FALSE,USE.NAMES=TRUE)
-  
-  return(list(texture_raw=texture_raw,
-              texture=texture))
-}
-
-#' Compute texture from ERA5 over a specified spatial extent
-#' 
-#' @description Function that load ERA5 data from directory
-#' @note Texture data can be downloaded on ERA5 website. They designate texture 
-#' of subsoil at 10x10km resolution. Parameters can be chosen between Toth and Wosten.
-#' @param dir.data directory of data of the project
-#' @param dir.soil directory of soil data downloaded from ESDAC
-#' @param europe SpatialPolygonsDataFrame of the spatial extent 
-#' @return spatial dataframe (SpatRaster converted to dataframe) of texture class 
-#' and associated parameters, cropped to spatial extent
-#' 
-# subsoil=data.frame(texture=c(6,5,4,3,2,1),
-#                    psi_e=c(-0.790569415,-0.790569415,-0.9128709202,-1.5811388301,-1.889822365,-5.9761430467),
-#                    b=c(2.6411388301,2.6411388301,3.3057418584,4.3822776602,6.5796447301,14.9522860933),
-#                    teta_r=c(0.010,0.0250,0.0100,0.0100,0.0100,0.0100),
-#                    teta_s=c(0.766,0.3660,0.3920,0.4120,0.4810,0.5380),
-#                    alpha=c(0.0130,0.0430,0.0249,0.0082,0.0198,0.0168),
-#                    n=c(1.2039,1.5206,1.1689,1.2179,1.0861,1.0730),
-#                    m=c(0.1694,0.3424,0.1445,0.1789,0.0793,0.0680))
-get_textureERA5 <- function(dir.data,
-                         dir.file,
-                         europe,
-                         pars){
-  texture_ERA5=rast(file.path(dir.data,dir.file))
-  texture_ERA5=crop(texture_ERA5,vect(st_as_sf(europe)),mask=TRUE)
-  texture_ERA5=as.data.frame(texture_ERA5,xy=TRUE)  %>% 
-    filter(slt!=0) %>% 
-    mutate(slt=round(slt),
-           slt=case_when(slt==1~"coarse",
-                         slt==2~"medium",
-                         slt==3~"mediumf",
-                         slt==4~"fine",
-                         slt==5~"vfine",
-                         slt==6~"oc",
-                         slt==7~"oc"),
-           texture=case_when(slt=="coarse"~5,
-                             slt=="medium"~4,
-                             slt=="mediumf"~3,
-                             slt=="fine"~2,
-                             slt=="vfine"~1,
-                             slt=="oc"~6)) %>% 
-    left_join(pars,by=c("texture"))
-  return(texture_ERA5[,c(1,2,4:11)])
+  if (format=="grib"){
+    rast.swc=rast(paste0(dir.data,"/",dir.file,vars,extension,".grib"))
+    names(rast.swc)=vars
+    rast.swc=crop(project(rast.swc,
+                          "EPSG:4326"),
+                  vect(europe))
   }
 
-#' Soil volumetric content pre-treatment
-#' 
-#' @description load swc timeserie once
-#' @note ERA5-land data needs to be downloaded prior to applying the function
-#' @param dir.data directory of data of the project
-#' @param dir.file
-#' @return spatial dataframe (spatraster converted to dataframe) of cropped soil 
-#' water content layers. Each layer is a date. 
-get_SWC <- function(dir.data,
-                    dir.file
-                    ){
-  SWCtot <-rast(file.path(dir.data,dir.file))
-  return(as.data.frame(SWCtot,xy=TRUE))
+  return(as.data.frame(rast.swc,xy=TRUE))
 }
-
-
 
 #' Compute weighted soil volumetric water content
 #' 
@@ -374,9 +172,9 @@ get_SWC <- function(dir.data,
 #' @param depth numeric indicating to which depth swc is to be considered
 #' @return dataframe with weighted swc over different horizons
 #'  
-weight_swc <- function(SWCtot,
+weight_swc <- function(swc,
                        depth){
-  SWCtot=rast(SWCtot,crs="epsg:4326")
+  swc<-rast(swc,crs="epsg:4326")
   
   if(depth>100){
     x1=7
@@ -402,94 +200,12 @@ weight_swc <- function(SWCtot,
     x3=0
     x4=0
   }
-  SWC_t <- (x1*SWCtot[[grepl("swvl1", names(SWCtot))]]+
-          x2*SWCtot[[grepl("swvl2", names(SWCtot))]]+
-          x3*SWCtot[[grepl("swvl3", names(SWCtot))]]+
-          x4*SWCtot[[grepl("swvl4", names(SWCtot))]])/(x1+x2+x3+x4)
-  return(as.data.frame(SWC_t,xy=TRUE))
-}
-
-#' Compute min and max soil volumetric water content over a timeserie
-#' 
-#' @description Using monthly (or daily but not used here) time series of weighted
-#' soil water content, the function compute the min and max of timeseries
-#' @note ERA5-land data needs to be downloaded and weighted prior to applying 
-#' the function
-#' @param SWC_t dataframe of timeserie of swc
-#' @param timepath month or day
-#' @param date_begin "YYYY-MM-DD" one unit timepath before the beginning of the
-#' time serie
-#' @return dataframe with min/max
-#' date_begin='1949-12-01'
-extr_swc <- function(SWC_t,timepath,date_begin,europe) {
-  SWC=setDT(as.data.frame(SWC_t,xy=TRUE)) #use data.table to deal with big db
-  if (timepath=="month") {
-    time=as.character(as.Date(date_begin) %m+% months(as.numeric(sub(".*_","",
-                                                                       colnames(SWC)[c(-1,-2)]))))
-  }
-  if (timepath=="day"){
-    time=as.character(as.Date(as.numeric(sub(".*_","",
-                                             colnames(SWC)[c(-1,-2)])),
-                              origin=paste0(date_begin)))
-  }
-  colnames(SWC)=c("x","y",time)
-  # selection of max/min per year
-  SWC=SWC[,loc_ID:=.I]
-  SWC=melt.data.table(SWC,id.vars=c("loc_ID","x","y"))
-  SWC[,year:=gsub("[-].*", "\\1",variable)]
-  SWC[,month:=gsub(".*[-]([^.]+)[-].*", "\\1",variable)]
-  SWC[,day:=gsub(".*[-]", "\\1",variable)]
-  SWC=SWC[,.(Min=min(value),Max=max(value)),by="loc_ID,x,y,year"]
-  SWC=SWC %>% 
-    group_by(loc_ID,x,y) %>% 
-    summarise(SWC_min=mean(head(sort(Min),5)),
-              SWC_max=mean(tail(sort(Max),5))) %>%
-    ungroup()
-  SWC=rast(SWC[2:5],crs="epsg:4326")
-  europe <- vect(st_as_sf(europe))
-  SWC <- crop(SWC,europe,mask=TRUE)
-  return(as.data.frame(SWC,xy=TRUE))
-}
-
-
-#' Load min computed externally with python
-#' 
-#' @description Load and reshape SWC data computed with python program, per horizon
-#' @note Python code need to be run prior executing this function
-#' @param dir.data
-#' @param dir.var
-#' @param vars list of vars corresponding to each horizons computed
-#' @return dataframe with min swc per horizon
-
-load_swc <- function(dir.data="data",
-                     dir.file="ERA5-land/swcd-1950-2021-",
-                     vars=c("layer1","layer2","layer3","layer4")){
-  rast.model=rast(paste0(dir.data,"/",dir.file,vars[1],".nc"))[[1]]
-  rast.swc=rast(nrows=dim(rast.model)[1],
-                ncol=dim(rast.model)[2],
-                xmin=ext(rast.model)$xmin,
-                xmax=ext(rast.model)$xmax,
-                ymin=ext(rast.model)$ymin,
-                ymax=ext(rast.model)$ymax,
-                nlyrs=4)
-  for (i in 1:length(vars)){
-    rast.min=as.matrix(read.table(paste0(dir.data,"/",dir.file,vars[i],"_min.csv"),
-                                  header=FALSE,
-                                  sep=",",
-                                  dec = "."))
-    rast.min[rast.min==-32767] <- NA
-    rast.swc[[i]]=rast(nrows=dim(rast.min)[1],
-                       ncol=dim(rast.min)[2],
-                       xmin=ext(rast.model)$xmin,
-                       xmax=ext(rast.model)$xmax,
-                       ymin=ext(rast.model)$ymin,
-                       ymax=ext(rast.model)$ymax,
-                       crs=crs(rast.model),
-                       vals=c(t(rast.min)))
-    
-  }
-  names(rast.swc)=vars
-  return(as.data.frame(rast.swc,xy=TRUE))
+  swc_weighted <- (x1*swc[[grepl("h1", names(swc))]]+
+                     x2*swc[[grepl("h2", names(swc))]]+
+                     x3*swc[[grepl("h3", names(swc))]]+
+                     x4*swc[[grepl("h4", names(swc))]])/(x1+x2+x3+x4)
+  names(swc_weighted)="swc"
+  return(as.data.frame(swc_weighted,xy=TRUE))
 }
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -499,41 +215,280 @@ load_swc <- function(dir.data="data",
 #' @authors Anne Baranger (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-#' Compute psi min with weighted swc over horizons
+#' Compute psi with sureau module
 #' 
-#' @description function applies CP and VG equation to compute minimum soil potential 
-#' over weighted horizons. Using daily or monthly data, but not taking into account 
+#' @description function calls swc over different horizons, and use sureau model
+#' to integrate their difference in conductivity in the overall psi. It take into 
+#' account different possible root depth profile, maximum root depth and parameters
+#' of sureau
+#' @param swc 5th percentile of swc time serie, for "obs" horizons
+#' @param europe Europe spatial extent
+#' @param dir.hydro directory of hydraulic parameters
+#' @param depth NULL if varying according to ESDAC data, numeric if set to a max
+#' @param dir.depth directory of depth raster
+#' @param dir.ecoregions directory of WWF ecoregions
+#' @param LAImax SUREAU param: max LAI, varying from 2 to 6
+#' @param fRootToLeaf SUREAU param: Root to leaf ratio
+#' @param rootRadius SUREAU param: root radius 
+#' @param beta SUREAU param: root profile, NULL if varying with ecoregions, or
+#'  numeric if set constant 
+#' @param obs vector of horizons depth of swc file
+#' @param ref vector of horizons depth of hydraulic param
+##' @param max_depth maximum depth considered, to extend last swc horizon
+#' @param file.output file path where to write result
+#' @return Psi_min dataframe, that contains values of Psi_min computed by weighting
 #' the different horizons
-#' @param texture spatial dataframe to be converted into SpatRaster, containing
-#' values of texture at 1x1km resolution
-#' @param SWC spatial dataframe to be converted into SpatRaster, containing min
-#' and max SWC, computed with 2 different methods, at 9x9km
-#' @return Psi_min dataframe, that contains values of Psi_min computed with the
-#' 2 different methods used for SWC (average/weighted)
-#' 
-#' Topsoils Coarse 0.025 0.403 0.0383 1.3774 0.2740 1.2500 60.000
-compute_psiweighted <- function(texture,SWC,
-                                file.output){
-  texture=rast(texture,crs="epsg:4326")
-  SWC=rast(SWC,crs="epsg:4326")
-  if(SWC@ptr$res[1]<texture@ptr$res[1]){
-    texture=resample(texture,SWC,method="near")
-  }
-  if(SWC@ptr$res[1]>texture@ptr$res[1]){
-    SWC=resample(SWC,texture)
-  }
-  psi_min=as.data.frame(c(texture,SWC),
-                        xy=TRUE) %>% 
-    # filter(clay!=0&sand!=0&oc!=0) %>% 
-    mutate(SWC_ratio=SWC_max/SWC_min,
-           psi_BG=psi_e*(SWC_max/SWC_min)^(b),
-           psi_CB=psi_e*(teta_s/SWC_min)^(b),
-           psi_VG=-((((teta_s-teta_r)/(SWC_min-teta_r))^(1/m)-1)^(1/n))*(1/alpha)*9.78*10^(-2)) %>%
-    mutate(psi_VG=case_when(SWC_min>teta_s~-0.1,TRUE~psi_VG))
-  write.csv(psi_min,file=file.output)
+
+
+compute_psi_sureau <- function(swc,
+                               europe,
+                               dir.hydro="data/EU_SoilHydroGrids_1km/",
+                               depth_max=NULL,
+                               dir.depth="data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst",
+                               dir.ecoregions="data/WWF/official",
+                               LAImax=5,
+                               fRootToLeaf=1,
+                               rootRadius=0.0004,
+                               beta=0.97,
+                               obs=c(0,0.07,0.28,1,2.89),
+                               ref=c(0,0.05,0.15,0.3,0.6,1,2),
+                               max_depth=3,
+                               file.output
+){
+  # Rast model for resolution issues
+  rast.mod<-crop(rast(paste0(dir.hydro,
+                             "MRC_alp_sl2.tif")),
+                 vect(europe),
+                 mask=TRUE)
+  europe<-vect(europe)
   
-  return(psi_min)
+  
+  # depth used
+  print("Load depth")
+  if (is.null(depth_max)){ # varying depth
+    rast.depth=rast(dir.depth)
+    crs(rast.depth) <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs +type=crs"
+    rast.depth <- terra::project(rast.depth,"epsg:4326",method="near")
+    rast.depth <- resample(rast.depth,
+                           rast.mod,
+                           method="near")
+    names(rast.depth)="depth"
+  } else{
+    rast.depth=rast(rast.mod,nlyr=1,vals=depth_max)
+    names(rast.depth)="depth"
+  }
+  
+  
+  ## Look for biome beta
+  print("Compute betarootprofile")
+  if (is.null(beta)){
+    ecoregions=read_sf(dsn=dir.ecoregions, #read ecoregions
+                       layer="wwf_terr_ecos") |> 
+      select(BIOME,geometry)
+    sf_use_s2(FALSE)
+    ecoregions=st_crop(ecoregions,sf::st_bbox(europe))
+    points=st_as_sf(swc[,c("x","y")],coords=c("x","y"),crs=st_crs(ecoregions))
+    points_biome=st_join(points,ecoregions) |> # associate each ecoR to beta
+      mutate(beta=case_when(BIOME%in%c(4,8,9,98)~0.966,
+                            BIOME%in%c(5)~0.976,
+                            BIOME%in%c(6)~0.943,
+                            BIOME==11~0.914,
+                            BIOME==12~0.964))
+    beta=resample(rast(cbind(swc[,c("x","y")],
+                             betaRootProfile=points_biome$beta)),
+                  rast.mod,
+                  method="near")
+    rm(ecoregions,points,points_biome)
+  } else{
+    beta=resample(rast(cbind(swc[,c("x","y")],
+                             betaRootProfile=beta)),
+                  rast.mod,
+                  method="near")
+  }
+  
+  ## Compute psi and ksoil and ksoiltostem ##
+  print("compute SUREAU module")
+  # "downscale" SWC 
+  swc=resample(rast(swc,crs="epsg:4326"),
+               rast.mod,
+               method="near")
+  
+  # Compute root density characteristics per horizons according to depth
+  compute_horizon_density <- function(d, betaRootProfile, horizon_start, horizon_end) {
+    # Use ifelse for a vectorized condition
+    result <- ifelse(d <= horizon_start, 0,
+                     switch(
+                       as.character(horizon_end),
+                       "5" = ifelse(d < 5, 1, (1 - betaRootProfile^5) / (1 - betaRootProfile^d)),
+                       ifelse(d<horizon_end,
+                              (betaRootProfile^horizon_start - betaRootProfile^d) / (1 - betaRootProfile^d),
+                              (betaRootProfile^horizon_start - betaRootProfile^horizon_end) / (1 - betaRootProfile^d)
+                       )
+                     )
+    )
+    return(result)
+  }
+  
+  ## Compute SUREAU ##
+  RAI = LAImax*fRootToLeaf
+  compute.B_GC <- function(hor_value,
+                           depth,
+                           RAI, 
+                           rootRadius,
+                           horizon_start,
+                           horizon_end
+  ) {
+    d=ifelse(depth<=horizon_start,
+             NA,
+             ifelse(depth>horizon_end,
+                    horizon_end,
+                    depth))
+    La <- RAI * hor_value / (2 * pi * rootRadius)
+    Lv <- RAI * hor_value / (2 * pi * rootRadius * d)
+    b <- 1 / sqrt(pi * Lv)
+    B_GC <- La * 2 * pi / log(b / rootRadius)
+    return(B_GC)
+  }
+  
+  rast.depth.samp <- c(rast.depth, beta) %>%
+    as.data.frame(xy = TRUE, na.rm = FALSE) %>%
+    mutate(depth = as.numeric(na_if(depth, 0))) %>%
+    mutate(
+      hor.1 = compute_horizon_density(d=depth, betaRootProfile, 0, 5),
+      hor.2 = compute_horizon_density(d=depth, betaRootProfile, 5, 15),
+      hor.3 = compute_horizon_density(d=depth, betaRootProfile, 15, 30),
+      hor.4 = compute_horizon_density(d=depth, betaRootProfile, 30, 60),
+      hor.5 = compute_horizon_density(d=depth, betaRootProfile, 60, 100),
+      hor.6 = compute_horizon_density(d=depth, betaRootProfile, 100, 200),
+      hor.7 = compute_horizon_density(d=depth, betaRootProfile, 200, Inf)
+    ) |> 
+    # compute bcg per horizon
+    mutate(hor.1=compute.B_GC(hor.1,depth,RAI,rootRadius,0,5),
+           hor.2=compute.B_GC(hor.2,depth,RAI,rootRadius,5,15),
+           hor.3=compute.B_GC(hor.3,depth,RAI,rootRadius,15,30),
+           hor.4=compute.B_GC(hor.4,depth,RAI,rootRadius,30,60),
+           hor.5=compute.B_GC(hor.5,depth,RAI,rootRadius,60,100),
+           hor.6=compute.B_GC(hor.6,depth,RAI,rootRadius,100,200),
+           hor.7=compute.B_GC(hor.7,depth,RAI,rootRadius,200,Inf)) |> 
+    select(-betaRootProfile)
+  rast.depth.samp=rast(rast.depth.samp,crs="epsg:4326")
+  rm(rast.depth,beta)
+  #rast(SWCmin,crs="epsg:4326")
+  
+  
+  # correspondance between horizons fril ERA5 and 3D hydrosoil
+  calculate_weights <- function(ref, obs,max_depth=3) {
+    
+    if(ref[length(ref)]<max_depth){
+      ref_ext  <- c(ref,max_depth)
+    } else(ref_ext  <- ref)
+    if(obs[length(obs)]<ref_ext[length(ref_ext)]){
+      obs_ext  <- c(obs,ref_ext[length(ref_ext)])
+    } else(obs_ext  <- obs)    
+    
+    # Create a matrix filled with zeros
+    weight_matrix <- matrix(0, nrow =length(obs_ext)-1, ncol = length(ref_ext)-1)
+    
+    for(i in 1:(length(obs_ext)-1)) {
+      for(j in 1:(length(ref_ext)-1)) {
+        if(obs_ext[i]<ref_ext[j+1] & ref_ext[j]<obs_ext[i+1]){
+          weight_matrix[i,j]=min(1,
+                                 (obs_ext[i+1]-ref_ext[j])/(ref_ext[j+1]-ref_ext[j]),
+                                 (ref_ext[j+1]-obs_ext[i])/(ref_ext[j+1]-ref_ext[j]),
+                                 (obs_ext[i+1]-obs_ext[i])/(ref_ext[j+1]-ref_ext[j]),
+                                 na.rm=TRUE)
+        }
+      }
+    }
+    if (sum(colSums(weight_matrix))!=length(ref)){print("error")}
+    return(weight_matrix)
+  }
+  
+  weight_matrix<-calculate_weights(ref,
+                                   obs)
+  
+  # add a fictive layer if deepest horizon doesn't reach max_depth
+  if(obs[length(obs)]<max(ref[length(ref)],max_depth)){
+    swc=c(swc,swc[[nlyr(swc)]])
+  }
+  
+  swc_weighted=rast(swc,nlyr=length(ref),vals=NA)
+  
+  
+  print("Computing weighted swc")
+  for(i in 1:nlyr(swc_weighted)){
+    print(i)
+    swc_weighted[[i]]=sum(weight_matrix[,i]*swc,na.rm = TRUE)
+  }
+  
+  
+  
+  # Gather spatialized PDF parameters with SWC min/max for each of the 7 horizons
+  
+  print("Croping hydraulic pars")
+  pars.files=list.files(dir.hydro)
+  mrc.files=pars.files[grepl("MRC_",pars.files)]
+  mrc.rast=crop(rast(file.path(dir.hydro,mrc.files)),
+                europe)
+  hcc.files=pars.files[grepl("HCC_",pars.files)]
+  hcc.rast=crop(rast(file.path(dir.hydro,hcc.files)),
+                europe)  
+  names(swc_weighted)=rep("swc_min",length(ref))
+  names(rast.depth.samp)=c("depth",rep("BGC",length(ref)))
+  
+  
+  print("Compute psi per horizon")
+  psi_hor=as.data.frame(swc_weighted,xy=TRUE,na.rm=FALSE) |> select(x,y)
+  for (i in 1:7){ # loop on the 7 horizons of terraclimate
+    print(i)
+    psi=c(swc_weighted[[i]],
+          rast.depth.samp[[1]], # depth 
+          rast.depth.samp[[i+1]], # BCG of horizons
+          mrc.rast[[grep(paste0("sl",i),names(mrc.rast))]],
+          hcc.rast[[grep(paste0("sl",i),names(hcc.rast))]]
+    )
+    names(psi)=str_replace(names(psi), paste0("_sl",i), "") #make generic names
+    
+    psi=as.data.frame(psi,xy=TRUE,na.rm=FALSE)
+    setDT(psi)
+    psi[, ':=' (
+      REW_mrc = ifelse((swc_min - MRC_thr*10^(-4)) / ((MRC_ths - MRC_thr) * 10^(-4)) < 0, 0.01,
+                       ifelse((swc_min - MRC_thr*10^(-4)) / ((MRC_ths - MRC_thr) * 10^(-4)) > 1, 1,
+                              (swc_min - MRC_thr*10^(-4)) / ((MRC_ths - MRC_thr) * 10^(-4)))),
+      REW_hcc = ifelse((swc_min - HCC_thr*10^(-4)) / ((HCC_ths - HCC_thr) * 10^(-4)) < 0, 0.01,
+                       ifelse((swc_min - HCC_thr*10^(-4)) / ((HCC_ths - HCC_thr) * 10^(-4)) > 1, 1,
+                              (swc_min - HCC_thr*10^(-4)) / ((HCC_ths - HCC_thr) * 10^(-4)))))]
+    psi[, ':=' (
+      psi_min = -(((1/REW_mrc)^(1/(MRC_m*10^(-4))) - 1)^(1/(MRC_n*10^(-4))) * (1/(MRC_alp*10^(-4))) * 9.78*10^(-2)),
+      ksoil = HCC_K0 * (REW_hcc^(HCC_L*10^(-4))) * (1 - (1 - REW_hcc^(1/(HCC_m*10^(-4))))^(HCC_m*10^(-4)))^2,
+      ksoilGC = (HCC_K0 * (REW_hcc^(HCC_L*10^(-4))) * (1 - (1 - REW_hcc^(1/(HCC_m*10^(-4))))^(HCC_m*10^(-4)))^2) * 1000 * BGC)]
+    psi[, ':=' (
+      psi_w = ksoilGC * psi_min
+    )]
+    colnames(psi)[!colnames(psi) %in% c("x","y","depth")]=paste0(colnames(psi)[!colnames(psi) %in% c("x","y","depth")],"_",i)
+    psi_hor=cbind(psi_hor,
+                  swc_min=psi$swc_min,
+                  ksoilGC=psi$ksoilGC,
+                  psi_w=psi$psi_w) |> 
+      rename(!!paste0("swc_min_",i):="swc_min",
+             !!paste0("ksoilGC_",i):="ksoilGC",
+             !!paste0("psi_w_",i):="psi_w") 
+    rm(psi)
+  }
+  rm(hcc.rast,mrc.rast)
+  
+  print("Compute psi total")
+  all_psi_summary = psi_hor %>%
+    select(x, y, matches("ksoilGC_|psi_w_")) %>%
+    filter(!is.na(psi_w_1)) 
+  
+  all_psi_summary$sum_psi=rowSums(all_psi_summary[grepl("psi_w_",colnames(all_psi_summary))],na.rm = TRUE)
+  all_psi_summary$sum_k=rowSums(all_psi_summary[grepl("ksoilGC_",colnames(all_psi_summary))],na.rm = TRUE)
+  all_psi_summary$psi=all_psi_summary$sum_psi/all_psi_summary$sum_k 
+  
+  fwrite(all_psi_summary,file.output)
+  
+  return(all_psi_summary)
 }
 
 
@@ -1478,6 +1433,47 @@ get.frostindex <- function(europe,
   return(list(rast.temp=as.data.frame(rast.temp,xy=TRUE),rast.fdg.mean=as.data.frame(rast.fdg.mean,xy=TRUE)))
 }
 
+#' Load frost index from cerra
+#' 
+#' @description Load files of minimum temperature computed with cdo
+#' @param europe 
+#' @param dir.file
+#' @param output.tmin
+#' @return dataframe of minimum temperature
+#'
+
+get_frostindex_cerra<-function(europe,
+                               dir.file,
+                               output.tmin="output/tmin_cerra.csv"){
+  tmin<-rast(dir.file)
+  tmin<-crop(project(tmin,
+                     "epsg:4326"),
+             vect(europe))
+  names(tmin)="tmin"
+  fwrite(as.data.frame(tmin,xy=TRUE),output.tmin)
+  return(as.data.frame(tmin,xy=TRUE))
+
+}
+
+
+#' Load frost index from chelsa
+#' 
+#' @description Load files of minimum temperature computed with cdo
+#' @param europe 
+#' @param dir.file
+#' @param output.tmin
+#' @return dataframe of minimum temperature
+#'
+get_frostindex_chelsa<-function(europe,
+                               dir.file="data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc",
+                               output.tmin="output/tmin_chelsa.csv"){
+  tmin=min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm=FALSE)
+  tmin=classify(tmin, cbind(6553500, NA)) #set as NA default value
+  names(tmin)="tmin"
+  fwrite(as.data.frame(tmin,xy=TRUE),output.tmin)
+  return(as.data.frame(tmin,xy=TRUE))
+  
+}
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

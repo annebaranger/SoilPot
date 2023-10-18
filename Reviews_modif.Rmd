@@ -1,0 +1,219 @@
+---
+title: "Reviews_modification"
+author: "Anne Baranger"
+date: "2023-10-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+lapply(c("targets","ggplot2","stringr","data.table","tidyr","viridis","terra","dplyr","forcats","sf"),require,character.only=TRUE)
+tar_load(europe,store="target_data")
+europe=st_as_sf(europe)
+```
+
+
+# Comparison of soil water content data
+## Load necessary files
+```{r files.swc}
+Sys.setenv(TAR_PROJECT="data")
+tar_load(swc_cerra_day)
+tar_load(swc_era_day)
+
+```
+
+
+## CERRA/ERA comp
+
+```{r era-cerra}
+swc_era_day=rast(swc_era_day,crs="epsg:4326")
+swc_cerra_day=rast(swc_cerra_day,crs="epsg:4326")
+
+calculate_weights <- function(ref, obs) {
+    
+    # Extend vectors to facilitate calculation of lengths
+    # if(ref[length(ref)]<max_depth){
+    #   ref_ext  <- c(ref,max_depth)
+    # } else(ref_ext  <- ref)
+    ref_ext  <- ref
+    if(obs[length(obs)]<ref[length(ref)]){
+      obs_ext  <- c(obs,ref[length(ref)])
+    } else(obs_ext  <- obs)    
+    
+    # Create a matrix filled with zeros
+    weight_matrix <- matrix(0, nrow =length(obs_ext)-1, ncol = length(ref_ext)-1)
+    
+    for(i in 1:(length(obs_ext)-1)) {
+      for(j in 1:(length(ref_ext)-1)) {
+        if(obs_ext[i]<ref_ext[j+1] & ref_ext[j]<obs_ext[i+1]){
+          weight_matrix[i,j]=min(1,
+                                 (obs_ext[i+1]-ref_ext[j])/(ref_ext[j+1]-ref_ext[j]),
+                                 (ref_ext[j+1]-obs_ext[i])/(ref_ext[j+1]-ref_ext[j]),
+                                 (obs_ext[i+1]-obs_ext[i])/(ref_ext[j+1]-ref_ext[j]),
+                                 na.rm=TRUE)
+        }
+      }
+    }
+    if (sum(colSums(weight_matrix))!=length(ref)-1){print("error")}
+    return(weight_matrix)
+  }
+ref=c(0,0.07,0.28,1,2.89)
+obs=c(0,0.01,0.04,0.1,0.2,0.4,0.6,0.8,1,1.5,2,3) 
+weight_matrix<-calculate_weights(ref,
+                                 obs)
+
+swc_cerra_day_weighted=rast(swc_cerra_day,nlyr=length(ref)-1,vals=NA)
+for(i in 1:nlyr(swc_cerra_day_weighted)){
+    print(i)
+    swc_cerra_day_weighted[[i]]=sum(weight_matrix[,i]*swc_cerra_day,na.rm = TRUE)
+}
+  
+plot(swc_cerra_day_weighted[[1]])
+plot(swc_cerra_day[[3]])
+
+for (hor in 1:4){
+  comp_eracerra<-c(swc_era_day[[hor]],
+                 resample(swc_cerra_day_weighted[[hor]],
+                          swc_era_day[[hor]],
+                          method="near"))
+  names(comp_eracerra)=c("era","cerra")
+  
+  as.data.frame(comp_eracerra,xy=TRUE) |> 
+    ggplot(aes(era,cerra))+
+    labs(title=paste0("horizon =",hor))+
+    geom_point() -> p1
+  
+  as.data.frame(comp_eracerra,xy=TRUE) |> 
+    pivot_longer(cols=c("era","cerra"),
+                 values_to = "svwc",
+                 names_to = "data") |> 
+    ggplot(aes(svwc,color=data))+
+    geom_density()-> p2
+  
+  
+  as.data.frame(comp_eracerra,xy=TRUE) |> 
+    pivot_longer(cols=c("era","cerra"),
+                 values_to = "svwc",
+                 names_to = "data") |> 
+    ggplot(aes(x=x,y=y,fill=svwc))+
+    geom_tile()+
+    facet_wrap(~data)-> p3
+  
+  as.data.frame(comp_eracerra,xy=TRUE) |> 
+    mutate(dif=era-cerra) |>  
+    ggplot(aes(x=x,y=y,fill=dif))+
+    geom_tile()->p4
+  
+  print(cowplot::plot_grid(p1,p2,p3,p4))
+
+  }
+
+
+
+# a la mano - premier horizon
+cerra_h1=weight_matrix[1,1]*swc_cerra_day[[1]]+weight_matrix[2,1]*swc_cerra_day[[2]]+weight_matrix[3,1]*swc_cerra_day[[3]]
+plot(cerra_h1-swc_cerra_day_weighted[[1]])
+#-> matching computation
+```
+
+# Comparison of tmin infex
+
+## load necessary files
+
+```{r tmin.files}
+Sys.setenv(TAR_PROJECT="data")
+tar_load(tmin_cerra)
+tmin_cerra=rast(tmin_cerra,crs="epsg:4326")
+names(tmin_cerra)="tmin_cerra"
+tmin_chelsa=min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm=FALSE)
+tmin_chelsa=classify(tmin_chelsa, cbind(6553500, NA)) #set as NA default value
+names(tmin_chelsa)="tmin_chelsa"
+
+
+comp_tmin=c(tmin_cerra,
+            resample(tmin_chelsa,
+                     tmin_cerra,
+                     method="near"))
+as.data.frame(comp_tmin,xy=TRUE) |> 
+  pivot_longer(cols=c("tmin_cerra","tmin_chelsa"),
+               names_to = "data",
+               values_to = "tmin") |> 
+  ggplot(aes(tmin,color=data))+
+  geom_density()
+
+
+as.data.frame(comp_tmin,xy=TRUE) |>
+  mutate(dif=tmin_chelsa-tmin_cerra) |>
+  ggplot(aes(x=x,y=y,fill=dif))+
+  geom_tile()+
+  scale_fill_gradientn(colors = viridis(15))
+
+as.data.frame(comp_tmin,xy=TRUE) |>
+  mutate(dif=abs(tmin_chelsa-tmin_cerra)>10) |>
+  ggplot(aes(x=x,y=y,fill=dif))+
+  geom_tile()
+
+as.data.frame(comp_tmin,xy=TRUE) |>
+  ggplot(aes(x=x,y=y,fill=tmin_cerra))+
+  geom_tile()+
+  scale_fill_gradientn(colors = viridis(15))
+
+as.data.frame(comp_tmin,xy=TRUE) |>
+  ggplot(aes(tmin_cerra,tmin_chelsa))+
+  geom_point()
+```
+
+# Analyse psi min
+
+## load data
+do it when target is run
+```{r}
+tar_load(psihorday_real,store="target_psi2")
+tar_load(psi_cerraday_real,store="target_psi2")
+```
+
+## COmparison
+
+```{r}
+psi_era<-psihorday_real |> 
+  select(x,y,psi) |> 
+  rast(crs="epsg:4326")
+names(psi_era)="psi_era"
+rm(psihorday_real)
+
+psi_cerra<-psi_cerraday_real |> 
+  select(x,y,psi) |> 
+  rename(psi_cerra=psi) |> 
+  rast(crs="epsg:4326")
+
+
+comp_psi=c(psi_cerra,
+           crop(psi_era,
+                psi_cerra)) |> 
+  aggregate(factor=3)
+
+as.data.frame(comp_psi,xy=TRUE) |> 
+  pivot_longer(cols=c("psi_cerra","psi_era"),
+               names_to = "data",
+               values_to = "psi") |> 
+  ggplot(aes(-psi/1000,color=data))+
+  geom_density()+
+  scale_x_log10()
+
+as.data.frame(comp_psi,xy=TRUE) |> 
+  pivot_longer(cols=c("psi_cerra","psi_era"),
+               names_to = "data",
+               values_to = "psi") |> 
+  mutate(psi=cut(psi,
+                 breaks=c(-Inf,  -10000, -5000,-3000, -2000, -1000, -500,-400,-300,-200,-100, 0,Inf))) |> 
+  ggplot(aes(x=x,y=y,fill=psi))+
+  geom_tile()+
+  scale_fill_brewer(palette="RdYlBu")+
+  facet_wrap(~data)
+
+as.data.frame(comp_psi,xy=TRUE) |> 
+  ggplot(aes(-psi_cerra,-psi_era))+
+  geom_point()+
+  scale_x_log10()+scale_y_log10()
+```
+
