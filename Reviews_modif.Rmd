@@ -97,13 +97,15 @@ for (hor in 1:4){
                  names_to = "data") |> 
     ggplot(aes(x=x,y=y,fill=svwc))+
     geom_tile()+
+    scale_fill_gradientn(colors=viridis(15))+
     facet_wrap(~data)-> p3
   
   as.data.frame(comp_eracerra,xy=TRUE) |> 
-    mutate(dif=era-cerra) |>  
+    mutate(dif=(era-cerra)>0) |>  
     ggplot(aes(x=x,y=y,fill=dif))+
-    geom_tile()->p4
-  
+    geom_tile()+
+     scale_fill_gradientn(colors=viridis(15))->p4
+    # 
   print(cowplot::plot_grid(p1,p2,p3,p4))
 
   }
@@ -115,6 +117,96 @@ cerra_h1=weight_matrix[1,1]*swc_cerra_day[[1]]+weight_matrix[2,1]*swc_cerra_day[
 plot(cerra_h1-swc_cerra_day_weighted[[1]])
 #-> matching computation
 ```
+
+## Temporal series in specific location
+
+```{r}
+tar_load(occurence,store="target_occ")
+set.seed(65)
+df.loc<-occurence |> 
+  filter(y>35 & y <72) |> 
+  mutate(y_cat=cut(y,breaks=15)) |> 
+  group_by(y_cat) |> 
+  sample_n(1) |> 
+  select(x,y)
+# df.loc=data.frame(x=c(7.07,21.49,16.06),
+#                   y=c(59.84,69.61,67.23))
+
+# df.loc=data.frame(x=c(7.07,21.49,16.06),
+#                   y=c(59.84,69.61,67.23))
+coordinates(df.loc) <- c("x",  "y")
+proj4string(df.loc) <- CRS("+proj=longlat +datum=WGS84")
+df.loc.new<-as.data.frame(spTransform(df.loc, CRS("+proj=lcc +lat_0=50 +lon_0=8 +lat_1=50 +lat_2=50 +x_0=0 +y_0=0 +R=6371229 +units=m +no_defs"))) 
+  
+df.loc<-as.data.frame(df.loc) |> 
+  rename(x_wgs=x,
+         y_wgs=y) |> 
+  left_join(df.loc.new)
+cfile=list(file.h1="data/cerra-land/liquid_vol_content/cerra_lvslsummerdaily_12h15h_h1_1984-2021.grib",
+        file.h2="data/cerra-land/liquid_vol_content/cerra_lvslsummerdaily_12h15h_h2_1984-2021.grib",
+        file.h3="data/cerra-land/liquid_vol_content/cerra_lvslsummerdaily_12h15h_h3_1984-2021.grib")
+file.era="data/ERA5-land/daily/swcd-1950-2021-layer1.nc"
+
+time<-rast(cfile$file.h1)@ptr$time |>
+  as.POSIXct(origin = "1970-01-01",tz = "GMT")
+year=2003
+# time<-data.frame(time=time) |> 
+#   mutate(year(time)==year)
+df.loc.cerra<-cbind(df.loc,
+              terra::extract(rast(cfile$file.h2)[[year(time)==year]],
+                             data.frame(x=df.loc$x,y=df.loc$y)) [-1])
+colnames(df.loc.cerra)[!grepl("^x|^y_cat$|^y",colnames(df.loc.cerra))]=as.character(time[year(time)==year])
+df.loc.cerra |> 
+  mutate(cat=as.numeric(y_cat)) |> 
+  pivot_longer(cols=-c("x","y","x_wgs","y_wgs","y_cat","cat"),
+               names_to = "time",
+               values_to = "svwc") |> 
+  mutate(time=as.POSIXct(time)) |> 
+  filter(cat%in%c(1,2,14,15)) |>
+  ggplot(aes(x=time,y=svwc,color=as.factor(cat)))+
+  geom_line()+
+  geom_vline(xintercept = as.POSIXct("2003-06-01 01:30:00"))+
+  scale_color_viridis(discrete=TRUE)
+
+
+df.cerra=df.loc.cerra |> 
+  mutate(cat=as.numeric(y_cat)) |> 
+  pivot_longer(cols=-c("x","y","x_wgs","y_wgs","y_cat","cat"),
+               names_to = "time",
+               values_to = "svwc") |> 
+  mutate(time=as.POSIXct(time),
+         data="cerra")
+time.era=rast(file.era)@ptr$time |>
+  as.POSIXct(origin = "1970-01-01",tz = "GMT")
+df.loc.era<-cbind(df.loc,
+                  terra::extract(rast(file.era)[[year(time.era)==year]],
+                                 data.frame(x=df.loc$x_wgs,y=df.loc$y_wgs)) [-1])
+colnames(df.loc.era)[!grepl("^x|^y_cat$|^y",colnames(df.loc.era))]=as.character(time.era[year(time.era)==year])
+df.era=df.loc.era |> 
+  mutate(cat=as.numeric(y_cat)) |> 
+  pivot_longer(cols=-c("x","y","x_wgs","y_wgs","y_cat","cat"),
+               names_to = "time",
+               values_to = "svwc") |> 
+  mutate(time=as.POSIXct(time),
+         data="era")
+
+
+bind_rows(df.cerra,
+          df.era) |> 
+  # filter(cat%in%c(1,2,14,15)) |>
+  ggplot(aes(x=time,y=svwc,color=as.factor(data)))+
+  geom_line()+
+  geom_vline(xintercept = as.POSIXct("2003-06-01 01:30:00"))+
+  # scale_color_viridis(discrete=TRUE) +
+  facet_wrap(~cat)
+
+df.loc |> 
+  ggplot()+
+  geom_point(aes(x_wgs,y_wgs,color=as.factor(as.numeric(y_cat))))+
+  geom_sf(data=europe,fill=NA)
+
+```
+
 
 # Comparison of tmin infex
 
@@ -132,8 +224,7 @@ names(tmin_chelsa)="tmin_chelsa"
 
 comp_tmin=c(tmin_cerra,
             resample(tmin_chelsa,
-                     tmin_cerra,
-                     method="near"))
+                     tmin_cerra))
 as.data.frame(comp_tmin,xy=TRUE) |> 
   pivot_longer(cols=c("tmin_cerra","tmin_chelsa"),
                names_to = "data",
@@ -149,7 +240,7 @@ as.data.frame(comp_tmin,xy=TRUE) |>
   scale_fill_gradientn(colors = viridis(15))
 
 as.data.frame(comp_tmin,xy=TRUE) |>
-  mutate(dif=abs(tmin_chelsa-tmin_cerra)>10) |>
+  mutate(dif=tmin_chelsa-tmin_cerra>0) |>
   ggplot(aes(x=x,y=y,fill=dif))+
   geom_tile()
 
@@ -170,9 +261,10 @@ do it when target is run
 ```{r}
 tar_load(psihorday_real,store="target_psi2")
 tar_load(psi_cerraday_real,store="target_psi2")
+tar_load(psi_eraday_real,store="target_psi2")
 ```
 
-## COmparison
+## Comparison
 
 ```{r}
 psi_era<-psihorday_real |> 
@@ -186,7 +278,44 @@ psi_cerra<-psi_cerraday_real |>
   rename(psi_cerra=psi) |> 
   rast(crs="epsg:4326")
 
+psi_era2<-psi_eraday_real |> 
+  select(x,y,psi) |> 
+  rename(psi_era2=psi) |> 
+  rast(crs="epsg:4326")
 
+# ERA1-ERA2
+comp_psiera=c(crop(psi_era,
+                   psi_era2),
+              crop(psi_era2,
+                   psi_era)) |> 
+  aggregate(factor=3)
+
+as.data.frame(comp_psiera,xy=TRUE) |> 
+  pivot_longer(cols=c("psi_era2","psi_era"),
+               names_to = "data",
+               values_to = "psi") |> 
+  ggplot(aes(-psi/1000,color=data))+
+  geom_density()+
+  scale_x_log10()
+
+as.data.frame(comp_psiera,xy=TRUE) |> 
+  pivot_longer(cols=c("psi_era2","psi_era"),
+               names_to = "data",
+               values_to = "psi") |> 
+  mutate(psi=cut(psi,
+                 breaks=c(-Inf,  -10000, -5000,-3000, -2000, -1000, -500,-400,-300,-200,-100, 0,Inf))) |> 
+  ggplot(aes(x=x,y=y,fill=psi))+
+  geom_tile()+
+  scale_fill_brewer(palette="RdYlBu")+
+  facet_wrap(~data)
+
+as.data.frame(comp_psiera,xy=TRUE) |> 
+  ggplot(aes(-psi_era2,-psi_era))+
+  geom_point()+
+  scale_x_log10()+scale_y_log10()
+
+
+# ERA1-CERRA
 comp_psi=c(psi_cerra,
            crop(psi_era,
                 psi_cerra)) |> 
@@ -215,5 +344,64 @@ as.data.frame(comp_psi,xy=TRUE) |>
   ggplot(aes(-psi_cerra,-psi_era))+
   geom_point()+
   scale_x_log10()+scale_y_log10()
+```
+
+# Comp traits - last db version
+
+## just check between last version & new target
+
+```{r eval=FALSE, include=FALSE}
+db_anne=read.csv("output/df_trait_filtered.csv")
+db_anne_2=read.csv("output/df_trait_filtered_2csv") |> select(-slope)
+
+
+db_anne$lt50.mean-db_anne_2$lt50.mean
+
+dplyr::setdiff(db_anne,db_anne_2[,!grepl("slope",colnames(db_anne_2))])
+
+differences <- data.frame()
+df1=db_anne |> select(-p50.sd,-p88.sd,-lt50.sd,-px.sd,-file)
+df2=db_anne_2 |> select(-p50.sd,-p88.sd,-lt50.sd,-px.sd,-file)
+
+for(i in 1:nrow(df1)) {
+    for(j in 1:ncol(df1)) {
+        if(df1[i,j] != df2[i,j]) {
+            differences <- rbind(differences, cbind(row = i, column = j, 
+                               value_df1 = df1[i,j], value_df2 = df2[i,j]))
+        }
+    }
+}
+```
+no dif - all good
+
+## Compare with max cleaning
+
+```{r}
+db_max=readxl::read_xls("base_traits_P50_LTx.xls")
+db_anne=read.csv("output/df_trait_filtered.csv")
+
+
+db_anne |> 
+  left_join(db_max, by=c("species.binomial"="Species")) |> 
+  ggplot(aes(p50.mu,P50,color=Source))+
+  geom_point()
+
+db_anne |> 
+  left_join(db_max, by=c("species.binomial"="Species")) |> 
+  ggplot(aes(lt50.mean-LTx,species.binomial))+
+  geom_point()
+
+db_anne |> 
+  left_join(db_max, by=c("species.binomial"="Species")) |> 
+  ggplot(aes(p50.mu-P50,species.binomial))+
+  geom_point()
+
+
+db_anne |> 
+  left_join(db_max, by=c("species.binomial"="Species")) |> 
+  filter(abs(lt50.mean-LTx)>2)
+
+readxl::read_xlsx("data/Species traits/base_traits_P50_LTx.xlsx")
+
 ```
 

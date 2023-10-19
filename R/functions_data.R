@@ -77,28 +77,33 @@ forest_cover <- function(dir.data="data",
 #' @authors Anne Baranger, Matthieu Combaud (INRAE - LESSEM)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-#' Function to compute the water aridity index based on chelsa mean temperature data
-#'
-#' @param dir.chelsa
-#' @param df.loc
+#' Extract from Chelsea and compute WAI/SGDD
 #' 
+#' @description extract required variables from chelsea and computed sgdd and wai
+#' on points entered as argument
+#' @note Chelsea dwonloaded from website
+#' @param dir.chelsa
+#' @param df.loc data.frame of x and y location
+#' @return df.loc + extracted variables + computed variables
+
 get_waisgdd <- function(dir.chelsa="data/CHELSA/",
-                           df.loc){
-  pr_chelsa=extract(rast("data/CHELSA/CHELSA_bio12_1981-2010_V.2.1.tif"),
-                    df.loc)[2]
-  pet_chelsa=extract(rast("data/CHELSA/CHELSA_pet_penman_mean_1981-2010_V.2.1.tif"),
-                     df.loc)[2]
-  sgdd_chelsa=extract(rast("data/CHELSA/CHELSA_gdd5_1981-2010_V.2.1.tif"),
-                      df.loc)[2]
-  df.loc=cbind(df.loc,
-               pr=pr_chelsa,
-               pet=pet_chelsa,
-               sgdd=sgdd_chelsa)
-  colnames(df.loc)=c("x","y","pr","pet","sgdd")
-  df.loc <- df.loc %>% 
-    mutate(wai=(pr-12*pet)/pet) 
-  return(df.loc)
+                        file=c("bio1","bio12","pet_penman_mean","gdd5"),
+                        rast.mod){
+  rast.mod=project(rast(rast.mod),
+                   "EPSG:4326")
+  clim.files=paste0(dir.chelsa,"CHELSA_",file,"_1981-2010_V.2.1.tif")
+  rast.clim=rast(clim.files)
+  names(rast.clim)=file
+  rast.clim=resample(crop(rast.clim,
+                          rast.mod),
+                     rast.mod,
+                     method="near")
+  names(rast.clim)=c("mat","map","pet","sgdd")
+  rast.clim=as.data.frame(rast.clim,xy=TRUE) |> 
+    mutate(wai=(map-12*pet)/pet)
+  return(rast.clim)
 }
+
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 3 - Computing essential variable over spatial area ####
@@ -1558,7 +1563,7 @@ get.specieslist <- function(){
 #'2022, we build a dataset with consistent measures
 #'@return Dataframe with LT50 per European species and sd associated when available
 
-get.LT50 <- function(){
+get.LT50 <- function(file.output){
   ### Load LT50 database from litterature ###
   ###########################################
   df.LT50.lit <- read.csv2(file = "data/Species traits/df_LT50_sp_checked.csv", header = T,na.strings = c("", "NA")) # made by code in "R/matchsp_get_tax.R"
@@ -1907,7 +1912,7 @@ get.LT50 <- function(){
   # 
   
   
-  write.csv(df.species.traits,"output/df_LT50_filtered.csv",row.names = FALSE)
+  write.csv(df.species.traits,file.output,row.names = FALSE)
 
   return(list(df.LT50.raw=df.LT50.select,
               df.LT50.cor=df.filtered,
@@ -1923,7 +1928,7 @@ get.LT50 <- function(){
 #' 
 #' @description Load P50 from Max database
 #' @return  Dataframe with P50 per European species 
-get.P50 <- function(){
+get.P50 <- function(file.output){
   species.list=get.specieslist()
   # df.P50.lit <- read.csv2("data/Species traits/BdD_full_by_species.csv")
   # df.P50.select <- df.P50.lit %>% 
@@ -1937,7 +1942,7 @@ get.P50 <- function(){
            p88.mu=p50-50/slope,
            p50.mu=p50,
            bdd="martinsp") |> 
-    select(group,species.binomial,p50.mu,p88.mu,bdd) |> 
+    select(group,species.binomial,p50.mu,p88.mu,slope,bdd) |> 
     filter(!(group=="angiosperm"&is.na(p88.mu)))
   df.p50.lit <- read.csv2("data/Species traits/2022_10_20_cleaned_xft.csv") %>% 
     select(uniqueID,lat,long,XFT.database,Group,Family,Genus,Species,
@@ -1960,7 +1965,7 @@ get.P50 <- function(){
                 tolower) |> 
     select(group,species.binomial,p50.mu,p50.sd,p88.mu,p88.sd,bdd)
   df.p50=bind_rows(df.p50.lit,df.p50.msp)
-  write.csv(df.p50,"output/df_P50_filtered.csv",row.names = FALSE)
+  write.csv(df.p50,file.output,row.names = FALSE)
   return(df.p50)
 }
 
@@ -1974,7 +1979,8 @@ get.P50 <- function(){
 
 get.traits <- function(dir.distribution="data/chorological_maps_dataset",
                        df.P50, #=df.P50
-                       df.LT50){ #=df.LT50$df.LT50sp.cor
+                       df.LT50,
+                       file.output){ #=df.LT50$df.LT50sp.cor
   # df.P50 <- read.csv("output/df_P50_filtered.csv") 
   # df.LT50 <- read.csv("output/df_LT50_filtered.csv")
   
@@ -1988,7 +1994,7 @@ get.traits <- function(dir.distribution="data/chorological_maps_dataset",
   df.traits <- df.traits.raw %>% 
     filter(!is.na(p50.mu)) %>% 
     filter(!is.na(lt50.mean)) %>% 
-    select(species,group,p50.mu,p50.sd,p88.mu,p88.sd,lt50.mean,lt50.sd,data.quality) %>% #MATmean,MAPmean,Leaf_phenology,
+    select(species,group,p50.mu,p50.sd,p88.mu,p88.sd,slope,lt50.mean,lt50.sd,data.quality) %>% #MATmean,MAPmean,Leaf_phenology,
     unique() %>% 
     rename(`species.binomial`="species") %>% 
     separate(col = species.binomial,
@@ -2020,10 +2026,55 @@ get.traits <- function(dir.distribution="data/chorological_maps_dataset",
       df.traits$file[i]=NA
     }
   }  
-  write.csv(df.traits,"output/df_trait_filtered.csv",row.names = FALSE)
+  write.csv(df.traits,file.output,row.names = FALSE)
   return(df.traits)
 }
 
+
+
+#' Get LT50/P50 database, from MAX
+#' 
+#' @description Load LT50/P50 for european species
+#' @param dir.file directory of species file
+#' @return dataframe of LT50/P50 traits per species
+#' 
+get.traits.max <-function(dir.file="data/Species traits/base_traits_P50_LTx.xlsx",
+                          file.output){
+  species.list=get.specieslist()
+  p50.msp<-read.csv2("data/Species traits/p50_nmsp.csv") |> 
+    rename(slope_msp=slope,species=species.binomial)
+  traits<-readxl::read_xlsx("data/Species traits/base_traits_P50_LTx.xlsx")|>
+    filter(Species%in% species.list) |> 
+    rename_with(.cols=everything(),
+                tolower) |> 
+    left_join(p50.msp[,c("species","slope_msp")]) |>  
+    mutate(taxa=case_when(class=="Magnoliopsida"~"angiosperm",
+                          class=="Pinopsida"~"gymnosperm"),
+           px=case_when(taxa=="angiosperm"~ifelse(!is.na(p88),p88,p50-50/slope_msp),
+                        taxa=="gymnosperm"~p50),
+           ) |> 
+    # relocate(taxa,.after=genus) |> 
+    # relocate(px,.before = p50) |> 
+    filter(!is.na(px)&!is.na(ltx)) |> 
+    mutate(lt50_qual=case_when(is.na(ltx_clean)~"low",
+                               TRUE~"ok"),
+           ltx_clean_2=case_when(is.na(ltx_clean)~ltx,
+                               TRUE~ltx_clean),
+           source_ltx_2=case_when(is.na(ltx_clean)~source_ltx,
+                                TRUE~source_ltx_clean)) |> 
+    select(species,class,order,family,genus,taxa,
+           ltx_clean_2,ltx_clean_sd,source_ltx_2,lt50_qual,
+           px,p50,p50sd,p12,p88,slope,source) |> 
+    filter(!grepl("LT0_",source_ltx_2)) |> 
+    rename(
+      lt50=ltx_clean_2,
+      lt50_source=source_ltx_2,
+      lt50_sd=ltx_clean_sd,
+      px_source=source
+    )
+  write.csv(traits,file.output)
+  return(traits)
+}
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -15,9 +15,11 @@ tar_option_set(packages = c("stringr","ggplot2","data.table","tidyr","viridis","
 
 # Load objects from other projects
 europe <- tar_read(europe, store = "target_data")
-
-values <- data.frame(LAImax=c(2,3,4,5,5,5,5,6,7,8),
-                     betaRootProfile=c(0.966,0.966,0.966,0.914,0.942,0.966,0.976,0.966,0.966,0.966))
+LAImax=c(2,3,4,5,5,5,5,6,7,8)
+beta=c(0.966,0.966,0.966,0.914,0.942,0.966,0.976,0.966,0.966,0.966)
+values <- data.frame(LAImax=LAImax,
+                     beta=beta,
+                     output=paste0("output/psi_cerra_day_real_",LAImax,"_",beta))
           # expand.grid(LAImax=3:6,
           #             betaRootProfile=c(0.914,0.943,0.966,0.976))
 
@@ -152,6 +154,25 @@ list(
                        "output/psi_cerra_day_100_fixed.csv"
     )
   ),
+  tar_target(
+    psi_cerraday_real_beta,
+    compute_psi_sureau(swc_cerra_day,
+                       europe,
+                       dir.hydro="data/EU_SoilHydroGrids_1km/",
+                       depth_max=NULL,
+                       dir.depth="data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst",
+                       dir.ecoregions="data/WWF/official",
+                       LAImax=5,
+                       fRootToLeaf=1,
+                       rootRadius=0.0004,
+                       beta=NULL,
+                       obs=c(0,0.01,0.04,0.1,0.2,0.4,0.6,0.8,1,1.5,2,3),
+                       ref=c(0,0.05,0.15,0.3,0.6,1,2),
+                       max_depth=3,
+                       "output/psi_cerra_day_real_beta.csv"
+    )
+  ),
+  
     #  # With SWC min on daily timestep (Python code), using real depth and SUREAU
     # tar_target(
     #   psihorday_real,
@@ -173,17 +194,26 @@ list(
     #                     file.output="output/psihorday_100.csv")
     # ),
   # sensitivity analysis
-  # tar_map(
-  #   values=values,
-  #   tar_target(sensitivity,
-  #              compute_sensitivity(SWC_day,
-  #                       europe,
-  #                       dir.data="data",
-  #                       dir.file="EU_SoilHydroGrids_1km",
-  #                       depth="real",
-  #                       LAImax,
-  #                       betaRootProfile))
-  #   ),
+  tar_map(
+    values=values,
+    tar_target(sensitivity,
+               compute_psi_sureau(swc_cerra_day,
+                                  europe,
+                                  dir.hydro="data/EU_SoilHydroGrids_1km/",
+                                  depth_max=NULL,
+                                  dir.depth="data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst",
+                                  dir.ecoregions="data/WWF/official",
+                                  LAImax,
+                                  fRootToLeaf=1,
+                                  rootRadius=0.0004,
+                                  beta,
+                                  obs=c(0,0.01,0.04,0.1,0.2,0.4,0.6,0.8,1,1.5,2,3),
+                                  ref=c(0,0.05,0.15,0.3,0.6,1,2),
+                                  max_depth=3,
+                                  output
+               )
+    )
+  ), 
   # tar_target(
   #   psihorday_rbeta,
   #   compute_psihorday_beta(SWC_day,

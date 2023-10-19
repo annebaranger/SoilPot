@@ -49,16 +49,22 @@ list(
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   tar_target(
     df.LT50,
-    get.LT50()
+    get.LT50(file.output="output/df_LT50_filtered.csv")
   ),
   tar_target(
     df.P50,
-    get.P50()
+    get.P50(file.output="output/df_P50_filtered.csv")
   ),
   tar_target(
     df.traits,
     get.traits(df.P50=df.P50,
-               df.LT50=df.LT50$df.LT50sp.cor)
+               df.LT50=df.LT50$df.LT50sp.cor,
+               file.output="output/df_trait_filtered.csv")
+  ),
+  tar_target(
+    traits_max,
+    get.traits.max(dir.file="data/Species traits/base_traits_P50_LTx.xlsx",
+                   file.output="output/traits_filtered_max.csv")
   ),
   # tar_render(
   #   report,

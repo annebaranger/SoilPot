@@ -3,8 +3,6 @@
 #library
 library(targets)
 # library(tarchetypes)
-# lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","gdalUtils","sf","lubridate","lme4"),require,character.only=TRUE)
-
 
 #Options
 source("R/functions_analyses.R")

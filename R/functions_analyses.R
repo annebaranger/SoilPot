@@ -20,35 +20,6 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-#' Extract from Chelsea and compute WAI/SGDD
-#' 
-#' @description extract required variables from chelsea and computed sgdd and wai
-#' on points entered as argument
-#' @note Chelsea dwonloaded from website
-#' @param dir.chelsa
-#' @param df.loc data.frame of x and y location
-#' @return df.loc + extracted variables + computed variables
-
-get_waisgdd <- function(dir.chelsa="data/CHELSA/",
-                        file=c("bio1","bio12","pet_penman_mean","gdd5"),
-                        rast.mod,
-                        df.loc){
-  rast.mod=rast(rast.mod,
-                crs="epsg:4326")
-  clim.files=paste0(dir.chelsa,"CHELSA_",file,"_1981-2010_V.2.1.tif")
-  rast.clim=rast(clim.files)
-  names(rast.clim)=file
-  rast.clim=resample(crop(rast.clim,
-                          rast.mod),
-                     rast.mod,
-                     method="near")
-  df.loc=cbind(df.loc,
-               extract(rast.clim,df.loc)[2:(nlyr(rast.clim)+1)])
-  colnames(df.loc)=c("x","y","mat","map","pet","sgdd")
-  df.loc <- df.loc %>% 
-    mutate(wai=(map-12*pet)/pet)
-  return(df.loc)
-}
 
 
 #' Load Mauri pres/abs and format dataset
@@ -63,15 +34,11 @@ get_waisgdd <- function(dir.chelsa="data/CHELSA/",
 #' @return dataframe, where for each location, abs/pres of all selected species
 #' is mentionned, and associated predictors
 
-get.mauri <- function(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
-                      psi_min,
-                      psi_min_100,
-                      frost.index,
-                      file.path){
+get.mauri <- function(dir.occ){
   # load european species
   species.list=list.files("data/chorological_maps_dataset/")
   
-  df.Euforest=read.table("data/EUForestsMauri/EUForestspecies.csv",
+  df.Euforest=read.table(dir.occ,
                          header=TRUE,
                          sep=",",
                          dec=".")%>% 
@@ -87,72 +54,52 @@ get.mauri <- function(dir.occ="data/EUForestsMauri/EUForestspecies.csv",
     spread(SPECIES.NAME, n) %>% 
     ungroup() %>%
     pivot_longer(colnames(.)[-1],
-                 names_to = "species.binomial",
+                 names_to = "species",
                  values_to = "presence") %>% 
-    filter(species.binomial %in% species.list) %>% 
+    filter(species %in% species.list) %>% 
     left_join(df.Euforest[!duplicated(df.Euforest$Node), c("X","Y","COUNTRY","EEO","Node")],
               by = "Node") 
   
   species.list.eff = db.cont |> 
     filter(presence==1) |> 
-    group_by(species.binomial) |> 
+    group_by(species) |> 
     summarise(n=n()) |> 
     filter(n>400)
   
   db.cont<-db.cont |> 
-    filter(species.binomial %in% species.list.eff$species.binomial)
+    filter(species %in% species.list.eff$species) |> 
+    rename_with(.cols=everything(),
+                tolower)
   
   #Change coordinates
-  coordinates(db.cont) <- c("X",  "Y")
+  coordinates(db.cont) <- c("x",  "y")
   proj4string(db.cont) <- CRS("+init=epsg:3035")
   db.cont <- as.data.frame(spTransform(db.cont, CRS("+proj=longlat +datum=WGS84")))
   
-  
-  
-  ## Load climate
-  # fdg
-  # rast.fdg=rast("data/eea_2000-2016/SOS_2000_2016_DOY.BIL")
-  # rast.fdg.mean <- mean(rast.fdg,na.rm=TRUE)
-  # rast.fdg.mean <- terra::project(rast.fdg.mean,"epsg:4326")
-  # rast.fdg.mean[rast.fdg.mean<0] <- 30
-  # names(rast.fdg.mean)="fdg"
-  # 
-  # rm(rast.fdg)
+  return(db.cont)
+}
 
-  # get frost and psi
-  psi_min=rast(fread(psi_min)[,c("x","y","psi")],crs="epsg:4326")
-  psi_min_100=rast(fread(psi_min_100)[,c("x","y","psi")],crs="epsg:4326")
-  names(psi_min_100)="psi.100"
-  # frost.index.spring=rast(fread(frost.index)[,-1],crs="epsg:4326")
-  # names(frost.index.spring)="frost.spring"
-  frost.index.winter=min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm=FALSE)
-  frost.index.winter=classify(frost.index.winter, cbind(6553500, NA)) #set as NA default value
-  names(frost.index.winter)="frost.winter"
-  
-  
-  
-  #Extract frost and psi on eahc abs.pres points
-  for (rast in list(psi_min,psi_min_100,frost.index.winter)){ #,frost.index.spring,rast.fdg.mean  /// if analysis on spring index needed
-    print(rast)
-    db.cont <- cbind(db.cont,
-                     extract(rast,
-                             data.frame(x=db.cont$X,y=db.cont$Y))[-1])
-  }
-  db.cont$presence[is.na(db.cont$presence)] <- 0
 
-  # Extract climatic variables
-  db.clim <- cbind(
-    db.cont,
-    get_waisgdd(df.loc=data.frame(x=db.cont$X,
-                                  y=db.cont$Y))[,3:7]) %>% 
-    rename_with(.cols=everything(),
-                tolower) # %>%
-    # filter(!is.na(hsm)) %>% 
-    # filter(!is.na(fsmwinter)) 
-  fwrite(db.clim,file.path)
+get.occ.clim<-function(db.mauri,
+                       clim.list,
+                       file.path){
+  ## Load safe ty margin indicators
+  clim.list=lapply(clim.list,rast)
+  df.clim=lapply(seq_along(clim.list),function(x) {
+    df=extract(clim.list[[x]],data.frame(x=db.mauri$x,y=db.mauri$y))[-1]
+    colnames(df)=names(clim.list)[x]
+    return(df)}
+    )
+  
+  db.mauri<-cbind(db.mauri,
+                 as.data.frame(df.clim))
+  
+  db.mauri$presence[is.na(db.mauri$presence)] <- 0
+
+  fwrite(db.mauri,file.path)
   # write.csv(df.fdg.sp,"output/LT50_spring.csv")
   
-  return(db.clim)
+  return(db.mauri)
 }
 
 
@@ -194,7 +141,7 @@ get.occurence <- function(db.cont,
            hsm.100=psi.100-px.mu*1000,
            fsm.winter=frost.winter-lt50.mean,
            # fsm.spring=frost.spring-(lt50.sp.spring),
-           species.binomial=as.factor(species.binomial))
+           species=as.factor(species))
   db.cont$hsm[is.nan(db.cont$hsm)] <- NA
   db.cont$hsm.100[is.nan(db.cont$hsm.100)] <- NA
   db.cont$fsm.winter[is.nan(db.cont$fsm.winter)] <- NA
@@ -225,13 +172,13 @@ get.occurence <- function(db.cont,
 
 get.prevalence <- function(species.list,
                            db.clim){
-  df.traits=data.frame(species.binomial=species.list)
+  df.traits=data.frame(species=species.list)
   # create an empty column for prevalence
   df.traits$prevalence <- NA
   
   # for loop occuring along all species
   
-  for (sp in unique(df.traits$species.binomial)){
+  for (sp in unique(df.traits$species)){
     print(sp)
     # look for euforgen distribution if it exists for the targetted species and
     # compute the prevalelnce
@@ -243,7 +190,7 @@ get.prevalence <- function(species.list,
       {
         if (file.exists(path)){
           db.pres <- db.clim %>%
-            filter(species.binomial==sp)
+            filter(species==sp)
           if (length(grep("plg_clip\\.",
                         list.files(path),
                         value = TRUE))!=0){
@@ -275,9 +222,9 @@ get.prevalence <- function(species.list,
                                   crs="epsg:4326") %>% 
             st_join(spdistrib, join = st_within,left=FALSE) %>% # select only points falling in euforgen distrib
             as.data.frame() 
-          df.traits[df.traits$species.binomial==sp,"prevalence"] <-  sum(db.pres.geo$presence==1)/dim(db.pres.geo)[1]
+          df.traits[df.traits$species==sp,"prevalence"] <-  sum(db.pres.geo$presence==1)/dim(db.pres.geo)[1]
         } else { # if euforgen distrib do not exist, prevalence default set to 0.1
-          df.traits[df.traits$species.binomial==sp,"prevalence"] <- 0.1
+          df.traits[df.traits$species==sp,"prevalence"] <- 0.1
         }
         },
         error=function(e){print(paste0("error for ",sp))}
@@ -285,7 +232,7 @@ get.prevalence <- function(species.list,
   } 
   df.traits$prevalence[is.nan(df.traits$prevalence)] <- mean(df.traits$prevalence,na.rm=TRUE) #because a value is always needed for mod prior
   df.traits$prevalence[is.na(df.traits$prevalence)] <- mean(df.traits$prevalence,na.rm=TRUE)
-  return(df.traits[,c("species.binomial","prevalence")])
+  return(df.traits[,c("species","prevalence")])
 }
 
 
@@ -300,61 +247,62 @@ get.prevalence <- function(species.list,
 #' 
 
 get.niche <- function(species.list,
-                      db.clim){
-  df.traits=data.frame(species.binomial=species.list)
+                      db.clim,
+                      psi="psi_cerraday_real",
+                      tmin="tmin_cerra"){
+  df.traits=data.frame(species=species.list)
   
   df.niche <- db.clim %>% 
     filter(presence==1) %>% 
-    group_by(species.binomial) %>% 
+    group_by(species) %>% 
     summarise(lat.mean=mean(y),
               lat.sd=sd(y),
               long.mean=mean(x),
               long.sd=sd(x),
               lat.q05=quantile(y,prob=0.05)[[1]],
               lat.q95=quantile(y,prob=0.95)[[1]],
-              psi.q05=quantile(psi,prob=0.05,na.rm=TRUE)[[1]],
-              psi.q95=quantile(psi,prob=0.95,na.rm=TRUE)[[1]],
-              frost.q05=quantile(frost.winter,prob=0.05,na.rm=TRUE)[[1]],
-              frost.q95=quantile(frost.winter,prob=0.95,na.rm=TRUE)[[1]]
+              psi.q05=quantile(eval(parse(text=psi)),prob=0.05,na.rm=TRUE)[[1]],
+              psi.q95=quantile(eval(parse(text=psi)),prob=0.95,na.rm=TRUE)[[1]],
+              tmin.q05=quantile(eval(parse(text=tmin)),prob=0.05,na.rm=TRUE)[[1]],
+              tmin.q95=quantile(eval(parse(text=tmin)),prob=0.95,na.rm=TRUE)[[1]]
     )
   
   
-  rast.cont=as.data.frame(mean(rast("data/jci_year.nc")),xy=TRUE) %>% 
-    mutate(z=x,
-           x=y,
-           y=z) %>% 
-    select(-z) %>% 
-    rast(crs="epsg:4326")
-  df.traits$jci=NA
-  for (sp in df.traits$species.binomial){
-    print(sp)
-    db.pres <- db.clim %>% 
-      filter(species.binomial==sp) %>% 
-      filter(presence==1)
-    db.pres <- cbind(db.pres,
-                     jci=extract(rast.cont,db.pres[,c("x","y")])[["mean"]])
-    jci=mean(db.pres$jci,na.rm=TRUE)
-    df.traits[df.traits$species.binomial==sp,"jci"]=jci
-  }
+  # rast.cont=as.data.frame(mean(rast("data/jci_year.nc")),xy=TRUE) %>% 
+  #   mutate(z=x,
+  #          x=y,
+  #          y=z) %>% 
+  #   select(-z) %>% 
+  #   rast(crs="epsg:4326")
+  # df.traits$jci=NA
+  # for (sp in df.traits$species.binomial){
+  #   print(sp)
+  #   db.pres <- db.clim %>% 
+  #     filter(species.binomial==sp) %>% 
+  #     filter(presence==1)
+  #   db.pres <- cbind(db.pres,
+  #                    jci=extract(rast.cont,db.pres[,c("x","y")])[["mean"]])
+  #   jci=mean(db.pres$jci,na.rm=TRUE)
+  #   df.traits[df.traits$species.binomial==sp,"jci"]=jci
+  # }
   
-  df.overlap <- db.clim %>% 
-    filter(presence==1) %>% 
-    group_by(node) %>% 
-    mutate(nb.sp=sum(presence==1),
-           overlap.hsm=sum(hsm>0),
-           overlap.fsm=sum(fsm.winter>0)) %>% 
-    ungroup() %>% 
-    group_by(species.binomial) %>% 
-    summarise(overlap=mean(nb.sp),
-              overlap.hsm=mean(overlap.hsm,na.rm=TRUE),
-              overlap.fsm=mean(overlap.fsm,na.rm=TRUE))
-  
-  df.traits <- df.traits %>% 
-    left_join(df.niche,by="species.binomial") %>% 
-    left_join(df.overlap,by="species.binomial")
-  return(df.traits[,c("species.binomial","lat.mean","lat.sd","long.mean","long.sd",
-                      "lat.q05","lat.q95","psi.q05","psi.q95","frost.q05","frost.q95",
-                      "jci","overlap","overlap.hsm","overlap.fsm")])
+  # df.overlap <- db.clim %>%
+  #   filter(presence==1) %>%
+  #   group_by(node) %>%
+  #   mutate(nb.sp=sum(presence==1),
+  #          overlap.hsm=sum(hsm>0),
+  #          overlap.fsm=sum(fsm.winter>0)) %>%
+  #   ungroup() %>%
+  #   group_by(species.binomial) %>%
+  #   summarise(overlap=mean(nb.sp),
+  #             overlap.hsm=mean(overlap.hsm,na.rm=TRUE),
+  #             overlap.fsm=mean(overlap.fsm,na.rm=TRUE))
+
+  df.traits <- df.traits %>%
+    left_join(df.niche,by="species") #%>%
+    # left_join(df.overlap,by="species.binomial")
+  return(df.traits[,c("species","lat.mean","lat.sd","long.mean","long.sd",
+                      "lat.q05","lat.q95","psi.q05","psi.q95","tmin.q05","tmin.q95")])#,"jci","overlap","overlap.hsm","overlap.fsm"
 }
 
 #' Get shade tol
@@ -367,30 +315,30 @@ get.niche <- function(species.list,
 
 get.shadetol <- function(species.list,
                          db.clim){
-  df.traits=data.frame(species.binomial=species.list)
+  df.traits=data.frame(species=species.list)
   df.shadetol=read.csv2("data/Species traits/data_Niinemets&Valladares_2006.csv")
   df.traits=df.traits %>% 
-    left_join(df.shadetol,by=c("species.binomial"="Species")) |> 
+    left_join(df.shadetol,by=c("species"="Species")) |> 
     mutate(across(c(shade_tolerance.mean,drought_tolerance.mean,waterlogging_tolerance.mean),
                   as.numeric))
   
   df.overlapshade=db.clim |>
     filter(presence==1) |> 
-    select(node,species.binomial,presence) |> 
-    left_join(df.traits[,c("species.binomial","shade_tolerance.mean","drought_tolerance.mean")], by="species.binomial") |> 
+    select(node,species,presence) |> 
+    left_join(df.traits[,c("species","shade_tolerance.mean","drought_tolerance.mean")], by="species") |> 
     filter(!is.na(shade_tolerance.mean)&
              !is.na(drought_tolerance.mean)) |> 
     group_by(node) |> 
     mutate(overlap_plot_shade=colSums(outer(shade_tolerance.mean,shade_tolerance.mean,">")),
            overlap_plot_drought=colSums(outer(drought_tolerance.mean,drought_tolerance.mean,">"))) |> #shade_overlap(shade_tolerance.mean,presence) 
     ungroup() |> 
-    group_by(species.binomial) |> 
+    group_by(species) |> 
     summarise(overlap_shade=mean(overlap_plot_shade),
               overlap_drought=mean(overlap_plot_drought))
   
   df.traits=df.traits %>% 
-    left_join(df.overlapshade,by=c("species.binomial"))
-  return(df.traits[,c("species.binomial","shade_tolerance.mean","drought_tolerance.mean","waterlogging_tolerance.mean","overlap_shade","overlap_drought")]) 
+    left_join(df.overlapshade,by=c("species"))
+  return(df.traits[,c("species","shade_tolerance.mean","drought_tolerance.mean","waterlogging_tolerance.mean","overlap_shade","overlap_drought")]) 
 }
 
 #' Get traits and caract
@@ -403,12 +351,13 @@ get.shadetol <- function(species.list,
 get.species <- function(species.list,
                         df.preval,
                         df.shadetol,
-                        df.niche){
-  df.species <- data.frame(species.binomial=species.list) %>% 
-    left_join(df.shadetol,by="species.binomial")%>% 
-    left_join(df.niche,by="species.binomial")%>% 
-    left_join(df.preval,by="species.binomial")
-  fwrite(df.species,file="output/df.species.csv")
+                        df.niche,
+                        file.output){
+  df.species <- data.frame(species=species.list) %>% 
+    left_join(df.shadetol,by="species")%>% 
+    left_join(df.niche,by="species")%>% 
+    left_join(df.preval,by="species")
+  fwrite(df.species,file=file.output)
   return(df.species) 
 }
 
@@ -1181,11 +1130,10 @@ select.model <- function(df.output){
 }
 
 
-
 fit.allspecies<- function(db.clim.file,
-                          output.clim.file,
-                          output,
-                          mod.folder){
+                                  output.clim.file,
+                                  output,
+                                  mod.folder){
   # check that ouput directory exists
   if (!dir.exists(output)) {
     dir.create(output, recursive = TRUE)
@@ -1225,54 +1173,63 @@ fit.allspecies<- function(db.clim.file,
   # 
   # db.clim.sub=db.clim |>
   #   sample_n(dim(db.clim)[1]/100,replace=TRUE)
-
-  data.list<-list(N=dim(db.clim)[1],
+  if(!file.exists(paths=paste0(mod.folder,"fit_random_allsp.RData"))){
+    data.list<-list(N=dim(db.clim)[1],
                   S=nlevels(as.factor(db.clim$species.binomial)),
                   presence=db.clim$presence,
                   species=as.numeric(as.factor(db.clim$species.binomial)),
                   fsm=db.clim$fsm,
                   hsm=db.clim$hsm)
   
-  fit.allsp <- stan(file = "glm_log_all.stan",
-                     data=data.list,
-                     iter=1000,
-                     chains=3,
-                     core=3,
-                     include=FALSE,
-                     pars=c("proba","K_vect"))
-  save(fit.allsp,file=paste0(mod.folder,"fit_random_allsp.RData"))
+    fit.allsp <- stan(file = "glm_log_all.stan",
+                      data=data.list,
+                      iter=1000,
+                      chains=3,
+                      core=3,
+                      include=FALSE,
+                      pars=c("proba","K_vect"))
+    save(fit.allsp,file=paste0(mod.folder,"fit_random_allsp.RData"))
+  } else{
+    print("discarded safmarg model fitting")
+    load(paste0(mod.folder,"fit_random_allsp.RData"))
+  }
+    
+  if(!file.exists(paths=paste0(mod.folder,"fit_random_allspClim.RData"))){
+    outputclim=fread(output.clim.file) |>  #output.clim.file="output/df.outputClim.csv"
+      filter(rhat<1.2) %>% 
+      filter(divergence <0.1) %>% 
+      group_by(species.binomial) %>% 
+      slice(which.min(bic)) %>% 
+      ungroup() |> 
+      mutate(across(c("r_mat","r_wai","t_wai","t_mat"),
+                    ~na_if(.,0)))|>
+      mutate(across(where(is.numeric),
+                    ~mean(.,na.rm=TRUE))) |> 
+      select(-species.binomial,-mod) |> unique()
+    # db.clim<-db.clim |> filter(species.binomial %in% c("Abies alba","Fagus sylvatica","Picea abies")) |> sample_n(70000)
+    data.list<-list(N=dim(db.clim)[1],
+                    S=nlevels(as.factor(db.clim$species.binomial)),
+                    presence=db.clim$presence,
+                    species=as.numeric(as.factor(db.clim$species.binomial)),
+                    mat=db.clim$temp.mean,
+                    wai=db.clim$wai,
+                    prior=as.numeric(outputclim[,c("r_mat","r_wai","t_mat","t_wai")])
+                    # mean_mat=mean(db.clim.sub$temp.mean),
+                    # mean_wai=mean(db.clim.sub$wai)
+    )
+    fit.allspClim <- stan(file = "glm_log_allClim.stan",
+                          data=data.list,
+                          iter=1000,
+                          chains=3,
+                          core=3,
+                          include=FALSE,
+                          pars=c("proba","K_vect"))
+    save(fit.allspClim,file=paste0(mod.folder,"fit_random_allspClim.RData"))
+  } else{
+    print("discarded clim model fitting")
+    load(paste0(mod.folder,"fit_random_allspClim.RData"))
+  }
   
-  outputclim=fread(output.clim.file) |>  #output.clim.file="output/df.outputClim.csv"
-    filter(rhat<1.2) %>% 
-    filter(divergence <0.1) %>% 
-    group_by(species.binomial) %>% 
-    slice(which.min(bic)) %>% 
-    ungroup() |> 
-    mutate(across(c("r_mat","r_wai","t_wai","t_mat"),
-                  ~na_if(.,0)))|>
-    mutate(across(where(is.numeric),
-                  ~mean(.,na.rm=TRUE))) |> 
-    select(-species.binomial,-mod) |> unique()
-  # db.clim<-db.clim |> filter(species.binomial %in% c("Abies alba","Fagus sylvatica","Picea abies")) |> sample_n(70000)
-  data.list<-list(N=dim(db.clim)[1],
-                  S=nlevels(as.factor(db.clim$species.binomial)),
-                  presence=db.clim$presence,
-                  species=as.numeric(as.factor(db.clim$species.binomial)),
-                  mat=db.clim$temp.mean,
-                  wai=db.clim$wai,
-                  prior=as.numeric(outputclim[,c("r_mat","r_wai","t_mat","t_wai")]),
-                  # mean_mat=mean(db.clim.sub$temp.mean),
-                  # mean_wai=mean(db.clim.sub$wai)
-                  )
-  fit.allspClim <- stan(file = "glm_log_allClim.stan",
-                    data=data.list,
-                    iter=1000,
-                    chains=3,
-                    core=3,
-                    include=FALSE,
-                    pars=c("proba","K_vect"))
-  save(fit.allspClim,file=paste0(mod.folder,"fit_random_allspClim.RData"))
-
   posteriors_mean_sfm<-as.data.frame(t(summary(fit.allsp)$summary)) |> 
     select(!matches("K_sp"))
   posteriors_mean_clim<-as.data.frame(t(summary(fit.allspClim)$summary)) |> 
@@ -1287,7 +1244,7 @@ fit.allspecies<- function(db.clim.file,
            pred_clim=posteriors_mean_clim$K_int[1]/
              ((1+exp(-posteriors_mean_clim$r_mat[1]*(temp.mean-posteriors_mean_clim$t_mat[1])))*
                 (1+exp(-posteriors_mean_clim$r_wai[1]*(wai-posteriors_mean_clim$t_wai[1]))))
-           ) |> 
+    ) |> 
     group_by(species.binomial) |> 
     summarize(auc_sfm=as.numeric(auc(presence,pred_sfm)),
               auc_clim=as.numeric(auc(presence,pred_clim)))
