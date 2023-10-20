@@ -1,6 +1,6 @@
 name|type|data|command|depend|seed|path|time|size|bytes|format|repository|iteration|parent|children|seconds|warnings|error
 campbell_par|function|bfcbc000aa357923|||||||||||||||
-chelsabio6|stem|f53993f90a116442|3ab879744da1cef4|24732aa7551a7087|-33827652||t19265.5186499889s|2306e677f32f5ac8|2.22507385850719e-308|rds|local|vector|||4.39||
+chelsabio6|stem|f53993f90a116442|3ab879744da1cef4|24732aa7551a7087|-33827652||t19265.5186499889s|2306e677f32f5ac8|2.2250738585072e-308|rds|local|vector|||4.39||
 chelsabio6_data|function|be93ff9d5721b6ee|||||||||||||||
 chronology_swc|function|2c50387846e08e01|||||||||||||||
 chronology_weighted|stem|550d94e4e726e8a9|4fede94b16c6f7f1|6a41cf1f2e661a78|1002239282||t19284.6055277925s|fe8c13d8a7fc72b1|458414714|rds|local|vector|||4.47||
@@ -10,10 +10,10 @@ compute.sm|function|c495a6df671add27|||||||||||||||
 compute_psihor|function|a925323957c217a1|||||||||||||||
 compute_psihorday|function|5bc57fa0d0c5e8f9|||||||||||||||
 compute_psiweighted|function|fdf11e2624e350d3|||||||||||||||
-db.fni|stem|c9c059af192e009c|302e12ee65a6e2b1|7708a529105ff998|957991744||t19265.5101681861s|bcc0fc4ef95fde3d|2.22507385850719e-308|rds|local|vector|||25.64||
+db.fni|stem|c9c059af192e009c|302e12ee65a6e2b1|7708a529105ff998|957991744||t19265.5101681861s|bcc0fc4ef95fde3d|2.2250738585072e-308|rds|local|vector|||25.64||
 df.traits|stem|1fc1c72c1bce2ff1|30a1d0c6248afc93|04df5fe36c08dd0a|192936422||t19287.6416749183s|1534e6678150e19f|2487|rds|local|vector|||4.39||
 era_data|function|1cd84fba5bb66b39|||||||||||||||
-europe|stem|906dedc9aeaf73d4|d2a50dba8ef3d5cc|7fcc228795e14f9d|2092248444||t19265.5097757852s|8f8f6cdb2606304b|2.22507385850719e-308|rds|local|vector|||5.96|for resolutionhigh option you need to install package rworldxtra, using low resolution version for now|
+europe|stem|906dedc9aeaf73d4|d2a50dba8ef3d5cc|7fcc228795e14f9d|2092248444||t19265.5097757852s|8f8f6cdb2606304b|2.2250738585072e-308|rds|local|vector|||5.96|for resolutionhigh option you need to install package rworldxtra, using low resolution version for now|
 europe_extent|function|54b1b2dc443145fe|||||||||||||||
 extr_swc|function|9192adf0b14f484f|||||||||||||||
 forest_cover|function|e349982eb9bb1127|||||||||||||||
@@ -58,14 +58,53 @@ safety.margins.day.100|stem|29e819cb292952af|84794128c9028b46|9c3e7059dda8695c|1
 safety.margins.day.real|stem|aa4fceeea279c728|d17dcdef39ac189d|1c1c83247177de49|519882334||t19284.6833680795s|1ca3031a7cc1a8ec|1267229088|rds|local|vector|||0.97||
 SWC_day|stem|9dd8664ff832b63c|dd7355956f189aaf|c8e692c560ad4fda|-1736546639||t19283.6588124094s|6508a2660986323b|2329241|rds|local|vector|||6.9||
 SWC100|stem|001b2b268a148b8b|0b184dd3c7f032c2|d8ee901ba24cdd2d|-178664346||t19377.6069524475s|533b2b70900d1acb|746562|rds|local|vector|||30.44||
-SWC100d|stem|9dd8664ff832b63c|dd7355956f189aaf|c8e692c560ad4fda|-2079724421||t19265.5227928685s|6508a2660986323b|2.22507385850719e-308|rds|local|vector|||7.75||
+SWC100d|stem|9dd8664ff832b63c|dd7355956f189aaf|c8e692c560ad4fda|-2079724421||t19265.5227928685s|6508a2660986323b|2.2250738585072e-308|rds|local|vector|||7.75||
 SWC100t|stem|3a10e559d46f7af4|87c1083e5e7c251d|8cf99164974284e4|417044020||t19377.6010403121s|6d2ac1cebdfcb892|458264359|rds|local|vector|||157.36||
 SWC289|stem|47476629910843fb|78b6fa7cb2d6e77a|36f8031e54332125|1978460119||t19377.6041101881s|6ec689e7ba0322c8|744029|rds|local|vector|||264.7||
 SWC50|stem|7f1fb1d28cf2db8f|372a26da8e00a059|36f8031e54332125|1793247153||t19377.6065985262s|1479f34f969adcb1|747036|rds|local|vector|||214.86||
-SWCtot|stem|2f0617495a0182ec|b0af83ecbf1877aa|bb5ed8de10f1f72e|-860711209||t19267.8788070544s|b8d07bf4af57dc10|2.22507385850719e-308|rds|local|vector|||31.77||
-terraclimate|stem|12746852ba425f96|3fb4dcb582832fd3|88891bbd3dd9d9ff|-1950667099||t19265.517094362s|038472ec7577ac3f|2.22507385850719e-308|rds|local|vector|||37.83||
+SWCtot|stem|2f0617495a0182ec|b0af83ecbf1877aa|bb5ed8de10f1f72e|-860711209||t19267.8788070544s|b8d07bf4af57dc10|2.2250738585072e-308|rds|local|vector|||31.77||
+terraclimate|stem|12746852ba425f96|3fb4dcb582832fd3|88891bbd3dd9d9ff|-1950667099||t19265.517094362s|038472ec7577ac3f|2.2250738585072e-308|rds|local|vector|||37.83||
 terraclimate_data|function|c1d5fb913a6b3910|||||||||||||||
 textureERA5|stem|246eb5b306b15583|68ed38b1435ad108|b03255f5062dbb77|1420594296||t19377.5957969497s|4e75876bfa99dcdd|20368|rds|local|vector|||0.54||
 textureERA5Toth|stem|355ae834bedaf407|b6e214c76c31b965|b03255f5062dbb77|1852189083||t19377.5957996082s|7669713c5b727adb|20583|rds|local|vector|||0.21||
 textureESDAC|stem|199e3a26e24cf48b|875694be0e35b0ed|81ec7a24b46f56c5|-1839796122||t19377.5957886817s|6de4841245b21e91|196582676|rds|local|vector|||113.66||
 weight_swc|function|a8eb11555bf4bb90|||||||||||||||
+get.frostindex|function|f52b1d50150c39a9
+extr_swc|function|9192adf0b14f484f
+get_SWC|function|53479f20f2653de2
+forest_cover|function|e349982eb9bb1127
+get.occurence|function|b82c905085ab6602
+compute.sfm|function|4f99a12a14c3a677
+fit.logistic.clim|function|0024d4793a879de7
+compute_psihorday|function|5bc57fa0d0c5e8f9
+campbell_par|function|bfcbc000aa357923
+get.specieslist|function|609c0d8149df8908
+get.species|function|357da6b6f7b8374b
+compute.auc|function|eb13d6602765869b
+psi_forest|function|7022db320c6057d5
+get.prevalence|function|4e9d63b5aadbb17c
+get.traits|function|8418dae13ac86eef
+fit.allspecies|function|dc67ab13925edfa5
+get_waisgdd|function|7edd8e1768e7237e
+get_frostindex_cerra|function|d9df577fa28683d1
+get.output.uncertainties|function|73b41ddc8f007dd0
+compute_psihorday_beta|function|12c1debbcf2853c8
+get.LT50|function|a5cea4e7e8c9d5c4
+weight_swc|function|a8eb11555bf4bb90
+load_swc_cerra|function|7dc85cc25b28aa97
+load_swc|function|e62b4a58d4017668
+get.niche|function|f855e239a41d080d
+compute_sensitivity|function|a23a9d81dffdaf1b
+get.output|function|850008cefc78af97
+select.model|function|95a71d3707cc5890
+get.shadetol|function|6b16b7da141c4bc9
+compute_psiweighted|function|fdf11e2624e350d3
+fit.logistic|function|aa5e28e85f1006a9
+europe_extent|function|a7ed7e4d48307f84
+compute_psihor|function|a925323957c217a1
+get.P50|function|6057a9a79ac3a2b1
+get.mauri|function|a99645a783792780
+europe|stem|aae55aacb8719733|d2a50dba8ef3d5cc|86d8a6364ead206d|2092248444||t19643.6755325556s|068382eb82fb8369|171665|rds|local|vector|||6.39|le package data.table a été compilé avec la version R 4.2.3. le package dplyr a été compilé avec la version R 4.2.3. le package sf a été compilé avec la version R 4.2.3. le package lubridate a été compilé avec la version R 4.2.3. for resolutionhigh option you need to install package rworldxtra, using low resolution version for now|
+db.fni|stem|c9c059af192e009c|302e12ee65a6e2b1|ee49d9653c314d42|957991744||t19265.5101681861s||2.22507385850719e-308|rds|local|vector|||0.01||impossible de trouver la fonction get.fni
+terraclimate|stem|12746852ba425f96|3fb4dcb582832fd3|5cf70cfb97d4e16a|-1950667099||t19265.517094362s||2.22507385850719e-308|rds|local|vector|||0||impossible de trouver la fonction terraclimate_data
+SWC_day|stem|9dd8664ff832b63c|dd7355956f189aaf|2399d76eef0f96c4|-1736546639||t19283.6588124094s||2329241|rds|local|vector|||0.03||largument format est manquant, avec aucune valeur par défaut

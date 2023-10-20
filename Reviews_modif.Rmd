@@ -128,7 +128,7 @@ df.loc<-occurence |>
   mutate(y_cat=cut(y,breaks=15)) |> 
   group_by(y_cat) |> 
   sample_n(1) |> 
-  select(x,y)
+  select(x,y) |> ungroup()
 # df.loc=data.frame(x=c(7.07,21.49,16.06),
 #                   y=c(59.84,69.61,67.23))
 
@@ -136,8 +136,9 @@ df.loc<-occurence |>
 #                   y=c(59.84,69.61,67.23))
 coordinates(df.loc) <- c("x",  "y")
 proj4string(df.loc) <- CRS("+proj=longlat +datum=WGS84")
-df.loc.new<-as.data.frame(spTransform(df.loc, CRS("+proj=lcc +lat_0=50 +lon_0=8 +lat_1=50 +lat_2=50 +x_0=0 +y_0=0 +R=6371229 +units=m +no_defs"))) 
-  
+df.loc.new<-spTransform(df.loc, CRS("+proj=lcc +lat_0=50 +lon_0=8 +lat_1=50 +lat_2=50 +x_0=0 +y_0=0 +R=6371229 +units=m +no_defs"))
+ext.point=ext(df.loc.new)
+df.loc.new<-as.data.frame(df.loc.new)
 df.loc<-as.data.frame(df.loc) |> 
   rename(x_wgs=x,
          y_wgs=y) |> 
@@ -150,12 +151,34 @@ file.era="data/ERA5-land/daily/swcd-1950-2021-layer1.nc"
 time<-rast(cfile$file.h1)@ptr$time |>
   as.POSIXct(origin = "1970-01-01",tz = "GMT")
 year=2003
+hour="13"
+
+
+h1=crop(rast(cfile$file.h1)[[year(time)==year&hour(time)==hour]],ext.point)
+h2=crop(rast(cfile$file.h2)[[year(time)==year&hour(time)==hour]],ext.point)
+h3=crop(rast(cfile$file.h3)[[year(time)==year&hour(time)==hour]],ext.point)
+
+
+swc.time=matrix(nrow = dim(df.loc)[1],
+                ncol=nlyr(h1),
+                data=NA)
+for (i in 1:3){
+  
+}
 # time<-data.frame(time=time) |> 
 #   mutate(year(time)==year)
 df.loc.cerra<-cbind(df.loc,
-              terra::extract(rast(cfile$file.h2)[[year(time)==year]],
+              terra::extract(h1,
                              data.frame(x=df.loc$x,y=df.loc$y)) [-1])
-colnames(df.loc.cerra)[!grepl("^x|^y_cat$|^y",colnames(df.loc.cerra))]=as.character(time[year(time)==year])
+
+##
+df.loc.cerra<-weight_matrix[1,1]*as.matrix(terra::extract(h1,data.frame(x=df.loc$x,y=df.loc$y)) [-1])+
+  weight_matrix[2,1]*as.matrix(terra::extract(h2,data.frame(x=df.loc$x,y=df.loc$y)) [-1])+
+  weight_matrix[3,1]*as.matrix(terra::extract(h3,data.frame(x=df.loc$x,y=df.loc$y)) [-1])
+df.loc.cerra<-cbind(df.loc,
+                    as.data.frame(df.loc.cerra))
+
+colnames(df.loc.cerra)[!grepl("^x|^y_cat$|^y",colnames(df.loc.cerra))]=as.character(time[year(time)==year&hour(time)==hour])
 df.loc.cerra |> 
   mutate(cat=as.numeric(y_cat)) |> 
   pivot_longer(cols=-c("x","y","x_wgs","y_wgs","y_cat","cat"),
@@ -178,6 +201,8 @@ df.cerra=df.loc.cerra |>
          data="cerra")
 time.era=rast(file.era)@ptr$time |>
   as.POSIXct(origin = "1970-01-01",tz = "GMT")
+
+
 df.loc.era<-cbind(df.loc,
                   terra::extract(rast(file.era)[[year(time.era)==year]],
                                  data.frame(x=df.loc$x_wgs,y=df.loc$y_wgs)) [-1])
@@ -260,7 +285,7 @@ as.data.frame(comp_tmin,xy=TRUE) |>
 do it when target is run
 ```{r}
 tar_load(psihorday_real,store="target_psi2")
-tar_load(psi_cerraday_real,store="target_psi2")
+tar_load(psi_cerradaysum_real,store="target_psi2")
 tar_load(psi_eraday_real,store="target_psi2")
 ```
 
@@ -273,7 +298,7 @@ psi_era<-psihorday_real |>
 names(psi_era)="psi_era"
 rm(psihorday_real)
 
-psi_cerra<-psi_cerraday_real |> 
+psi_cerra<-psi_cerradaysum_real |> 
   select(x,y,psi) |> 
   rename(psi_cerra=psi) |> 
   rast(crs="epsg:4326")
@@ -316,8 +341,9 @@ as.data.frame(comp_psiera,xy=TRUE) |>
 
 
 # ERA1-CERRA
-comp_psi=c(psi_cerra,
-           crop(psi_era,
+comp_psi=c(crop(psi_cerra,
+                psi_era2),
+           crop(psi_era2,
                 psi_cerra)) |> 
   aggregate(factor=3)
 
@@ -330,7 +356,7 @@ as.data.frame(comp_psi,xy=TRUE) |>
   scale_x_log10()
 
 as.data.frame(comp_psi,xy=TRUE) |> 
-  pivot_longer(cols=c("psi_cerra","psi_era"),
+  pivot_longer(cols=c("psi_cerra","psi_era2"),
                names_to = "data",
                values_to = "psi") |> 
   mutate(psi=cut(psi,
@@ -344,6 +370,8 @@ as.data.frame(comp_psi,xy=TRUE) |>
   ggplot(aes(-psi_cerra,-psi_era))+
   geom_point()+
   scale_x_log10()+scale_y_log10()
+
+plot(psi_cerra<(-5000))
 ```
 
 # Comp traits - last db version

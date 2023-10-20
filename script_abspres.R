@@ -78,7 +78,12 @@ list(
     clim_chelsa,
     readRDS(clim_chelsa_file)
   ),
-
+  tar_target(
+    margin.limit,
+    get.margins(occurence,
+                psi="psi_cerraday_real",
+                tmin="tmin_cerra")
+  ),
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   #### Section 9 - Load Mauri Data ####
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

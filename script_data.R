@@ -63,6 +63,15 @@ list(
              europe)
   ),
   tar_target(
+    swc_cerra_day_summer,
+    load_swc(dir.data="data/cerra-land/liquid_vol_content/min_sum/",
+             dir.file="cerra_lvslperc05_",
+             vars=paste0("h",1:11),
+             extension="_1984-2021_inv",
+             format="grib",
+             europe)
+  ),
+  tar_target(
     tmin_cerra,
     get_frostindex_cerra(europe,
                          dir.file="data/cerra-land/skin_temp/cerra_perc05_1984-2021_inv.grib",

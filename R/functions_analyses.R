@@ -153,6 +153,124 @@ get.occurence <- function(db.cont,
   return(db.cont)
 }
  
+
+
+#' Define species margins
+#' 
+#' @description check wether the effect of the occurrence reaches margin limit
+#' @param occurence formated dataset
+#' @param psi which variable use for psi
+#' @param tmin whici variable use for tmin
+#' @return dataframe, where for each location, abs/pres of all selected species
+#' is mentionned, and associated predictors
+
+get.margins <- function(occurence,
+                        psi="psi_cerraday_real",
+                        tmin="tmin_cerra"){
+  df.quant<-data.frame(species=unique(occurence$species)) |> 
+    # left_join(df.species) |> 
+    mutate(ymin=NA,
+           ymax=NA,
+           yabsmin=NA,
+           yabsmax=NA,
+           quant.psiin=NA,
+           quant.psiout=NA,
+           quant.tin=NA,
+           quant.tout=NA,
+           quant.petin=NA,
+           quant.petout=NA)
+  
+  for (sp in df.quant$species){
+    
+    print(sp)
+    path=file.path("data",
+                   "chorological_maps_dataset",
+                   sp,
+                   "shapefiles")
+    tryCatch({
+      if (file.exists(path)){
+        # filter Mauri db with only points of sp
+        db.pres <- occurence %>% 
+          filter(species==sp) 
+        
+        #load euforgen distrib
+        file.list=grep("plg_clip\\.",
+                       list.files(path),
+                       value = TRUE)
+        file.sp=unique(vapply(strsplit(file.list,"\\."), `[`, 1, FUN.VALUE=character(1)))
+        spdistrib=do.call(rbind,lapply(file.sp,function(x)read_sf(dsn=path,x))) |> 
+          summarise(geometry = sf::st_union(geometry)) 
+        spdistrib=st_crop(spdistrib,
+                          xmin=-10,
+                          xmax=28.231836,
+                          ymin=st_bbox(spdistrib)$ymin[[1]],
+                          ymax=st_bbox(spdistrib)$ymax[[1]])
+        
+        #select all species-points inside euforgen distribution
+        db.pres.in <- st_as_sf(db.pres,
+                               coords=c("x","y"),
+                               crs="epsg:4326") %>% 
+          st_join(spdistrib, join = st_within,left=FALSE) %>% # select only points falling in euforgen distrib
+          as.data.frame(xy=TRUE) 
+        
+        # compute lower quantiles of psi and tmin inside distribution
+        df.quant[df.quant$species==sp,"quant.psiin"]=quantile(db.pres.in[,psi],
+                                                                       probs=0.05,
+                                                                       na.rm=TRUE)[[1]]
+        df.quant[df.quant$species==sp,"quant.tin"]=quantile(db.pres.in[,tmin],
+                                                                     probs=0.05,
+                                                                     na.rm=TRUE)[[1]]
+        df.quant[df.quant$species==sp,"quant.petin"]=quantile(db.pres.in$pet,
+                                                                       probs=0.95,
+                                                                       na.rm=TRUE)[[1]]
+        
+        # select all absences outside euforgen distribution
+        db.pres.out <- st_as_sf(db.pres,
+                                coords=c("x","y"),
+                                crs="epsg:4326") %>% 
+          filter(presence==0) |> 
+          st_join(spdistrib, join = st_disjoint,left=FALSE) %>% # select only points falling in euforgen distrib
+          as.data.frame(xy=TRUE) 
+        df.quant[df.quant$species==sp,"quant.psiout"]=quantile(db.pres.out[,psi],
+                                                                        probs=0.05,
+                                                                        na.rm=TRUE)[[1]]
+        df.quant[df.quant$species==sp,"quant.tout"]=quantile(db.pres.out[,tmin],
+                                                                      probs=0.05,
+                                                                      na.rm=TRUE)[[1]]
+        df.quant[df.quant$species==sp,"quant.petout"]=quantile(db.pres.out$pet,
+                                                                        probs=0.95,
+                                                                        na.rm=TRUE)[[1]]
+        
+        
+        df.quant[df.quant$species==sp,"ymin"]=st_bbox(spdistrib)$ymin[[1]]
+        df.quant[df.quant$species==sp,"ymax"]=st_bbox(spdistrib)$ymax[[1]]
+        df.quant[df.quant$species==sp,"yabsmin"]=quantile(db.pres[db.pres$presence==0,"y"],
+                                                                   probs=0.01)[[1]]
+        df.quant[df.quant$species==sp,"yabsmax"]=quantile(db.pres[db.pres$presence==0,"y"],
+                                                                   probs=0.99)[[1]]
+        
+      } else { # if euforgen distrib do not exist, prevalence default set to 0.1
+        print("NA")
+      }
+    },
+    error=function(e){print(paste0("error for ",sp))})
+    
+  }
+  
+  df.quant.final<-df.quant |>
+    # select(species.binomial,ymin,ymax,yabsmin,yabsmax,
+    #        quant.psiin,quant.psiout,quant.tin,quant.tout) |> 
+    mutate(hsm.valid.1=yabsmin<ymin,
+           fsm.valid.1=yabsmax>ymax,
+           hsm.valid.2=quant.psiin>quant.psiout,
+           fsm.valid.2=quant.tin>quant.tout,
+           hsm.valid.3=quant.petin<quant.petout) 
+  
+  return(df.quant.final)
+}
+ 
+  
+ 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #### Section 2 - Compute species characteristics ####
 #' @description Compute index per species 

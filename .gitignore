@@ -13,13 +13,11 @@ plots/
 methods/
 rosm.cache/
 libs/
-drafts/
-R/Fundiv/
 *.Rdata
-r_stat_funs.R
-plots/
 output/
 *.csv
-figures/
 target_*
-old_mod/
+dev/
+R/r_stat_funs.R
+figures/
+FEcol_soumission/
