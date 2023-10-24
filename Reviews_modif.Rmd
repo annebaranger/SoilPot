@@ -233,20 +233,55 @@ df.loc |>
 ```
 
 
-# Comparison of tmin infex
+# Comparison of tmin index
 
 ## load necessary files
 
 ```{r tmin.files}
 Sys.setenv(TAR_PROJECT="data")
+
+tar_load(europe)
+
 tar_load(tmin_cerra)
 tmin_cerra=rast(tmin_cerra,crs="epsg:4326")
 names(tmin_cerra)="tmin_cerra"
 tmin_chelsa=min(rast("data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc"),na.rm=FALSE)
 tmin_chelsa=classify(tmin_chelsa, cbind(6553500, NA)) #set as NA default value
 names(tmin_chelsa)="tmin_chelsa"
+tmin2m_cerra=rast(tar_read(tmin2m_cerra,store="target_data"),crs="epsg:4326")
+names(tmin2m_cerra)="tmin2m_cerra"
+```
+
+## Skin temp - 2m temp
+
+```{r tmin.skin.2m}
+comp_tminvar=c(tmin2m_cerra,
+               tmin_cerra,
+               resample(tmin_chelsa,
+                     tmin_cerra)) |> 
+  mask(vect(europe))
+
+as.data.frame(comp_tminvar,xy=TRUE) |> 
+  pivot_longer(cols=c("tmin2m_cerra","tmin_cerra","tmin_chelsa"),
+               names_to = "data",
+               values_to = "tmin") |> 
+  ggplot(aes(x=x,y=y,fill=tmin))+
+  geom_tile()+
+  scale_fill_gradientn(colours=viridis(15))+
+  facet_wrap(~data)
+
+as.data.frame(comp_tminvar,xy=TRUE) |> 
+  pivot_longer(cols=c("tmin2m_cerra","tmin_cerra",,"tmin_chelsa"),
+               names_to = "data",
+               values_to = "tmin") |> 
+  ggplot(aes(tmin,color=data))+
+  geom_density()
+```
 
 
+## CERRA-CHELSA
+
+```{r tmin.cerra.chelsa}
 comp_tmin=c(tmin_cerra,
             resample(tmin_chelsa,
                      tmin_cerra))
@@ -277,6 +312,9 @@ as.data.frame(comp_tmin,xy=TRUE) |>
 as.data.frame(comp_tmin,xy=TRUE) |>
   ggplot(aes(tmin_cerra,tmin_chelsa))+
   geom_point()
+
+
+
 ```
 
 # Analyse psi min
@@ -287,9 +325,54 @@ do it when target is run
 tar_load(psihorday_real,store="target_psi2")
 tar_load(psi_cerradaysum_real,store="target_psi2")
 tar_load(psi_eraday_real,store="target_psi2")
+tar_load(psi_eradaycdo_real,store="target_psi2")
+
 ```
 
-## Comparison
+## Comparison era_era
+
+```{r}
+psi_era<-psi_eraday_real |> 
+  select(x,y,psi) |> 
+  rename(psi_era=psi) |> 
+  rast(crs="epsg:4326")
+
+psi_eracdo<-psi_eradaycdo_real |> 
+  select(x,y,psi) |> 
+  rename(psi_eracdo=psi) |> 
+  rast(crs="epsg:4326")
+
+
+comp_psi2era=c(crop(psi_era,
+                   psi_eracdo),
+              crop(psi_eracdo,
+                   psi_era)) |> 
+  aggregate(factor=3)
+
+
+as.data.frame(comp_psi2era,xy=TRUE) |> 
+  pivot_longer(cols=c("psi_eracdo","psi_era"),
+               names_to = "data",
+               values_to = "psi") |> 
+  mutate(psi=cut(psi,
+                 breaks=c(-Inf,  -10000, -5000,-3000, -2000, -1000, -500,-400,-300,-200,-100, 0,Inf))) |> 
+  ggplot(aes(x=x,y=y,fill=psi))+
+  geom_tile()+
+  scale_fill_brewer(palette="RdYlBu")+
+  facet_wrap(~data)
+
+as.data.frame(comp_psi2era,xy=TRUE) |> 
+  mutate(dif=cut(psi_eracdo-psi_era,
+                 breaks=c(-Inf,  -10000, -5000,-3000, -2000, -1000, -500, 0, 500, 1000, 2000, 3000, 5000, 10000, Inf))) |> 
+  ggplot(aes(x=x,y=y,fill=abs(psi_eracdo-psi_era)>500))+
+  geom_tile()+
+  scale_fill_brewer(palette="RdYlBu")
+
+```
+
+
+
+## Comparison cerra_era
 
 ```{r}
 psi_era<-psihorday_real |> 

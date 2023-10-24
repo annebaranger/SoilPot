@@ -17,7 +17,7 @@ list(
   # Load necessary files
   tar_target(
     df.species.file,
-    "output/df.species.csv",
+    "target_occ/objects/df.species",
     format="file"
   ),
   tar_target(
@@ -27,9 +27,13 @@ list(
   
   # with beta fixed
   tar_target(
-    db.clim.file,
-    "output/db_EuForest.csv", # a changer --> mette chemin du tar_object
+    occurence.file,
+    "target_occ/objects/occurence", 
     format="file"
+  ),  
+  tar_target(
+    occurence,
+    readRDS(occurence.file)
   ),
   # run models
   # tar_target(

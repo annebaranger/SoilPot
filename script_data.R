@@ -51,6 +51,15 @@ list(
              format="csv",
              europe)
   ),
+  tar_target(
+    swc_era_day_cdo,
+    load_swc(dir.data="data/ERA5-land/daily/",
+             dir.file="era5_svwcperc05d_",
+             vars=c("h1","h2","h3","h4"),
+             extension="_1984-2021_inv",
+             format="grib",
+             europe)
+  ),
   #' @description SWC min from cerra, daily timestep, 11 horzions, perc05
   #'
   tar_target(
@@ -76,6 +85,12 @@ list(
     get_frostindex_cerra(europe,
                          dir.file="data/cerra-land/skin_temp/cerra_perc05_1984-2021_inv.grib",
                          output.tmin="output/tmin_cerra.csv")
+  ),
+  tar_target(
+    tmin2m_cerra,
+    get_frostindex_cerra(europe,
+                         dir.file="data/cerra-land/skin_temp/cerra_t2mperc05_1984-2021_inv.grib",
+                         output.tmin="output/tmin2m_cerra.csv")
   ),
   tar_target(
     tmin_chelsa,

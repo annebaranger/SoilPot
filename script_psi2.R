@@ -72,6 +72,15 @@ list(
     swc_cerra_day_summer,
     readRDS(swc_cerra_day_summer_file)
   ),
+  tar_target(
+    swc_era_day_cdo_file,
+    "target_data/objects/swc_era_day_cdo",
+    format="file"
+  ),
+  tar_target(
+    swc_era_day_cdo,
+    readRDS(swc_era_day_cdo_file)
+  ),
   ## COMPUTE PSI_MIN ##
   tar_target(
     psi_eramonth_real,
@@ -94,6 +103,24 @@ list(
   tar_target(
     psi_eraday_real,
     compute_psi_sureau(swc_era_day,
+                       europe,
+                       dir.hydro="data/EU_SoilHydroGrids_1km/",
+                       depth_max=NULL,
+                       dir.depth="data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst",
+                       dir.ecoregions="data/WWF/official",
+                       LAImax=5,
+                       fRootToLeaf=1,
+                       rootRadius=0.0004,
+                       beta=0.97,
+                       obs=c(0,0.07,0.28,1,2.89),
+                       ref=c(0,0.05,0.15,0.3,0.6,1,2),
+                       max_depth=3,
+                       "output/psi_era_day_real_fixed.csv"
+    )
+  ),
+  tar_target(
+    psi_eradaycdo_real,
+    compute_psi_sureau(swc_era_day_cdo,
                        europe,
                        dir.hydro="data/EU_SoilHydroGrids_1km/",
                        depth_max=NULL,
@@ -258,27 +285,27 @@ list(
     # ),
   
   # sensitivity analysis
-  # tar_map(
-  #   values=values,
-  #   tar_target(sensitivity,
-  #              compute_psi_sureau(swc_cerra_day,
-  #                                 europe,
-  #                                 dir.hydro="data/EU_SoilHydroGrids_1km/",
-  #                                 depth_max=NULL,
-  #                                 dir.depth="data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst",
-  #                                 dir.ecoregions="data/WWF/official",
-  #                                 LAImax,
-  #                                 fRootToLeaf=1,
-  #                                 rootRadius=0.0004,
-  #                                 beta,
-  #                                 obs=c(0,0.01,0.04,0.1,0.2,0.4,0.6,0.8,1,1.5,2,3),
-  #                                 ref=c(0,0.05,0.15,0.3,0.6,1,2),
-  #                                 max_depth=3,
-  #                                 output
-  #              )
-  #   )
-  # ), 
-  
+  tar_map(
+    values=values,
+    tar_target(sensitivity,
+               compute_psi_sureau(swc_cerra_day,
+                                  europe,
+                                  dir.hydro="data/EU_SoilHydroGrids_1km/",
+                                  depth_max=NULL,
+                                  dir.depth="data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst",
+                                  dir.ecoregions="data/WWF/official",
+                                  LAImax,
+                                  fRootToLeaf=1,
+                                  rootRadius=0.0004,
+                                  beta,
+                                  obs=c(0,0.01,0.04,0.1,0.2,0.4,0.6,0.8,1,1.5,2,3),
+                                  ref=c(0,0.05,0.15,0.3,0.6,1,2),
+                                  max_depth=3,
+                                  output
+               )
+    )
+  ),
+
   # tar_target(
   #   psihorday_rbeta,
   #   compute_psihorday_beta(SWC_day,
