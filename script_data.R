@@ -93,6 +93,16 @@ list(
                          output.tmin="output/tmin2m_cerra.csv")
   ),
   tar_target(
+    tmin2m_era,
+    {dir.file="data/ERA5-land/t2m/era5_t2min05_1984-2021.grib"
+    output.tmin="output/tmin2m_era.csv"
+    tmin=rast(dir.file)-273.15
+    fwrite(as.data.frame(tmin,xy=TRUE),
+           output.tmin)
+    return(as.data.frame(tmin,xy=TRUE))
+    }
+  ),
+  tar_target(
     tmin_chelsa,
     get_frostindex_chelsa(europe,
                           dir.file="data/CHELSA/CHELSA_EUR11_tasmin_month_min_19802005.nc",
@@ -102,7 +112,7 @@ list(
     clim_chelsa,
     get_waisgdd(dir.chelsa="data/CHELSA/",
                 file=c("bio1","bio12","pet_penman_mean","gdd5"),
-                rast.mod="data/cerra-land/skin_temp/cerra_perc05_1984-2021_inv.grib")
+                rast.mod="data/ERA5-land/t2m/era5_t2min05_1984-2021.grib")
   ),
   NULL
 )

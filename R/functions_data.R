@@ -2052,6 +2052,8 @@ get.traits.max <-function(dir.file="data/Species traits/base_traits_P50_LTx.xlsx
                           class=="Pinopsida"~"gymnosperm"),
            px=case_when(taxa=="angiosperm"~ifelse(!is.na(p88),p88,p50-50/slope_msp),
                         taxa=="gymnosperm"~p50),
+           ptrait=case_when(taxa=="angiosperm"~"p88",
+                        taxa=="gymnosperm"~"p50")
            ) |> 
     # relocate(taxa,.after=genus) |> 
     # relocate(px,.before = p50) |> 
@@ -2064,7 +2066,7 @@ get.traits.max <-function(dir.file="data/Species traits/base_traits_P50_LTx.xlsx
                                 TRUE~source_ltx_clean)) |> 
     select(species,class,order,family,genus,taxa,
            ltx_clean_2,ltx_clean_sd,source_ltx_2,lt50_qual,
-           px,p50,p50sd,p12,p88,slope,source) |> 
+           px,p50,p50sd,p12,p88,slope,slope_msp,source) |> 
     filter(!grepl("LT0_",source_ltx_2)) |> 
     rename(
       lt50=ltx_clean_2,

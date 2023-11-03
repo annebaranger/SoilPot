@@ -101,7 +101,7 @@ for (hor in 1:4){
     facet_wrap(~data)-> p3
   
   as.data.frame(comp_eracerra,xy=TRUE) |> 
-    mutate(dif=(era-cerra)>0) |>  
+    mutate(dif=(era-cerra)) |>  
     ggplot(aes(x=x,y=y,fill=dif))+
     geom_tile()+
      scale_fill_gradientn(colors=viridis(15))->p4
@@ -250,6 +250,9 @@ tmin_chelsa=classify(tmin_chelsa, cbind(6553500, NA)) #set as NA default value
 names(tmin_chelsa)="tmin_chelsa"
 tmin2m_cerra=rast(tar_read(tmin2m_cerra,store="target_data"),crs="epsg:4326")
 names(tmin2m_cerra)="tmin2m_cerra"
+
+tmin2m_era=rast("data/ERA5-land/t2m/era5_t2min05_1984-2021.grib")
+names(tmin2m_era)="tmin2m_era"
 ```
 
 ## Skin temp - 2m temp
@@ -258,11 +261,13 @@ names(tmin2m_cerra)="tmin2m_cerra"
 comp_tminvar=c(tmin2m_cerra,
                tmin_cerra,
                resample(tmin_chelsa,
-                     tmin_cerra)) |> 
+                     tmin_cerra),
+               resample(tmin2m_era-273.15,
+                        tmin_cerra)) |> 
   mask(vect(europe))
 
 as.data.frame(comp_tminvar,xy=TRUE) |> 
-  pivot_longer(cols=c("tmin2m_cerra","tmin_cerra","tmin_chelsa"),
+  pivot_longer(cols=c("tmin2m_cerra","tmin_cerra","tmin_chelsa","tmin2m_era"),
                names_to = "data",
                values_to = "tmin") |> 
   ggplot(aes(x=x,y=y,fill=tmin))+
@@ -271,7 +276,7 @@ as.data.frame(comp_tminvar,xy=TRUE) |>
   facet_wrap(~data)
 
 as.data.frame(comp_tminvar,xy=TRUE) |> 
-  pivot_longer(cols=c("tmin2m_cerra","tmin_cerra",,"tmin_chelsa"),
+  pivot_longer(cols=c("tmin2m_cerra","tmin_cerra","tmin2m_era","tmin_chelsa"),
                names_to = "data",
                values_to = "tmin") |> 
   ggplot(aes(tmin,color=data))+
@@ -364,7 +369,7 @@ as.data.frame(comp_psi2era,xy=TRUE) |>
 as.data.frame(comp_psi2era,xy=TRUE) |> 
   mutate(dif=cut(psi_eracdo-psi_era,
                  breaks=c(-Inf,  -10000, -5000,-3000, -2000, -1000, -500, 0, 500, 1000, 2000, 3000, 5000, 10000, Inf))) |> 
-  ggplot(aes(x=x,y=y,fill=abs(psi_eracdo-psi_era)>500))+
+  ggplot(aes(x=x,y=y,fill=dif))+
   geom_tile()+
   scale_fill_brewer(palette="RdYlBu")
 

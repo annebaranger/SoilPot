@@ -10,7 +10,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(targets)
 Sys.setenv(TAR_PROJECT="analysis")
 lapply(c("ggplot2","stringr","data.table","tidyr","viridis","rgdal","raster","rosm","terra","dplyr","forcats","ggpubr","gdalUtils","sf","lubridate","lme4","xtable","plotly","factoextra","latex2exp"),require,character.only=TRUE)
-
 ```
 
 # Load necessary files

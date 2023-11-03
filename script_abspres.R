@@ -52,6 +52,15 @@ list(
     readRDS(psi_eraday_real_file)
   ),
   tar_target(
+    psi_eradaycdo_real_file,
+    "target_psi2/objects/psi_eradaycdo_real",
+    format="file"
+  ),
+  tar_target(
+    psi_eradaycdo_real,
+    readRDS(psi_eradaycdo_real_file)
+  ),
+  tar_target(
     tmin_cerra_file,
     "target_data/objects/tmin_cerra",
     format="file"
@@ -59,6 +68,15 @@ list(
   tar_target(
     tmin_cerra,
     readRDS(tmin_cerra_file)
+  ),
+  tar_target(
+    tmin_era_file,
+    "target_data/objects/tmin2m_era",
+    format="file"
+  ),
+  tar_target(
+    tmin_era,
+    readRDS(tmin_era_file)
   ),
   tar_target(
     tmin_chelsa_file,
@@ -95,9 +113,11 @@ list(
     occurence,
     get.occ.clim(db.mauri,
                  clim.list=list(psi_cerraday_real=psi_cerraday_real[,c("x","y","psi")],
-                                psi_eraday_real=psi_eraday_real[,c("x","y","psi")],
+                                psi_eradayold_real=psi_eraday_real[,c("x","y","psi")],
+                                psi_eraday_real=psi_eradaycdo_real[,c("x","y","psi")],
                                 tmin_cerra=tmin_cerra,
                                 tmin_chelsa=tmin_chelsa,
+                                tmin_era=tmin_era,
                                 mat=clim_chelsa[,c("x","y","mat")],
                                 map=clim_chelsa[,c("x","y","map")],
                                 pet=clim_chelsa[,c("x","y","pet")],
@@ -161,6 +181,7 @@ list(
                 df.preval,
                 df.shadetol,
                 df.niche,
+                traits,
                 file.output="output/df.species2.csv")
   ),
   NULL

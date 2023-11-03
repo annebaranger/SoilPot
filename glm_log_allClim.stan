@@ -15,6 +15,7 @@ data {
 parameters {
   real <lower=0> K_int;
   vector <lower=0,upper=1> [S] K_sp; // plateau of the second segment, or threshold value
+  real <lower=0> s_k;
   real <lower=0.1> r_mat;
   real<lower=0.1> r_wai;
   real <lower=min(mat),upper=max(mat)> t_mat; //point where regression changes
@@ -34,12 +35,13 @@ transformed parameters {
 // logit used as link-function
 model {
   //priors
-  K_int~normal(0.5,1);
-  K_sp~normal(K_int,2); 
-  r_mat~normal(prior[1],1);
-  r_wai~normal(prior[2],1);
-  t_mat~normal(prior[3],1);
-  t_wai~normal(prior[4],1);
+  K_int~normal(0.2,0.2);
+  K_sp~normal(K_int,s_k); 
+  s_k ~ gamma(2,1);
+  r_mat~normal(prior[1],2);
+  r_wai~normal(prior[2],2);
+  t_mat~normal(prior[3],4);
+  t_wai~normal(prior[4],3);
   
   // How the data are expected to have been generated:
   presence ~ bernoulli(proba);

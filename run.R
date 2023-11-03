@@ -24,6 +24,10 @@ Sys.setenv("TAR_PROJECT"="occurence_dataset")
 tar_visnetwork()
 # tar_make()
 
+Sys.setenv("TAR_PROJECT"="analysis")
+tar_visnetwork()
+# tar_make()
+
 Sys.setenv("TAR_PROJECT"="modrandom")
 tar_visnetwork()
 # tar_make()
