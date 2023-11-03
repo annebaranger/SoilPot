@@ -1651,4 +1651,32 @@ fit.allspecies<- function(db.clim.file,
   return(db.clim.auc)
 }
   
+# tar_load(occurence)
+# load("mod new/fit_random_allsp.RData")
+# load("mod new/fit_random_allspClim.RData")
+# posteriors_mean_sfm<-as.data.frame(t(summary(fit.allsp)$summary)) |> 
+#   select(!matches("K_sp"))
+# posteriors_mean_clim<-as.data.frame(t(summary(fit.allspClim)$summary)) |> 
+#   select(!matches("K_sp"))
+# 
+# db.clim.auc<-fread("output/db_EuForest.csv") |> 
+#   # filter(species.binomial==sp) |> 
+#   select(species.binomial,presence,x,y,hsm,fsm,temp.mean,wai) |> 
+#   mutate(pred_sfm=posteriors_mean_sfm$K_int[1]/
+#            ((1+exp(-posteriors_mean_sfm$r_fsm[1]*(fsm-posteriors_mean_sfm$t_fsm[1])))*
+#               (1+exp(-posteriors_mean_sfm$r_hsm[1]*(hsm-posteriors_mean_sfm$t_hsm[1])))),
+#          pred_clim=posteriors_mean_clim$K_int[1]/
+#            ((1+exp(-posteriors_mean_clim$r_mat[1]*(temp.mean-posteriors_mean_clim$t_mat[1])))*
+#               (1+exp(-posteriors_mean_clim$r_wai[1]*(wai-posteriors_mean_clim$t_wai[1]))))
+#   ) |> 
+#   group_by(species.binomial) |> 
+#   summarize(auc_sfm=as.numeric(auc(presence,pred_sfm)),
+#             auc_clim=as.numeric(auc(presence,pred_clim)))
+# 
+# View(read.csv("mod new/db.clim.auc.csv") |> mutate(val=auc_sfm>auc_clim))
+# 
+# read.csv("mod new/db.clim.auc.csv") |>
+#   mutate(val=auc_sfm-auc_clim) |> 
+#   ggplot(aes(val))+
+#   geom_density()
 
