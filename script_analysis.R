@@ -38,16 +38,49 @@ list(
     occurence,
     readRDS(occurence.file)
   ),
-  # run model with safety margins
+  # with beta varying
   tar_target(
-    fit.safmarg,
-    fit.logistic(occurence,
-                 var.hsm="psi_eraday_real",
-                 var.fsm="tmin_era",
-                 df.species,
-                 file.path="output/output_safmarg_era.csv",
-                 output="fit_safmarg_era/"
-                 )
+    occurence_beta.file,
+    "target_occ/objects/occurence", 
+    format="file"
+  ),  
+  tar_target(
+    occurence_beta,
+    readRDS(occurence_beta.file)
+  ),
+  # run model with safety margins
+  
+  # tar_target(
+  #   fit.safmarg,
+  #   fit.logistic(occurence,
+  #                var.hsm="psi_eraday_real",
+  #                var.fsm="tmin_era",
+  #                df.species,
+  #                file.path="output/output_safmarg_era.csv",
+  #                output="fit_safmarg_era/"
+  #                )
+  # ),
+  tar_target(
+    sp.list,
+    df.species |> 
+      filter(species %in% unique(occurence$species)) |> 
+      filter(!is.na(px)) |> 
+      filter(!is.na(lt50)) |> 
+      pull(species)
+  ),
+  tar_target(
+    fit.safmarg.sp,
+    fit.logistic.dynamic(occurence=occurence,
+                         var.hsm="psi_eraday_real",
+                         var.fsm="tmin_era",
+                         df.species=df.species,
+                         sp=sp.list,
+                         output="fit_safmarg_era/"),
+    pattern=map(sp.list)
+  ),
+  tar_target(
+    saf.marg.output,
+    fwrite(fit.safmarg.sp,file="output/output_safmarg_era.csv")
   ),
   # tar_target(
   #   df.output,
@@ -63,9 +96,29 @@ list(
   # ),
   tar_target(
     mod.select.safmarg,
-    select.model(fit.safmarg)
+    select.model(fit.safmarg.sp)
   ),
   
+  
+  # run model with safety margins
+  tar_target(
+    fit.safmarg.beta.sp,
+    fit.logistic.dynamic(occurence=occurence_beta,
+                         var.hsm="psi_eraday_real",
+                         var.fsm="tmin_era",
+                         df.species=df.species,
+                         sp=sp.list,
+                         output="fit_safmarg_era_beta/"),
+    pattern=map(sp.list)
+  ),
+  tar_target(
+    saf.marg_beta.output,
+    fwrite(fit.safmarg.beta.sp,file="output/output_safmarg_era.csv")
+  ),
+  tar_target(
+    mod.select.safmarg_beta,
+    select.model(fit.safmarg.beta.sp)
+  ),
   
   # with varying beta
   # tar_target(
@@ -117,14 +170,6 @@ list(
     mod.select.clim,
     select.model(fit.clim)
   ),
-  
-  # tar_target(
-  #   fit.mod.clim,
-  #   fit.logistic.clim(db.clim.file,
-  #                     df.species,
-  #                     output="fit_modClim/",
-  #                     file.path="output/df.outputClim.csv")
-  # ),
   NULL
 
 )

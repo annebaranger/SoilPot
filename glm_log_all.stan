@@ -14,6 +14,7 @@ data {
 parameters {
   real <lower=0> K_int;
   vector <lower=0,upper=1> [S] K_sp; // plateau of the second segment, or threshold value
+  real <lower=0> s_k;
   real <lower=0.1> r_fsm;
   real<lower=0.1> r_hsm;
   real <lower=min(fsm),upper=max(fsm)> t_fsm; //point where regression changes
@@ -34,7 +35,8 @@ transformed parameters {
 model {
   //priors
   K_int~normal(0.5,1);
-  K_sp~normal(K_int,2); //prior_s
+  K_sp~normal(K_int,s_k); 
+  s_k ~ gamma(2,1);
   t_fsm~normal(0,0.1);
   t_hsm~normal(0,0.1);
 

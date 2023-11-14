@@ -19,6 +19,9 @@ occurence_dataset:
 analysis:
   script: script_analysis.R
   store: target_analysis
+analysis2:
+  script: script_analysis.R
+  store: target_analysis2
 modrandom:
   script: script_modrandom.R
   store: target_modrandom

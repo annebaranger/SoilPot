@@ -520,7 +520,7 @@ fit.logistic <- function(occurence,
            fsm:=!!sym(var.fsm)-lt50) |> 
     filter(!is.na(hsm)) |> 
     filter(!is.na(fsm)) |> 
-    filter(hsm>(-10000))  #remove very low value of psi
+    filter(!!sym(var.hsm)>(-10000))  #remove very low value of psi
 
   # set species list, as sp present in occ data
   species.list=unique(db.clim$species)
@@ -545,11 +545,11 @@ fit.logistic <- function(occurence,
 
   for (sp in species.list){
     print(sp)
+    db.pres <- db.clim %>%
+      filter(species==sp) 
     
     if(sum(grepl(sp,files.list))<4){
-      db.pres <- db.clim %>%
-        filter(species==sp) 
-      
+
       # 2 var
       print("2sm")
       data.list <- list(N=dim(db.pres)[1],
@@ -678,7 +678,7 @@ fit.logistic <- function(occurence,
       summary=summary(fit.none)$summary
       par_mod=get_sampler_params(fit.none)
       df.output[df.output$species==sp
-                & df.output$mod=="2var",
+                & df.output$mod=="none",
                 c("k_int","r_hsm","r_fsm","t_hsm","t_fsm","rhat","lp__","divergence")]=
         list(summary["K_int","mean"],
              0,
@@ -795,6 +795,229 @@ fit.logistic <- function(occurence,
   fwrite(df.output,file=file.path)
   return(df.output)
 }
+
+#' Fit model with dynamic branching
+#' 
+#' @description function that fit 4 models for each species and save it
+#' @param df.species df of traits for each species
+#' @param soil.depth "real" or "constant"
+#' @return no return, fit_mod6 is the folder with all fitted models
+#' 
+
+fit.logistic.dynamic <- function(occurence,
+                                 var.hsm="psi_eraday_real",
+                                 var.fsm="tmin_era",
+                                 df.species,
+                                 sp,
+                                 output){
+  # check that ouput directory exists
+  if (!dir.exists(output)) {
+    dir.create(output, recursive = TRUE)
+    cat("Folder created at:", output, "\n")
+  } else {
+    cat("Folder already exists at:", output, "\n")
+  }
+  
+  
+  # read db.clim and filter some species
+  db.pres=occurence %>% 
+    left_join(df.species) |> 
+    filter(species==sp) |> 
+    mutate(hsm:=(!!sym(var.hsm)/1000)-px,
+           fsm:=!!sym(var.fsm)-lt50) |> 
+    filter(!is.na(hsm)) |> 
+    filter(!is.na(fsm)) |> 
+    filter(!!sym(var.hsm)>(-10000))  #remove very low value of psi
+  
+  # prepare dataframe output
+  df.output=df.species[df.species$species==sp,c("species","prevalence")] |> 
+    mutate(k_int=NA,
+           r_hsm=NA,
+           r_fsm=NA,
+           t_hsm=NA,
+           t_fsm=NA,
+           rhat=NA,
+           lp__=NA,
+           divergence=NA,
+           auc=NA) %>% 
+    crossing(mod=c("2var","hsm","fsm","none"))
+  
+  # 2 var
+  print("2sm")
+  if(!file.exists(paste0(output,sp,"_2sm.RData"))){
+    data.list <- list(N=dim(db.pres)[1],
+                      presence=db.pres$presence,
+                      fsm=as.numeric(db.pres$fsm),
+                      hsm=as.numeric(db.pres$hsm),
+                      prior_K=df.species[df.species$species==sp,
+                                         "prevalence"],
+                      NULL)
+    fit.2var <- stan(file = "glm_log_1sp_III.stan",
+                     data=data.list,
+                     iter=1000,
+                     chains=3,
+                     core=3,
+                     include=FALSE,
+                     pars=c("proba","K_vect"))
+    save(fit.2var,file=paste0(output,sp,"_2sm.RData"))
+  }else{
+    load(paste0(output,sp,"_2sm.RData"))
+    }
+  summary=summary(fit.2var)$summary
+  par_mod=get_sampler_params(fit.2var)
+  df.output[df.output$species==sp
+            & df.output$mod=="2var",
+            c("k_int","r_hsm","r_fsm","t_hsm","t_fsm","rhat","lp__","divergence")]=
+    list(summary["K_int","mean"],
+         summary["r_hsm","mean"],
+         summary["r_fsm","mean"],
+         summary["t_hsm","mean"],
+         summary["t_fsm","mean"],
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"],
+         mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+    )
+  pred=summary["K_int","mean"]/
+    ((1+exp(-summary["r_fsm","mean"]*(db.pres$fsm-summary["t_fsm","mean"])))*
+       (1+exp(-summary["r_hsm","mean"]*(db.pres$hsm-summary["t_hsm","mean"]))))
+  df.output[df.output$species==sp
+            & df.output$mod=="2var",
+            "auc"]=as.numeric(auc(db.pres$presence,pred))[1]
+  
+  
+  # HSM
+  print("hsm")
+  if(!file.exists(paste0(output,sp,"_hsm.RData"))){
+    data.list <- list(N=dim(db.pres)[1],
+                      presence=db.pres$presence,
+                      hsm=as.numeric(db.pres$hsm),
+                      prior_K=df.species[df.species$species==sp,
+                                         "prevalence"],
+                      NULL)
+    fit.hsm <- stan(file = "glm_log_1sp_III_1varh.stan",
+                    data=data.list,
+                    iter=1000,
+                    chains=3,
+                    core=3,
+                    include=FALSE,
+                    pars=c("proba","K_vect"))
+    save(fit.hsm,file=paste0(output,sp,"_hsm.RData"))    
+  }else{
+    load(paste0(output,sp,"_hsm.RData"))
+  }
+  summary=summary(fit.hsm)$summary
+  par_mod=get_sampler_params(fit.hsm)
+  df.output[df.output$species==sp
+            & df.output$mod=="hsm",
+            c("k_int","r_hsm","r_fsm","t_hsm","t_fsm","rhat","lp__","divergence")]=
+    list(summary["K_int","mean"],
+         summary["r_hsm","mean"],
+         0,
+         summary["t_hsm","mean"],
+         0,
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"],
+         mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+    )
+  pred=summary["K_int","mean"]/
+    ((1+exp(-summary["r_hsm","mean"]*(db.pres$hsm-summary["t_hsm","mean"]))))
+  df.output[df.output$species==sp
+            & df.output$mod=="hsm",
+            "auc"]=as.numeric(auc(db.pres$presence,pred))[1]
+  
+  # FSM
+  print("fsm")
+  if(!file.exists(paste0(output,sp,"_fsm.RData"))){
+    data.list <- list(N=dim(db.pres)[1],
+                      presence=db.pres$presence,
+                      fsm=as.numeric(db.pres$fsm),
+                      prior_K=df.species[df.species$species==sp,
+                                         "prevalence"],
+                      NULL)
+    fit.fsm <- stan(file = "glm_log_1sp_III_1var.stan",
+                    data=data.list,
+                    iter=1000,
+                    chains=3,
+                    core=3,
+                    include=FALSE,
+                    pars=c("proba","K_vect"))
+    save(fit.fsm,file=paste0(output,sp,"_fsm.RData"))
+  }else{
+    load(paste0(output,sp,"_fsm.RData"))
+  }
+  summary=summary(fit.fsm)$summary
+  par_mod=get_sampler_params(fit.fsm)
+  df.output[df.output$species==sp
+            & df.output$mod=="fsm",
+            c("k_int","r_hsm","r_fsm","t_hsm","t_fsm","rhat","lp__","divergence")]=
+    list(summary["K_int","mean"],
+         0,
+         summary["r_fsm","mean"],
+         0,
+         summary["t_fsm","mean"],
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"],
+         mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+    )
+  pred=summary["K_int","mean"]/
+    ((1+exp(-summary["r_fsm","mean"]*(db.pres$fsm-summary["t_fsm","mean"]))))
+  df.output[df.output$species==sp
+            & df.output$mod=="fsm",
+            "auc"]=as.numeric(auc(db.pres$presence,pred))[1]
+      
+  # None
+  print("none")
+  if(!file.exists(paste0(output,sp,"_none.RData"))){
+    data.list <- list(N=dim(db.pres)[1],
+                      presence=db.pres$presence,
+                      prior_K=df.species[df.species$species==sp,
+                                         "prevalence"],
+                      NULL)
+    fit.none <- stan(file = "glm_log_1sp_III_0var.stan",
+                     data=data.list,
+                     iter=1000,
+                     chains=3,
+                     core=3,
+                     include=FALSE,
+                     pars=c("proba","K_vect"))
+    save(fit.none,file=paste0(output,sp,"_none.RData"))
+  }else{
+    load(paste0(output,sp,"_none.RData"))
+  }
+  summary=summary(fit.none)$summary
+  par_mod=get_sampler_params(fit.none)
+  df.output[df.output$species==sp
+            & df.output$mod=="none",
+            c("k_int","r_hsm","r_fsm","t_hsm","t_fsm","rhat","lp__","divergence")]=
+    list(summary["K_int","mean"],
+         0,
+         0,
+         0,
+         0,
+         max(summary[,"Rhat"]),
+         summary["lp__","mean"],
+         mean(sapply(par_mod, function(x) mean(x[, "divergent__"])))
+    )
+  pred=rep(summary["K_int","mean"],dim(db.pres)[1])
+  df.output[df.output$species==sp
+            & df.output$mod=="none",
+            "auc"]=as.numeric(auc(db.pres$presence,pred))[1]
+
+  
+  hsm.95=quantile(db.pres$hsm,prob=0.95)[[1]]
+  fsm.95=quantile(db.pres$fsm,prob=0.95)[[1]]
+  df.output <- df.output %>% 
+    mutate(nb.par=case_when(mod=="2var"~5,
+                            mod=="hsm"|mod=="fsm"~3,
+                            mod=="none"~1),
+           bic=2*nb.par-2*lp__) |> 
+    mutate(inflex_hsm=100-100*((16*exp(-r_hsm*(hsm.95-t_hsm)))/(2+2*exp(-r_hsm*(hsm.95-t_hsm)))^2),
+           inflex_fsm=100-100*((16*exp(-r_fsm*(fsm.95-t_fsm)))/(2+2*exp(-r_fsm*(fsm.95-t_fsm)))^2))
+  # fwrite(df.output,file=file.path)
+  return(df.output)
+}
+
+
 
 #' Build output
 #' 
@@ -1277,7 +1500,7 @@ fit.logistic.clim <- function(occurence,
     preval=df.species[df.species$species==sp,
                       "prevalence"]
     
-    if(sum(grepl(sp,files.list))<4){
+    if(sum(grepl(sp,files.list))<3){
       # 2 var
       print("2var")
       data.list <- list(N=dim(db.pres)[1],
@@ -1528,10 +1751,13 @@ select.model <- function(df.output){
 }
 
 
-fit.allspecies<- function(db.clim.file,
-                                  output.clim.file,
-                                  output,
-                                  mod.folder){
+fit.allspecies.safmarg<- function(occurence,
+                          var.hsm="psi_eraday_real",
+                          var.fsm="tmin_era",
+                          df.species,
+                          output.clim.file,
+                          output,
+                          mod.folder){
   # check that ouput directory exists
   if (!dir.exists(output)) {
     dir.create(output, recursive = TRUE)
@@ -1548,17 +1774,15 @@ fit.allspecies<- function(db.clim.file,
   }
   
   # read db.clim and filter some species
-  db.clim=fread(db.clim.file) %>% 
+  db.clim=occurence %>% 
+    left_join(df.species) |> 
+    mutate(hsm:=(!!sym(var.hsm)/1000)-px,
+           fsm:=!!sym(var.fsm)-lt50) |> 
     filter(!is.na(hsm)) |> 
-    filter(!is.na(fsm.winter)) |> 
-    filter(psi>(-10000)) |>  #remove very low value of psi
-    mutate(hsm=hsm/1000,
-           hsm.100=hsm.100/1000,
-           fsm=fsm.winter) |> 
+    filter(!is.na(fsm)) |> 
+    filter(!!sym(var.hsm)>(-10000)) |> 
     filter(!is.na(wai)) |> 
-    filter(!is.na(temp.mean))
-  
-  
+    filter(!is.na(mat))
   
   # set species list, as sp present in occ data
   # species.list=db.clim |> 
@@ -1573,9 +1797,9 @@ fit.allspecies<- function(db.clim.file,
   #   sample_n(dim(db.clim)[1]/100,replace=TRUE)
   if(!file.exists(paths=paste0(mod.folder,"fit_random_allsp.RData"))){
     data.list<-list(N=dim(db.clim)[1],
-                  S=nlevels(as.factor(db.clim$species.binomial)),
+                  S=nlevels(as.factor(db.clim$species)),
                   presence=db.clim$presence,
-                  species=as.numeric(as.factor(db.clim$species.binomial)),
+                  species=as.numeric(as.factor(db.clim$species)),
                   fsm=db.clim$fsm,
                   hsm=db.clim$hsm)
   
@@ -1591,26 +1815,69 @@ fit.allspecies<- function(db.clim.file,
     print("discarded safmarg model fitting")
     load(paste0(mod.folder,"fit_random_allsp.RData"))
   }
+  posteriors_mean_sfm<-as.data.frame(t(summary(fit.allsp)$summary)) |> 
+    select(!matches("K_sp"))
+  return(posteriors_mean_sfm)
+}
+  
+
+  
+  
+fit.allspecies.clim<- function(occurence,
+                                    var.hsm="psi_eraday_real",
+                                    var.fsm="tmin_era",
+                                    df.species,
+                                    output.clim.file,
+                                    output,
+                                    mod.folder){
+    # check that ouput directory exists
+    if (!dir.exists(output)) {
+      dir.create(output, recursive = TRUE)
+      cat("Folder created at:", output, "\n")
+    } else {
+      cat("Folder already exists at:", output, "\n")
+    }
     
+    if (!dir.exists(mod.folder)) {
+      dir.create(mod.folder, recursive = TRUE)
+      cat("Folder created at:", mod.folder, "\n")
+    } else {
+      cat("Folder already exists at:", mod.folder, "\n")
+    }
+    
+    # read db.clim and filter some species
+    db.clim=occurence %>% 
+      left_join(df.species) |> 
+      mutate(hsm:=(!!sym(var.hsm)/1000)-px,
+             fsm:=!!sym(var.fsm)-lt50) |> 
+      filter(!is.na(hsm)) |> 
+      filter(!is.na(fsm)) |> 
+      filter(!!sym(var.hsm)>(-10000)) |> 
+      filter(!is.na(wai)) |> 
+      filter(!is.na(mat))
+    
+  
+  
+  
   if(!file.exists(paths=paste0(mod.folder,"fit_random_allspClim.RData"))){
     outputclim=fread(output.clim.file) |>  #output.clim.file="output/df.outputClim.csv"
       filter(rhat<1.2) %>% 
       filter(divergence <0.1) %>% 
-      group_by(species.binomial) %>% 
+      group_by(species) %>% 
       slice(which.min(bic)) %>% 
       ungroup() |> 
       mutate(across(c("r_mat","r_wai","t_wai","t_mat"),
                     ~na_if(.,0)))|>
       mutate(across(where(is.numeric),
                     ~mean(.,na.rm=TRUE))) |> 
-      select(-species.binomial,-mod) |> unique()
+      select(-species,-mod) |> unique()
     # db.clim<-db.clim |> filter(species.binomial %in% c("Abies alba","Fagus sylvatica","Picea abies")) |> sample_n(70000)
     data.list<-list(N=dim(db.clim)[1],
-                    S=nlevels(as.factor(db.clim$species.binomial)),
+                    S=nlevels(as.factor(db.clim$species)),
                     presence=db.clim$presence,
-                    species=as.numeric(as.factor(db.clim$species.binomial)),
-                    mat=db.clim$temp.mean,
-                    wai=db.clim$wai,
+                    species=as.numeric(as.factor(db.clim$species)),
+                    mat=db.clim$mat,
+                    wai=db.clim$map,
                     prior=as.numeric(outputclim[,c("r_mat","r_wai","t_mat","t_wai")])
                     # mean_mat=mean(db.clim.sub$temp.mean),
                     # mean_wai=mean(db.clim.sub$wai)
@@ -1627,23 +1894,37 @@ fit.allspecies<- function(db.clim.file,
     print("discarded clim model fitting")
     load(paste0(mod.folder,"fit_random_allspClim.RData"))
   }
-  
-  posteriors_mean_sfm<-as.data.frame(t(summary(fit.allsp)$summary)) |> 
-    select(!matches("K_sp"))
   posteriors_mean_clim<-as.data.frame(t(summary(fit.allspClim)$summary)) |> 
     select(!matches("K_sp"))
-  
-  db.clim.auc<-db.clim |> 
+  return(posteriors_mean_clim)
+}
+
+auc.modrandom<-function(occurence,
+                        var.hsm="psi_eraday_real",
+                        var.fsm="tmin_era",
+                        df.species,
+                        posteriors_mean_sfm,
+                        posteriors_mean_clim,
+                        output){
+    db.clim.auc<-occurence %>% 
+      left_join(df.species) |> 
+      mutate(hsm:=(!!sym(var.hsm)/1000)-px,
+             fsm:=!!sym(var.fsm)-lt50) |> 
+      filter(!is.na(hsm)) |> 
+      filter(!is.na(fsm)) |> 
+      filter(!!sym(var.hsm)>(-10000)) |> 
+      filter(!is.na(wai)) |> 
+      filter(!is.na(mat)) |> 
     # filter(species.binomial==sp) |> 
-    select(species.binomial,presence,x,y,hsm,fsm,temp.mean,wai) |> 
+    select(species,presence,x,y,hsm,fsm,mat,wai) |> 
     mutate(pred_sfm=posteriors_mean_sfm$K_int[1]/
              ((1+exp(-posteriors_mean_sfm$r_fsm[1]*(fsm-posteriors_mean_sfm$t_fsm[1])))*
                 (1+exp(-posteriors_mean_sfm$r_hsm[1]*(hsm-posteriors_mean_sfm$t_hsm[1])))),
            pred_clim=posteriors_mean_clim$K_int[1]/
-             ((1+exp(-posteriors_mean_clim$r_mat[1]*(temp.mean-posteriors_mean_clim$t_mat[1])))*
+             ((1+exp(-posteriors_mean_clim$r_mat[1]*(mat-posteriors_mean_clim$t_mat[1])))*
                 (1+exp(-posteriors_mean_clim$r_wai[1]*(wai-posteriors_mean_clim$t_wai[1]))))
     ) |> 
-    group_by(species.binomial) |> 
+    group_by(species) |> 
     summarize(auc_sfm=as.numeric(auc(presence,pred_sfm)),
               auc_clim=as.numeric(auc(presence,pred_clim)))
   # prior sur le range des aprametres du mod par esp
@@ -1651,32 +1932,35 @@ fit.allspecies<- function(db.clim.file,
   return(db.clim.auc)
 }
   
-# tar_load(occurence)
+# # tar_load(occurence)
 # load("mod new/fit_random_allsp.RData")
 # load("mod new/fit_random_allspClim.RData")
-# posteriors_mean_sfm<-as.data.frame(t(summary(fit.allsp)$summary)) |> 
+# posteriors_mean_sfm<-as.data.frame(t(summary(fit.allsp)$summary)) |>
 #   select(!matches("K_sp"))
-# posteriors_mean_clim<-as.data.frame(t(summary(fit.allspClim)$summary)) |> 
+# posteriors_mean_clim<-as.data.frame(t(summary(fit.allspClim)$summary)) |>
 #   select(!matches("K_sp"))
 # 
-# db.clim.auc<-fread("output/db_EuForest.csv") |> 
-#   # filter(species.binomial==sp) |> 
-#   select(species.binomial,presence,x,y,hsm,fsm,temp.mean,wai) |> 
+# 
+# db.clim.auc<-fread("output/db_EuForest.csv") |>
+#   rename(fsm=fsm.winter) |> 
+#   filter(!is.na(fsm)|!is.na(hsm)) |> 
+#   # filter(species.binomial==sp) |>
+#   select(species.binomial,presence,x,y,hsm,fsm,temp.mean,wai) |>
 #   mutate(pred_sfm=posteriors_mean_sfm$K_int[1]/
 #            ((1+exp(-posteriors_mean_sfm$r_fsm[1]*(fsm-posteriors_mean_sfm$t_fsm[1])))*
 #               (1+exp(-posteriors_mean_sfm$r_hsm[1]*(hsm-posteriors_mean_sfm$t_hsm[1])))),
 #          pred_clim=posteriors_mean_clim$K_int[1]/
 #            ((1+exp(-posteriors_mean_clim$r_mat[1]*(temp.mean-posteriors_mean_clim$t_mat[1])))*
 #               (1+exp(-posteriors_mean_clim$r_wai[1]*(wai-posteriors_mean_clim$t_wai[1]))))
-#   ) |> 
-#   group_by(species.binomial) |> 
+#   ) |>
+#   group_by(species.binomial) |>
 #   summarize(auc_sfm=as.numeric(auc(presence,pred_sfm)),
 #             auc_clim=as.numeric(auc(presence,pred_clim)))
 # 
 # View(read.csv("mod new/db.clim.auc.csv") |> mutate(val=auc_sfm>auc_clim))
 # 
 # read.csv("mod new/db.clim.auc.csv") |>
-#   mutate(val=auc_sfm-auc_clim) |> 
+#   mutate(val=auc_sfm-auc_clim) |>
 #   ggplot(aes(val))+
 #   geom_density()
 

@@ -137,6 +137,24 @@ list(
     )
   ),
   tar_target(
+    psi_eradaycdo_real_beta,
+    compute_psi_sureau(swc_era_day_cdo,
+                       europe,
+                       dir.hydro="data/EU_SoilHydroGrids_1km/",
+                       depth_max=NULL,
+                       dir.depth="data/STU_EU_Layers/STU_EU_DEPTH_ROOTS.rst",
+                       dir.ecoregions="data/WWF/official",
+                       LAImax=5,
+                       fRootToLeaf=1,
+                       rootRadius=0.0004,
+                       beta=NULL,
+                       obs=c(0,0.07,0.28,1,2.89),
+                       ref=c(0,0.05,0.15,0.3,0.6,1,2),
+                       max_depth=3,
+                       "output/psi_era_day_real_beta.csv"
+    )
+  ),
+  tar_target(
     psi_eraday_100,
     compute_psi_sureau(swc_era_day,
                        europe,

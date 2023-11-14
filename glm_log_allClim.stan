@@ -41,7 +41,7 @@ model {
   r_mat~normal(prior[1],2);
   r_wai~normal(prior[2],2);
   t_mat~normal(prior[3],4);
-  t_wai~normal(prior[4],3);
+  t_wai~normal(prior[4],4);
   
   // How the data are expected to have been generated:
   presence ~ bernoulli(proba);

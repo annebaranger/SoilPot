@@ -27,6 +27,8 @@ tar_visnetwork()
 Sys.setenv("TAR_PROJECT"="analysis")
 tar_visnetwork()
 # tar_make()
+Sys.setenv("TAR_PROJECT"="analysis2")
+tar_visnetwork()
 
 Sys.setenv("TAR_PROJECT"="modrandom")
 tar_visnetwork()

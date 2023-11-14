@@ -23,7 +23,7 @@ list(
     traits,
     readRDS(traits.file)
   ),
-  # regular psi_min with beta=0.97
+  # CERRA, real depth, beta =0.97
   tar_target(
     psi_cerraday_real_file,
     "target_psi2/objects/psi_cerraday_real",
@@ -42,6 +42,7 @@ list(
   #   psi_cerraday_real,
   #   readRDS(psi_cerraday_real_file)
   # ),
+  # ERA old method, real depth, beta =0.97
   tar_target(
     psi_eraday_real_file,
     "target_psi2/objects/psi_eraday_real",
@@ -51,6 +52,7 @@ list(
     psi_eraday_real,
     readRDS(psi_eraday_real_file)
   ),
+  # ERA cdo , real depth, beta =0.97
   tar_target(
     psi_eradaycdo_real_file,
     "target_psi2/objects/psi_eradaycdo_real",
@@ -60,6 +62,17 @@ list(
     psi_eradaycdo_real,
     readRDS(psi_eradaycdo_real_file)
   ),
+  # ERA, real depth, beta = real
+  tar_target(
+    psi_eradaycdo_real_beta_file,
+    "target_psi2/objects/psi_eradaycdo_real_beta",
+    format="file"
+  ),
+  tar_target(
+    psi_eradaycdo_real_beta,
+    readRDS(psi_eradaycdo_real_beta_file)
+  ),
+  # CERRA, tmin
   tar_target(
     tmin_cerra_file,
     "target_data/objects/tmin_cerra",
@@ -69,6 +82,7 @@ list(
     tmin_cerra,
     readRDS(tmin_cerra_file)
   ),
+  # ERA, tmin
   tar_target(
     tmin_era_file,
     "target_data/objects/tmin2m_era",
@@ -78,6 +92,7 @@ list(
     tmin_era,
     readRDS(tmin_era_file)
   ),
+  # CHELSA,tmin
   tar_target(
     tmin_chelsa_file,
     "target_data/objects/tmin_chelsa",
@@ -87,6 +102,7 @@ list(
     tmin_chelsa,
     readRDS(tmin_chelsa_file)
   ),
+  # CHELSA, climate
   tar_target(
     clim_chelsa_file,
     "target_data/objects/clim_chelsa",
@@ -96,6 +112,7 @@ list(
     clim_chelsa,
     readRDS(clim_chelsa_file)
   ),
+  # margin limits
   tar_target(
     margin.limit,
     get.margins(occurence,
@@ -115,6 +132,23 @@ list(
                  clim.list=list(psi_cerraday_real=psi_cerraday_real[,c("x","y","psi")],
                                 psi_eradayold_real=psi_eraday_real[,c("x","y","psi")],
                                 psi_eraday_real=psi_eradaycdo_real[,c("x","y","psi")],
+                                tmin_cerra=tmin_cerra,
+                                tmin_chelsa=tmin_chelsa,
+                                tmin_era=tmin_era,
+                                mat=clim_chelsa[,c("x","y","mat")],
+                                map=clim_chelsa[,c("x","y","map")],
+                                pet=clim_chelsa[,c("x","y","pet")],
+                                sgdd=clim_chelsa[,c("x","y","sgdd")],
+                                wai=clim_chelsa[,c("x","y","wai")]),
+                 file.path="output/df.occurence.clim.csv")
+  ),
+  tar_target(
+    occurence_beta,
+    get.occ.clim(db.mauri,
+                 clim.list=list(psi_cerraday_real=psi_cerraday_real[,c("x","y","psi")],
+                                psi_eradayold_real=psi_eraday_real[,c("x","y","psi")],
+                                psi_eraday_real=psi_eradaycdo_real[,c("x","y","psi")],
+                                psi_eraday_real_beta=psi_eradaycdo_real_beta[,c("x","y","psi")],
                                 tmin_cerra=tmin_cerra,
                                 tmin_chelsa=tmin_chelsa,
                                 tmin_era=tmin_era,
