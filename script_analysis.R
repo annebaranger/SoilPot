@@ -15,6 +15,7 @@ tar_option_set(packages = c("stringr","ggplot2","data.table","tidyr","viridis",
 tar_option_set(memory = "transient")
 future::plan(future::multisession, workers = 6)
 
+
 #Targets
 list(
   # Load necessary files
