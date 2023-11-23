@@ -2009,14 +2009,14 @@ for (sp in db.clim.auc$species){
   #sfm
   predicted_sfm <- pred[pred$species==sp,"pred_sfm"]
   threshold_max=posteriors_mean_sfm$K_int[1]
-  thresholds <- seq(0,threshold_max, by = 0.01)
+  thresholds <- seq(0,threshold_max, length.out=100)
   tss_sfm <- sapply(thresholds, calc_tss, observed,predicted_sfm)
   db.clim.auc[db.clim.auc$species==sp,c("tss_sfm","thres_sfm")]=list(max(tss_sfm),
                                                                      thresholds[which.max(tss_sfm)])
   #clim
   predicted_clim <- pred[pred$species==sp,"pred_clim"]
   threshold_max=posteriors_mean_clim$K_int[1]
-  thresholds <- seq(0,threshold_max, by = 0.01)
+  thresholds <- seq(0,threshold_max, length.out=100)
   tss_clim <- sapply(thresholds, calc_tss, observed,predicted_clim)
   db.clim.auc[db.clim.auc$species==sp,c("tss_clim","thres_clim")]=list(max(tss_clim),
                                                                      thresholds[which.max(tss_clim)])
@@ -2026,6 +2026,22 @@ db.clim.auc<-db.clim.auc |>
   mutate(tss_sup=tss_sfm>tss_clim,
          auc_sup=auc_sfm>auc_clim)
 summary(db.clim.auc)
+
+## TSS for general model
+threshold_max=posteriors_mean_clim$K_int[1]
+thresholds <- seq(0,threshold_max, length.out=100)
+tss_clim <- sapply(thresholds,
+                   calc_tss, 
+                   pred[pred$species==sp,"presence"],
+                   pred[pred$species==sp,"pred_clim"])
+print(max(tss_clim))
+threshold_max=posteriors_mean_sfm$K_int[1]
+thresholds <- seq(0,threshold_max, length.out=100)
+tss_sfm <- sapply(thresholds,
+                   calc_tss, 
+                   pred[pred$species==sp,"presence"],
+                   pred[pred$species==sp,"pred_sfm"])
+print(max(tss_sfm))
 ```
 
 ```{r}
@@ -2050,7 +2066,7 @@ db.clim |>
   #    wai=-wai) |> 
   filter(presence==1) |> 
   filter(psi_eraday_real>(-10000)) |>
-  pivot_longer(cols=c("tmin_era","psi_eraday_real","wai","pet","sgdd","map")) |> 
+  pivot_longer(cols=c("tmin_era","psi_eraday_real","pet","mat","map")) |> 
   mutate(name=case_when(name=="tmin_era"~"$T_{min}$",
                         name=="psi_eraday_real"~"$\\Psi_{min}$",
                         TRUE~name)) |> 
@@ -2090,7 +2106,7 @@ db.clim |>
   #    wai=-wai) |> 
   filter(presence==1) |> 
   filter(psi_eraday_real>(-10000)) |>
-  pivot_longer(cols=c("tmin_era","psi_eraday_real","wai","pet","sgdd","map")) |> 
+  pivot_longer(cols=c("tmin_era","psi_eraday_real","pet","mat","map")) |> 
   mutate(name=case_when(name=="tmin_era"~"$T_{min}$",
                         name=="psi_eraday_real"~"$\\Psi_{min}$",
                         TRUE~name)) |> 
@@ -3110,5 +3126,56 @@ as.data.frame(cbind(rp_vec,
 #        height = 9,
 #        unit="cm")
 # 
+```
+
+
+### Sources of species 
+
+```{r}
+colddb=read.csv2("data/Species traits/ColdDB.csv") |> 
+  filter(Species %in% mod.select.safmarg$species) |> 
+  select(Species,Provenance,Temperature_of_resistance,Type,Fit,Method,Reference) |> 
+  mutate(Reference=case_when(Reference=="Larter et al. unpub"~"Measured",
+                             Reference=="Charrier Unpub"~"Measured",
+                             TRUE~Reference)) |> 
+  select(Species,Reference) |> unique()
+colddb |> 
+  left_join(traits,by=c("Species"="species")) |> 
+  select(Species,lt50,Reference) |>
+  mutate(p50=NA,
+         ref=NA) -> t
+t<-t |> 
+  filter(!grepl("Fiorino",Reference)) |> 
+  filter(!grepl("Sanatrius",Reference)) |> 
+  arrange(Species,Reference)
+print(xtable(t),include.rownames=FALSE)
+
+t |> select(Reference) |> unique() |> arrange(Reference) ->ref
+print(xtable(ref),include.rownames=FALSE)
+
+p50db=read.csv2("data/Species traits/P50DB_source.csv") |> 
+  filter(Species %in% mod.select.safmarg$species) |> 
+  select(Species,Source) |> unique()
+p50xft=read.csv2("data/Species traits/xft_filtered.csv") |> 
+  mutate(Species=paste0(Genus," ",Species)) |> 
+  filter(Species %in% mod.select.safmarg$species) |> 
+  select(Species,Short_reference_.authors_year.,Ref_DOI) |> unique() |> 
+  left_join(p50db) |> 
+  mutate(reference=case_when(Source=="NicoMSP"~"Martin St-Paul et al. 2017",
+                             TRUE~Short_reference_.authors_year.)) 
+t<-p50xft |> 
+  left_join(traits,by=c("Species"="species")) |> 
+  select(Species,p50,p88,reference) |> 
+  arrange(Species,reference)
+
+print(xtable(t),include.rownames=FALSE)
+
+ref <- p50xft |> 
+  left_join(traits,by=c("Species"="species")) |> 
+  select(reference) |> unique() |> 
+  arrange(reference) 
+
+
+print(xtable(ref),include.rownames=FALSE)
 ```
 
