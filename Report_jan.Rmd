@@ -1619,7 +1619,9 @@ df.n<- mod.select.safmarg %>%
   group_by(taxa,name) |> 
   summarise(n=n(),
             value=quantile(value,probs=0.5)[[1]]) |> 
-  ungroup()
+  ungroup() |> 
+  mutate(value=case_when(name=="FSM"~95,
+                         TRUE~value))
 mod.select.safmarg %>%
   left_join(df.species) |> 
   mutate(HSM=inflex_hsm,
@@ -1716,7 +1718,6 @@ mod.select.safmarg %>%
   labs(x="Rescaled thresholds")+
   NULL-> a
 
-
 cowplot::plot_grid(
   c,
   cowplot::plot_grid(get_legend(b),
@@ -1738,7 +1739,7 @@ plot
 #        plot, 
 #        width=10,
 #        height = 6)
-ggsave("figures_rev/fig2_gg.pdf",
+ggsave("figures_rev/fig2_gg_2.pdf",
        plot=plot,
        scale=1,
        dpi=600,
@@ -1873,8 +1874,11 @@ ggsave("figures_rev/fig_si3.pdf",
 # 
 
 library(pROC)
-load("mod new/fit_random_allsp.RData")
-load("fit_random_allspClim.RData")
+# load("mod new/fit_random_allsp.RData")
+# load("fit_random_allspClim.RData")
+
+load("mod_last_vers/fit_random_allsp.RData")
+load("mod_last_vers/fit_random_allspClim.RData")
 # load("mod new/fit_random_allspClim.RData")
 
 posteriors_mean_clim<-as.data.frame(t(summary(fit.allspClim)$summary)) |> 
